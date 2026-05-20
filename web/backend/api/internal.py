@@ -21,8 +21,24 @@ def _require_token(
 
 
 @router.post("/etl/trigger", dependencies=[Depends(_require_token)])
-def trigger_etl() -> dict:
-    return run_etl()
+def trigger_etl(
+    slug: str | None = None,
+    slugs: str | None = None,
+    incluir_privados: bool = False,
+) -> dict:
+    """Roda o ETL completo.
+
+    - sem params: clientes públicos da planilha.
+    - ?slug=loja-fashion: roda só esse cliente.
+    - ?slugs=loja-fashion,atlas-cosmeticos: lote pequeno.
+    - ?incluir_privados=true: roda para todos da planilha (público + privado).
+    """
+    selecionados: set[str] | None = None
+    if slug:
+        selecionados = {slug}
+    elif slugs:
+        selecionados = {s.strip() for s in slugs.split(",") if s.strip()}
+    return run_etl(slugs=selecionados, incluir_privados=incluir_privados)
 
 
 @router.post("/sync-clientes", dependencies=[Depends(_require_token)])

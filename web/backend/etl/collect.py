@@ -92,7 +92,19 @@ def processar_cliente(
         return False
 
 
-def run_etl(today: date | None = None, frequencia_str: str | None = None) -> dict:
+def run_etl(
+    today: date | None = None,
+    frequencia_str: str | None = None,
+    slugs: set[str] | None = None,
+    incluir_privados: bool = False,
+) -> dict:
+    """Roda o ETL completo.
+
+    - slugs=None + incluir_privados=False: clientes da planilha com publicar_vitrine=True (default).
+    - slugs={"loja-fashion"}: roda apenas esses (independente da flag), útil para testes.
+    - incluir_privados=True: ignora publicar_vitrine, roda para todos os clientes da planilha.
+    """
+    from .cliente_publico import slugify
     settings = get_settings()
     today = today or date.today()
     frequencia_str = frequencia_str or settings.etl_periodo_granularidade
@@ -110,7 +122,10 @@ def run_etl(today: date | None = None, frequencia_str: str | None = None) -> dic
                 tab_name=CENTRAL_TAB_NAME,
             )
             pubs = [ClientePublico.from_cliente(c) for c in todos_core]
-            pubs = [p for p in pubs if p.publicar_vitrine]
+            if slugs:
+                pubs = [p for p in pubs if slugify(p.nome) in slugs]
+            elif not incluir_privados:
+                pubs = [p for p in pubs if p.publicar_vitrine]
             log.info("etl_iniciado", extra={"n_clientes": len(pubs), "frequencia": frequencia_str})
 
             periodo_ref = periodo_referencia(today, frequencia_str)

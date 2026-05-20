@@ -180,6 +180,7 @@ const COLUMNS: ColumnDef[] = [
 
 const CATEGORIAS = ["Todas", "E-commerce", "Lead Com Site", "Lead Sem Site"];
 const VITRINES = ["Todos", "Pública", "Privada"];
+const STATUS = ["Todos", "Com dados", "Sem dados"];
 
 export function ClientesTable({ items }: { items: ClienteListItem[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("faturamento");
@@ -188,6 +189,7 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
   const [categoria, setCategoria] = useState("Todas");
   const [setor, setSetor] = useState("Todos");
   const [vitrine, setVitrine] = useState("Todos");
+  const [status, setStatus] = useState("Com dados");
   const [showRanges, setShowRanges] = useState(false);
   const [rngFat, setRngFat] = useState<Range>(EMPTY_RANGE);
   const [rngInv, setRngInv] = useState<Range>(EMPTY_RANGE);
@@ -212,13 +214,16 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
       if (setor !== "Todos" && i.setor !== setor) return false;
       if (vitrine === "Pública" && !i.publicar_vitrine) return false;
       if (vitrine === "Privada" && i.publicar_vitrine) return false;
+      const hasSnap = i.periodo_fim != null;
+      if (status === "Com dados" && !hasSnap) return false;
+      if (status === "Sem dados" && hasSnap) return false;
       if (!inRange(num(i.faturamento), rngFat)) return false;
       if (!inRange(num(i.investimento), rngInv)) return false;
       if (!inRange(num(i.roas), rngRoas)) return false;
       if (!inRange(num(i.faturamento_var_pct), rngCresc)) return false;
       return true;
     });
-  }, [items, query, categoria, setor, vitrine, rngFat, rngInv, rngRoas, rngCresc]);
+  }, [items, query, categoria, setor, vitrine, status, rngFat, rngInv, rngRoas, rngCresc]);
 
   const sorted = useMemo(() => {
     const col = COLUMNS.find((c) => c.key === sortKey)!;
@@ -277,6 +282,9 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
           <Field label="Vitrine">
             <Select value={vitrine} onChange={setVitrine} options={VITRINES} />
           </Field>
+          <Field label="Status">
+            <Select value={status} onChange={setStatus} options={STATUS} />
+          </Field>
 
           <div className="ml-auto flex items-center gap-5 self-end">
             <button
@@ -297,6 +305,7 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
                 setCategoria("Todas");
                 setSetor("Todos");
                 setVitrine("Todos");
+                setStatus("Todos");
                 setRngFat(EMPTY_RANGE);
                 setRngInv(EMPTY_RANGE);
                 setRngRoas(EMPTY_RANGE);
