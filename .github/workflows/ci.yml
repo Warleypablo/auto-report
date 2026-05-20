@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main, vitrine-cases]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: vitrine
+          POSTGRES_PASSWORD: vitrine
+          POSTGRES_DB: vitrine
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://vitrine:vitrine@localhost:5432/vitrine
+      ETL_TRIGGER_TOKEN: ci-token
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r web/backend/requirements.txt
+
+      - name: Run migrations
+        working-directory: web/backend
+        run: alembic upgrade head
+
+      - name: Run pytest
+        working-directory: web/backend
+        run: pytest -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web/frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: web/frontend
+        run: npm run lint
+
+      - name: Build
+        working-directory: web/frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: npm run build
