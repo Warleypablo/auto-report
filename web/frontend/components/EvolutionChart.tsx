@@ -1,8 +1,9 @@
 "use client";
 
 import {
-  Line,
-  LineChart,
+  Area,
+  AreaChart,
+  CartesianGrid,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -22,33 +23,83 @@ export function EvolutionChart({ pontos }: { pontos: PontoEvolucao[] }) {
   }));
 
   return (
-    <div className="h-72 w-full">
+    <div className="h-80 w-full">
       <ResponsiveContainer>
-        <LineChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
-          <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+        <AreaChart data={data} margin={{ top: 16, right: 24, bottom: 8, left: 8 }}>
+          <defs>
+            <linearGradient id="fatFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#1F4D3C" stopOpacity={0.32} />
+              <stop offset="100%" stopColor="#1F4D3C" stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="#C9C2AF" strokeDasharray="2 4" vertical={false} />
+          <XAxis
+            dataKey="mes"
+            tick={{
+              fontSize: 11,
+              fill: "#6F6A60",
+              fontFamily: "var(--font-geist)",
+            }}
+            tickLine={false}
+            axisLine={{ stroke: "#1A1916", strokeWidth: 1 }}
+            tickMargin={10}
+          />
           <YAxis
-            tick={{ fontSize: 12 }}
-            tickFormatter={(v: number) =>
-              v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
-            }
+            tick={{
+              fontSize: 11,
+              fill: "#6F6A60",
+              fontFamily: "var(--font-jetbrains)",
+            }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => {
+              if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
+              if (v >= 1000) return `R$ ${(v / 1000).toFixed(0)}k`;
+              return `R$ ${v}`;
+            }}
+            width={80}
           />
           <Tooltip
+            cursor={{ stroke: "#1F4D3C", strokeWidth: 1, strokeDasharray: "4 2" }}
+            contentStyle={{
+              background: "#111110",
+              border: "none",
+              borderRadius: 0,
+              color: "#F2EEE5",
+              fontFamily: "var(--font-jetbrains)",
+              fontSize: 12,
+              padding: "10px 14px",
+            }}
+            labelStyle={{
+              color: "#D7C68C",
+              textTransform: "uppercase",
+              letterSpacing: "0.15em",
+              fontSize: 10,
+              marginBottom: 6,
+            }}
             formatter={(value) =>
               typeof value === "number"
-                ? value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-                : String(value ?? "")
+                ? [
+                    value.toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                      maximumFractionDigits: 0,
+                    }),
+                    "Faturamento",
+                  ]
+                : [String(value ?? ""), ""]
             }
-            labelStyle={{ fontWeight: 600 }}
           />
-          <Line
+          <Area
             type="monotone"
             dataKey="faturamento"
-            stroke="#2563eb"
+            stroke="#1F4D3C"
             strokeWidth={2}
-            dot={{ r: 3 }}
-            activeDot={{ r: 5 }}
+            fill="url(#fatFill)"
+            dot={{ r: 3, fill: "#1F4D3C", strokeWidth: 0 }}
+            activeDot={{ r: 6, fill: "#1F4D3C", stroke: "#F2EEE5", strokeWidth: 2 }}
           />
-        </LineChart>
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   );

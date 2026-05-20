@@ -18,20 +18,24 @@ const METRICS: MetricDef[] = [
 ];
 
 export function MetricGrid({ snapshot }: { snapshot: CaseDetail }) {
+  const visible = METRICS.filter((m) => snapshot[m.key] != null);
+
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {METRICS.filter((m) => snapshot[m.key] != null).map((m) => (
-        <div
-          key={m.key as string}
-          className="rounded-lg border border-neutral-200 bg-white p-5"
-        >
-          <p className="text-xs uppercase tracking-wider text-neutral-500">{m.label}</p>
-          <p className="mt-1 text-2xl font-bold text-neutral-900">
+    <div className="grid gap-px bg-[var(--rule-soft)] sm:grid-cols-2 lg:grid-cols-3">
+      {visible.map((m, i) => (
+        <div key={m.key as string} className="bg-[var(--paper-soft)] p-7">
+          <div className="flex items-center justify-between">
+            <p className="eyebrow">{m.label}</p>
+            <span className="font-mono-num text-[10px] text-[var(--muted)]">
+              {String(i + 1).padStart(2, "0")}
+            </span>
+          </div>
+          <p className="font-mono-num mt-4 text-[2.5rem] font-medium leading-none tracking-tight text-[var(--ink)]">
             {m.format(snapshot[m.key] as string | number | null | undefined)}
           </p>
           {m.variation && snapshot[m.variation] != null && (
-            <p className="mt-1 text-sm font-medium text-emerald-600">
-              {formatPct(snapshot[m.variation] as string)}
+            <p className="font-mono-num mt-3 text-xs text-[var(--forest)]">
+              ↗ {formatPct(snapshot[m.variation] as string)} vs período anterior
             </p>
           )}
         </div>
