@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api import cases, health, internal, rankings
-from config import get_settings
+from app_settings import get_settings
 from logging_config import setup_logging
 
 

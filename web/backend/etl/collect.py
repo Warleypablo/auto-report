@@ -16,7 +16,7 @@ if str(_ROOT) not in sys.path:
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from config import get_settings
+from app_settings import get_settings
 from db import SessionLocal, engine
 from models import Categoria, Cliente
 from models.snapshot import Frequencia

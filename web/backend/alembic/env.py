@@ -7,7 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from config import get_settings  # noqa: E402
+from app_settings import get_settings  # noqa: E402
 from models import Base  # noqa: E402
 
 config = context.config

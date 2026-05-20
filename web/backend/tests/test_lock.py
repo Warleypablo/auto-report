@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 
-from config import get_settings
+from app_settings import get_settings
 from etl.lock import LockTaken, advisory_lock
 
 

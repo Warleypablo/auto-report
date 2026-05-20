@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from config import Settings, get_settings
+from app_settings import Settings, get_settings
 from db import get_session
 from etl.collect import run_etl
 from etl.sync_planilha import sync_clientes
