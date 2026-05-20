@@ -54,12 +54,12 @@ export default function RootLayout({
               <Link href="/" className="hover:text-[var(--ink)]">
                 Vitrine
               </Link>
-              <a
-                href="#metodologia"
-                className="hidden border-l border-[var(--rule-soft)] pl-8 hover:text-[var(--ink)] md:inline"
+              <Link
+                href="/lista"
+                className="border-l border-[var(--rule-soft)] pl-8 hover:text-[var(--ink)]"
               >
-                Metodologia
-              </a>
+                Lista interna
+              </Link>
             </nav>
           </div>
         </header>

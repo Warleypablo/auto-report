@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from config import Settings, get_settings
+from db import get_session
 from etl.collect import run_etl
+from models import Cliente, Snapshot
+from schemas import ClienteListItem, ClientesListResponse
 
 router = APIRouter()
 
@@ -17,3 +22,50 @@ def _require_token(
 @router.post("/etl/trigger", dependencies=[Depends(_require_token)])
 def trigger_etl() -> dict:
     return run_etl()
+
+
+@router.get(
+    "/clientes",
+    response_model=ClientesListResponse,
+    dependencies=[Depends(_require_token)],
+)
+def list_clientes(session: Session = Depends(get_session)) -> ClientesListResponse:
+    """Lista todos os clientes + snapshot mais recente, sem filtrar por publicar_vitrine."""
+    sub = (
+        select(Snapshot.cliente_id, Snapshot.id.label("snap_id"))
+        .distinct(Snapshot.cliente_id)
+        .order_by(Snapshot.cliente_id, Snapshot.periodo_fim.desc(), Snapshot.data_coleta.desc())
+    ).subquery()
+
+    stmt = (
+        select(Cliente, Snapshot)
+        .join(sub, sub.c.cliente_id == Cliente.id, isouter=True)
+        .join(Snapshot, Snapshot.id == sub.c.snap_id, isouter=True)
+        .order_by(Cliente.nome.asc())
+    )
+
+    items: list[ClienteListItem] = []
+    for cliente, snap in session.execute(stmt).all():
+        items.append(
+            ClienteListItem(
+                slug=cliente.slug,
+                nome=cliente.nome,
+                categoria=cliente.categoria.value,
+                setor=cliente.setor,
+                porte=cliente.porte,
+                publicar_vitrine=cliente.publicar_vitrine,
+                destaque=cliente.destaque,
+                periodo_inicio=snap.periodo_inicio if snap else None,
+                periodo_fim=snap.periodo_fim if snap else None,
+                data_coleta=snap.data_coleta if snap else None,
+                faturamento=snap.faturamento if snap else None,
+                investimento=snap.investimento if snap else None,
+                roas=snap.roas if snap else None,
+                cpa=snap.cpa if snap else None,
+                leads=snap.leads if snap else None,
+                vendas=snap.vendas if snap else None,
+                faturamento_var_pct=snap.faturamento_var_pct if snap else None,
+                roas_var_pct=snap.roas_var_pct if snap else None,
+            )
+        )
+    return ClientesListResponse(items=items, total=len(items))

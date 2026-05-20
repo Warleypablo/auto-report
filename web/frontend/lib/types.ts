@@ -47,3 +47,29 @@ export type RankingItem = {
   logo_url: string | null;
   valor: string;
 };
+
+export type ClienteListItem = {
+  slug: string;
+  nome: string;
+  categoria: string;
+  setor: string | null;
+  porte: string | null;
+  publicar_vitrine: boolean;
+  destaque: boolean;
+  periodo_inicio: string | null;
+  periodo_fim: string | null;
+  data_coleta: string | null;
+  faturamento: string | null;
+  investimento: string | null;
+  roas: string | null;
+  cpa: string | null;
+  leads: number | null;
+  vendas: number | null;
+  faturamento_var_pct: string | null;
+  roas_var_pct: string | null;
+};
+
+export type ClientesListResponse = {
+  items: ClienteListItem[];
+  total: number;
+};

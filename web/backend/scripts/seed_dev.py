@@ -56,6 +56,27 @@ CLIENTES_DATA = [
     ("plataforma-aurora", "Plataforma Aurora", "Educação", "Médio", Categoria.LEAD_COM_SITE,
      "EdTech de cursos profissionalizantes que reduziu CAC em 44% após implementar funil de webinar e nutrição via Meta.",
      False, 0, 145_000, 0, 187.0, 920, 0, 0, 0, 0.71, 0.29),
+
+    # ─── Clientes privados (não aparecem na vitrine pública, mas aparecem na lista interna) ───
+    ("argo-imoveis", "Argo Imóveis", "Imobiliário", "Médio", Categoria.LEAD_COM_SITE,
+     "Imobiliária de aluguel residencial em São Paulo (cliente interno, sem autorização pública ainda).",
+     False, 0, 95_000, 0, 268.0, 340, 0, 0, 0, 0.42, 0.58),
+
+    ("vitrale-decor", "Vitrale Decor", "Decoração", "Pequeno", Categoria.ECOMMERCE,
+     "E-commerce de objetos de decoração premium (ainda em fase de negociação para vitrine).",
+     False, 420_000, 62_000, 6.8, 145.0, 0, 198, 18.5, 4.2, 0.58, 0.42),
+
+    ("nórdica-móveis", "Nórdica Móveis", "Mobiliário", "Grande", Categoria.ECOMMERCE,
+     "Marca de mobiliário escandinavo de alto padrão.",
+     False, 1_870_000, 240_000, 7.8, 192.0, 0, 540, 9.4, 2.1, 0.45, 0.55),
+
+    ("luma-clinica", "Luma Clínica Estética", "Saúde", "Pequeno", Categoria.LEAD_COM_SITE,
+     "Clínica de estética avançada (jurídico ainda revisando autorização para vitrine pública).",
+     False, 0, 42_000, 0, 89.0, 380, 0, 0, 0, 0.78, 0.22),
+
+    ("tecbase-software", "Tecbase Software", "B2B SaaS", "Grande", Categoria.LEAD_COM_SITE,
+     "Software de gestão financeira B2B (acordo de confidencialidade impede divulgação pública).",
+     False, 0, 380_000, 0, 612.0, 248, 0, 0, 0, 0.21, 0.79),
 ]
 
 
@@ -139,9 +160,11 @@ def _snapshots_para(cliente, base_data: tuple) -> list[Snapshot]:
 
 
 def main() -> None:
+    PRIVADOS = {"argo-imoveis", "vitrale-decor", "nórdica-móveis", "luma-clinica", "tecbase-software"}
     with SessionLocal() as session:
         for data in CLIENTES_DATA:
             slug, nome, setor, porte, categoria, descricao, destaque = data[:7]
+            publicar = slug not in PRIVADOS
             cliente = session.query(Cliente).filter_by(slug=slug).first()
             if cliente:
                 # limpa snapshots antigos para repopular
@@ -152,7 +175,7 @@ def main() -> None:
                 cliente.categoria = categoria
                 cliente.descricao_publica = descricao
                 cliente.destaque = destaque
-                cliente.publicar_vitrine = True
+                cliente.publicar_vitrine = publicar
                 cliente.logo_url = f"/logos/{slug}.svg"
             else:
                 cliente = Cliente(
@@ -163,7 +186,7 @@ def main() -> None:
                     categoria=categoria,
                     descricao_publica=descricao,
                     destaque=destaque,
-                    publicar_vitrine=True,
+                    publicar_vitrine=publicar,
                     logo_url=f"/logos/{slug}.svg",
                 )
                 session.add(cliente)
