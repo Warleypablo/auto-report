@@ -1,6 +1,8 @@
 # Credenciais locais
 .env
 .env.*
+!.env.example
+!web/.env.example
 credentials/
 *.json
 !channel_descriptions.json
