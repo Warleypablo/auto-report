@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api import cases, health, rankings
+from api import cases, health, internal, rankings
 from config import get_settings
 
 
@@ -12,13 +12,14 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
     app.include_router(health.router, prefix="/api")
     app.include_router(cases.router, prefix="/api")
     app.include_router(rankings.router, prefix="/api")
+    app.include_router(internal.router, prefix="/internal")
     return app
 
 
