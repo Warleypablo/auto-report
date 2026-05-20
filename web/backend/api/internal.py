@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from config import Settings, get_settings
 from db import get_session
 from etl.collect import run_etl
+from etl.sync_planilha import sync_clientes
 from models import Cliente, Snapshot
 from schemas import ClienteListItem, ClientesListResponse
 
@@ -22,6 +23,12 @@ def _require_token(
 @router.post("/etl/trigger", dependencies=[Depends(_require_token)])
 def trigger_etl() -> dict:
     return run_etl()
+
+
+@router.post("/sync-clientes", dependencies=[Depends(_require_token)])
+def trigger_sync_clientes() -> dict:
+    """Sincroniza estrutura de clientes da Planilha Central (sem rodar gathers)."""
+    return sync_clientes()
 
 
 @router.get(

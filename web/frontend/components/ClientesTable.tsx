@@ -5,6 +5,17 @@ import { useMemo, useState } from "react";
 import type { ClienteListItem } from "@/lib/types";
 import { formatBRL, formatInt, formatPct, formatRoas } from "@/lib/format";
 
+type Range = { min: string; max: string };
+const EMPTY_RANGE: Range = { min: "", max: "" };
+
+function inRange(value: number | null, r: Range): boolean {
+  if (r.min === "" && r.max === "") return true;
+  if (value == null) return false;
+  const min = r.min === "" ? -Infinity : Number(r.min.replace(",", "."));
+  const max = r.max === "" ? Infinity : Number(r.max.replace(",", "."));
+  return value >= min && value <= max;
+}
+
 type SortKey =
   | "nome"
   | "categoria"
@@ -177,11 +188,22 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
   const [categoria, setCategoria] = useState("Todas");
   const [setor, setSetor] = useState("Todos");
   const [vitrine, setVitrine] = useState("Todos");
+  const [showRanges, setShowRanges] = useState(false);
+  const [rngFat, setRngFat] = useState<Range>(EMPTY_RANGE);
+  const [rngInv, setRngInv] = useState<Range>(EMPTY_RANGE);
+  const [rngRoas, setRngRoas] = useState<Range>(EMPTY_RANGE);
+  const [rngCresc, setRngCresc] = useState<Range>(EMPTY_RANGE);
 
   const setores = useMemo(() => {
     const s = new Set(items.map((i) => i.setor).filter(Boolean) as string[]);
     return ["Todos", ...Array.from(s).sort()];
   }, [items]);
+
+  const rangesActive =
+    rngFat.min !== "" || rngFat.max !== "" ||
+    rngInv.min !== "" || rngInv.max !== "" ||
+    rngRoas.min !== "" || rngRoas.max !== "" ||
+    rngCresc.min !== "" || rngCresc.max !== "";
 
   const filtered = useMemo(() => {
     return items.filter((i) => {
@@ -190,9 +212,13 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
       if (setor !== "Todos" && i.setor !== setor) return false;
       if (vitrine === "Pública" && !i.publicar_vitrine) return false;
       if (vitrine === "Privada" && i.publicar_vitrine) return false;
+      if (!inRange(num(i.faturamento), rngFat)) return false;
+      if (!inRange(num(i.investimento), rngInv)) return false;
+      if (!inRange(num(i.roas), rngRoas)) return false;
+      if (!inRange(num(i.faturamento_var_pct), rngCresc)) return false;
       return true;
     });
-  }, [items, query, categoria, setor, vitrine]);
+  }, [items, query, categoria, setor, vitrine, rngFat, rngInv, rngRoas, rngCresc]);
 
   const sorted = useMemo(() => {
     const col = COLUMNS.find((c) => c.key === sortKey)!;
@@ -252,19 +278,71 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
             <Select value={vitrine} onChange={setVitrine} options={VITRINES} />
           </Field>
 
-          <button
-            type="button"
-            onClick={() => {
-              setQuery("");
-              setCategoria("Todas");
-              setSetor("Todos");
-              setVitrine("Todos");
-            }}
-            className="ml-auto self-end text-xs text-[var(--muted)] underline decoration-[var(--rule-soft)] underline-offset-4 hover:text-[var(--ink)] hover:decoration-[var(--ink)]"
-          >
-            Limpar filtros
-          </button>
+          <div className="ml-auto flex items-center gap-5 self-end">
+            <button
+              type="button"
+              onClick={() => setShowRanges((v) => !v)}
+              className={`text-xs underline underline-offset-4 ${
+                rangesActive
+                  ? "text-[var(--forest)] decoration-[var(--forest)]"
+                  : "text-[var(--ink-soft)] decoration-[var(--rule-soft)] hover:text-[var(--ink)] hover:decoration-[var(--ink)]"
+              }`}
+            >
+              {showRanges ? "Ocultar faixas" : `Filtros por faixa${rangesActive ? " (ativos)" : ""}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setCategoria("Todas");
+                setSetor("Todos");
+                setVitrine("Todos");
+                setRngFat(EMPTY_RANGE);
+                setRngInv(EMPTY_RANGE);
+                setRngRoas(EMPTY_RANGE);
+                setRngCresc(EMPTY_RANGE);
+              }}
+              className="text-xs text-[var(--muted)] underline decoration-[var(--rule-soft)] underline-offset-4 hover:text-[var(--ink)] hover:decoration-[var(--ink)]"
+            >
+              Limpar filtros
+            </button>
+          </div>
         </div>
+
+        {showRanges && (
+          <div className="mt-5 grid gap-x-8 gap-y-4 border-t border-[var(--rule-soft)] pt-5 md:grid-cols-4">
+            <RangeField
+              label="Faturamento (R$)"
+              value={rngFat}
+              onChange={setRngFat}
+              placeholderMin="0"
+              placeholderMax="∞"
+            />
+            <RangeField
+              label="Investimento (R$)"
+              value={rngInv}
+              onChange={setRngInv}
+              placeholderMin="0"
+              placeholderMax="∞"
+            />
+            <RangeField
+              label="ROAS (x)"
+              value={rngRoas}
+              onChange={setRngRoas}
+              placeholderMin="0"
+              placeholderMax="∞"
+              step="0,1"
+            />
+            <RangeField
+              label="Crescimento (%)"
+              value={rngCresc}
+              onChange={setRngCresc}
+              placeholderMin="-100"
+              placeholderMax="∞"
+              step="0,1"
+            />
+          </div>
+        )}
       </div>
 
       {/* Tabela */}
@@ -350,6 +428,50 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
           )}
         </table>
       </div>
+    </div>
+  );
+}
+
+function RangeField({
+  label,
+  value,
+  onChange,
+  placeholderMin,
+  placeholderMax,
+  step,
+}: {
+  label: string;
+  value: Range;
+  onChange: (r: Range) => void;
+  placeholderMin?: string;
+  placeholderMax?: string;
+  step?: string;
+}) {
+  return (
+    <div>
+      <p className="eyebrow">{label}</p>
+      <div className="mt-1 flex items-center gap-2">
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value.min}
+          onChange={(e) => onChange({ ...value, min: e.target.value })}
+          placeholder={placeholderMin}
+          className="font-mono-num w-full border-0 border-b border-[var(--ink)] bg-transparent py-1 text-sm text-[var(--ink)] placeholder:text-[var(--muted)]/40 focus:border-[var(--forest)] focus:outline-none"
+        />
+        <span className="text-xs text-[var(--muted)]">→</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value.max}
+          onChange={(e) => onChange({ ...value, max: e.target.value })}
+          placeholder={placeholderMax}
+          className="font-mono-num w-full border-0 border-b border-[var(--ink)] bg-transparent py-1 text-sm text-[var(--ink)] placeholder:text-[var(--muted)]/40 focus:border-[var(--forest)] focus:outline-none"
+        />
+      </div>
+      {step && (
+        <p className="mt-0.5 text-[10px] text-[var(--muted)]">passo {step}</p>
+      )}
     </div>
   );
 }
