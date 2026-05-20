@@ -1,0 +1,39 @@
+# Credenciais locais
+.env
+.env.*
+credentials/
+*.json
+!channel_descriptions.json
+!web/frontend/package.json
+!web/frontend/package-lock.json
+!web/frontend/tsconfig.json
+!web/frontend/components.json
+!web/backend/alembic/**/*.json
+google-ads.yaml
+
+# Configurações sensíveis do projeto
+config/settings_puro.py
+config/settings.py
+!config/settings_example.py
+
+# Logs (opcional)
+logs/
+*.log
+
+# Arquivos do Python
+__pycache__/
+*.pyc
+
+# Outros arquivos temporários
+.DS_Store
+Thumbs.db
+
+# Web (novo)
+web/.env
+web/backend/.venv/
+web/backend/.pytest_cache/
+web/frontend/node_modules/
+web/frontend/.next/
+web/frontend/out/
+web/frontend/playwright-report/
+web/frontend/test-results/
