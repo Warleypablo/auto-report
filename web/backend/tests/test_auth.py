@@ -23,3 +23,9 @@ def test_models_import():
     from models import Usuario, UsuarioCliente, ReportJob, JobStatus
     assert JobStatus.PENDING == "pending"
     assert JobStatus.DONE == "done"
+
+
+def test_schemas_import():
+    from schemas.gestor import LoginRequest, LoginResponse, JobStatusResponse
+    req = LoginRequest(email="a@b.com", senha="pass")
+    assert req.email == "a@b.com"
