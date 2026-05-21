@@ -17,3 +17,9 @@ def test_passlib_bcrypt():
     hashed = ctx.hash("mypassword")
     assert ctx.verify("mypassword", hashed)
     assert not ctx.verify("wrong", hashed)
+
+
+def test_models_import():
+    from models import Usuario, UsuarioCliente, ReportJob, JobStatus
+    assert JobStatus.PENDING == "pending"
+    assert JobStatus.DONE == "done"
