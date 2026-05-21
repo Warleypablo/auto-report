@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   deslocarMes,
@@ -119,7 +118,6 @@ function MonthGrid({
 }
 
 export default function PeriodPicker({ available, de, ate }: Props) {
-  const router = useRouter();
   const [open, setOpen] = useState<Which>(null);
   const [yearDe, setYearDe] = useState(() => Number(de.slice(0, 4)));
   const [yearAte, setYearAte] = useState(() => Number(ate.slice(0, 4)));
@@ -147,9 +145,8 @@ export default function PeriodPicker({ available, de, ate }: Props) {
 
   function applyRange(newDe: string, newAte: string) {
     const [d, a] = newDe <= newAte ? [newDe, newAte] : [newAte, newDe];
-    router.push(`?de=${encodeURIComponent(d)}&ate=${encodeURIComponent(a)}`);
-    router.refresh();
     setOpen(null);
+    window.location.href = `/lista?de=${encodeURIComponent(d)}&ate=${encodeURIComponent(a)}`;
   }
 
   function pickDe(mes: string) {
