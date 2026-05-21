@@ -138,13 +138,12 @@ def list_clientes(
     periodo_fim_alvo: date | None = None
 
     if de and ate:
-        de_date, _ = _mes_para_periodo(de)
-        ate_date, _ = _mes_para_periodo(ate)
+        de_date, _              = _mes_para_periodo(de)
+        ate_first, periodo_fim_alvo = _mes_para_periodo(ate)
         periodo_inicio_alvo = de_date
-        _, periodo_fim_alvo = _mes_para_periodo(ate)
         snap_filter = and_(
             Snapshot.periodo_inicio >= de_date,
-            Snapshot.periodo_inicio <= ate_date,
+            Snapshot.periodo_inicio <= ate_first,
         )
         sub = (
             select(Snapshot.cliente_id, Snapshot.id.label("snap_id"))
