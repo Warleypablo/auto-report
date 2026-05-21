@@ -50,6 +50,10 @@ export default function PeriodPicker({ available, de, ate }: Props) {
   const snapshotCount = new Map(available.map((a) => [a.mes, a.com_snapshot]));
 
   useEffect(() => {
+    if (!open) setYear(Number(ate.slice(0, 4)));
+  }, [ate, open]);
+
+  useEffect(() => {
     function onMouseDown(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
