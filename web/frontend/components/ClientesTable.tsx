@@ -178,11 +178,11 @@ const COLUMNS: ColumnDef[] = [
   },
 ];
 
-const PLATAFORMAS: Array<{ label: string; categoria: string }> = [
-  { label: "Todos", categoria: "Todas" },
-  { label: "Meta Ads", categoria: "Lead Sem Site" },
-  { label: "Google Ads", categoria: "Lead Com Site" },
-  { label: "GA4", categoria: "E-commerce" },
+const PLATAFORMAS: Array<{ label: string; sub: string; categoria: string }> = [
+  { label: "Todos",        sub: "",         categoria: "Todas" },
+  { label: "E-commerce",  sub: "GA4",      categoria: "E-commerce" },
+  { label: "Lead c/ Site", sub: "Google + Meta", categoria: "Lead Com Site" },
+  { label: "Lead s/ Site", sub: "Meta",    categoria: "Lead Sem Site" },
 ];
 const VITRINES = ["Todos", "Pública", "Privada"];
 const STATUS = ["Todos", "Com dados", "Sem dados"];
@@ -279,7 +279,7 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
             />
           </Field>
           <Field label="Plataforma">
-            <div className="flex gap-1.5 pt-1">
+            <div className="flex flex-wrap gap-1.5 pt-1">
               {PLATAFORMAS.map((p) => (
                 <button
                   key={p.label}
@@ -291,8 +291,17 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
                       ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
                       : "border-[var(--rule-soft)] text-[var(--ink-soft)] hover:border-[var(--ink-soft)] hover:text-[var(--ink)]",
                   ].join(" ")}
+                  title={p.sub || undefined}
                 >
                   {p.label}
+                  {p.sub && (
+                    <span className={[
+                      "ml-1.5 text-[10px] opacity-60",
+                      categoria === p.categoria ? "" : "",
+                    ].join("")}>
+                      {p.sub}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
