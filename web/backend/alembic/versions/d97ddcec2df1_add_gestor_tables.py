@@ -37,7 +37,7 @@ def upgrade() -> None:
     sa.Column('usuario_id', sa.UUID(), nullable=False),
     sa.Column('cliente_id', sa.UUID(), nullable=False),
     sa.Column('mes', sa.String(length=7), nullable=False),
-    sa.Column('status', sa.Enum('PENDING', 'RUNNING', 'DONE', 'ERROR', name='job_status'), nullable=False),
+    sa.Column('status', sa.Enum('pending', 'running', 'done', 'error', name='job_status'), nullable=False),
     sa.Column('slides_url', sa.String(), nullable=True),
     sa.Column('erro', sa.String(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
