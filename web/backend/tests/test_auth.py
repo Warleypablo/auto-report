@@ -32,7 +32,7 @@ def test_schemas_import():
 
 
 import uuid as _uuid
-from datetime import datetime as _datetime, timezone as _tz
+from datetime import datetime as _datetime, timezone as _tz, timedelta as _timedelta
 
 
 def test_create_access_token_contains_sub():
@@ -52,6 +52,18 @@ def test_decode_token_returns_payload():
     payload = decode_token(token, secret="s", algorithm="HS256")
     assert payload["sub"] == str(uid)
     assert payload["is_admin"] is True
+
+
+def test_decode_expired_token_raises():
+    from api.auth import decode_token
+    from jose import JWTError, jwt
+    uid = _uuid.uuid4()
+    # Create token with expiration in the past (1 hour ago)
+    expire = _datetime.now(_tz.utc) - _timedelta(hours=1)
+    payload = {"sub": str(uid), "is_admin": False, "exp": expire}
+    token = jwt.encode(payload, "s", algorithm="HS256")
+    with pytest.raises(JWTError):
+        decode_token(token, secret="s", algorithm="HS256")
 
 
 def test_verify_password():
