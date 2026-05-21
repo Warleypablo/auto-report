@@ -4,8 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   deslocarMes,
-  labelMesCurto,
-  labelRange,
+  labelMes,
   mesUltimoFechado,
 } from "@/lib/mes-utils";
 
@@ -24,10 +23,6 @@ function ymParaMes(y: number, m: number): string {
   return `${y}-${String(m).padStart(2, "0")}`;
 }
 
-function clampRange(a: string, b: string): [string, string] {
-  return a <= b ? [a, b] : [b, a];
-}
-
 const ref_mes = mesUltimoFechado();
 const anoAtual = Number(ref_mes.slice(0, 4));
 
@@ -38,26 +33,113 @@ const QUICK_FILTERS: Array<{ label: string; de: string; ate: string }> = [
   { label: "Este ano", de: `${anoAtual}-01`, ate: ref_mes },
 ];
 
+type Which = "de" | "ate" | null;
+
+function ChevronDown() {
+  return (
+    <svg className="h-3 w-3 opacity-50" viewBox="0 0 12 12" fill="none">
+      <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function MonthGrid({
+  year,
+  setYear,
+  selected,
+  inRange,
+  snapshotCount,
+  onPick,
+}: {
+  year: number;
+  setYear: (y: number) => void;
+  selected: string;
+  inRange: (mes: string) => boolean;
+  snapshotCount: Map<string, number>;
+  onPick: (mes: string) => void;
+}) {
+  return (
+    <div>
+      {/* Year nav */}
+      <div className="mb-3 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setYear(year - 1)}
+          className="rounded p-1.5 hover:bg-[var(--paper-soft)] transition"
+          aria-label="Ano anterior"
+        >
+          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+            <path d="M8 2L4 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+        <span className="font-mono-num text-sm font-medium">{year}</span>
+        <button
+          type="button"
+          onClick={() => setYear(year + 1)}
+          className="rounded p-1.5 hover:bg-[var(--paper-soft)] transition"
+          aria-label="Próximo ano"
+        >
+          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+            <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Grid */}
+      <div className="grid grid-cols-4 gap-1">
+        {MESES_CURTOS.map((label, idx) => {
+          const mes = ymParaMes(year, idx + 1);
+          const isSelected = mes === selected;
+          const highlighted = inRange(mes);
+          const hasSnapshot = snapshotCount.has(mes);
+
+          return (
+            <button
+              key={mes}
+              type="button"
+              onClick={() => onPick(mes)}
+              className={[
+                "rounded py-1.5 text-xs font-medium transition select-none",
+                isSelected
+                  ? "bg-[var(--ink)] text-[var(--paper)]"
+                  : highlighted
+                  ? "bg-[var(--paper-deep)] text-[var(--ink)]"
+                  : "text-[var(--ink-soft)] hover:bg-[var(--paper-soft)] hover:text-[var(--ink)]",
+                !hasSnapshot && !isSelected ? "opacity-40" : "",
+              ].filter(Boolean).join(" ")}
+              title={hasSnapshot ? `${snapshotCount.get(mes)} snapshot(s)` : "Sem snapshots"}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function PeriodPicker({ available, de, ate }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [open, setOpen] = useState(false);
-  const [year, setYear] = useState(() => Number(ate.slice(0, 4)));
-  const [picking, setPicking] = useState<string | null>(null);
-  const [hovered, setHovered] = useState<string | null>(null);
+  const [open, setOpen] = useState<Which>(null);
+  const [yearDe, setYearDe] = useState(() => Number(de.slice(0, 4)));
+  const [yearAte, setYearAte] = useState(() => Number(ate.slice(0, 4)));
   const containerRef = useRef<HTMLDivElement>(null);
 
   const snapshotCount = new Map(available.map((a) => [a.mes, a.com_snapshot]));
+  const snapshotTotal = available.reduce((acc, a) => acc + a.com_snapshot, 0);
 
   useEffect(() => {
-    if (!open) setYear(Number(ate.slice(0, 4)));
-  }, [ate, open]);
+    if (!open) {
+      setYearDe(Number(de.slice(0, 4)));
+      setYearAte(Number(ate.slice(0, 4)));
+    }
+  }, [de, ate, open]);
 
   useEffect(() => {
     function onMouseDown(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setPicking(null);
+        setOpen(null);
       }
     }
     if (open) document.addEventListener("mousedown", onMouseDown);
@@ -65,142 +147,126 @@ export default function PeriodPicker({ available, de, ate }: Props) {
   }, [open]);
 
   function applyRange(newDe: string, newAte: string) {
-    const [d, a] = clampRange(newDe, newAte);
+    const [d, a] = newDe <= newAte ? [newDe, newAte] : [newAte, newDe];
     const next = new URLSearchParams(searchParams);
     next.set("de", d);
     next.set("ate", a);
     next.delete("mes");
     router.push(`?${next.toString()}`);
-    setOpen(false);
-    setPicking(null);
-    setHovered(null);
+    setOpen(null);
   }
 
-  function handleClickMes(mes: string) {
-    if (!picking) {
-      setPicking(mes);
-    } else {
-      applyRange(picking, mes);
-    }
+  function pickDe(mes: string) {
+    // If new start is after current end, adjust end too
+    applyRange(mes, mes > ate ? mes : ate);
   }
 
-  const snapshotTotal = available.reduce((acc, a) => acc + a.com_snapshot, 0);
+  function pickAte(mes: string) {
+    // If new end is before current start, adjust start too
+    applyRange(mes < de ? mes : de, mes);
+  }
 
   return (
-    <div ref={containerRef} className="relative">
-      {/* Trigger */}
-      <div className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => { setOpen((v) => !v); setPicking(null); }}
-            className="flex items-center gap-2 group"
-          >
-            <p className="eyebrow group-hover:text-[var(--ink)] transition">Período</p>
-            <svg className="h-3 w-3 text-[var(--muted)] group-hover:text-[var(--ink-soft)] transition" viewBox="0 0 12 12" fill="none">
-              <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          <p className="text-xs text-[var(--muted)]">
-            {snapshotTotal} snapshot(s) ·{" "}
-            <span className="font-mono-num text-[var(--ink-soft)]">{labelRange(de, ate)}</span>
-          </p>
-        </div>
+    <div ref={containerRef} className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+      {/* Header */}
+      <div className="mb-3 flex items-center justify-between">
+        <p className="eyebrow">Período</p>
+        <p className="text-xs text-[var(--muted)]">
+          {snapshotTotal} snapshot(s) no intervalo
+        </p>
       </div>
 
-      {/* Popover */}
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] p-4 shadow-xl">
-          {/* Quick filters */}
-          <div className="mb-4 flex flex-wrap gap-1.5">
-            {QUICK_FILTERS.map((f) => {
-              const active = f.de === de && f.ate === ate;
-              return (
-                <button
-                  key={f.label}
-                  type="button"
-                  onClick={() => applyRange(f.de, f.ate)}
-                  className={[
-                    "rounded-full border px-2.5 py-0.5 text-[11px] transition",
-                    active
-                      ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
-                      : "border-[var(--rule-soft)] text-[var(--ink-soft)] hover:border-[var(--ink-soft)] hover:text-[var(--ink)]",
-                  ].join(" ")}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Year navigation */}
-          <div className="mb-3 flex items-center justify-between">
+      {/* Quick filters */}
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {QUICK_FILTERS.map((f) => {
+          const active = f.de === de && f.ate === ate;
+          return (
             <button
+              key={f.label}
               type="button"
-              onClick={() => setYear((y) => y - 1)}
-              className="rounded p-1.5 hover:bg-[var(--paper-soft)] transition"
-              aria-label="Ano anterior"
+              onClick={() => applyRange(f.de, f.ate)}
+              className={[
+                "rounded-full border px-2.5 py-0.5 text-[11px] transition",
+                active
+                  ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
+                  : "border-[var(--rule-soft)] text-[var(--ink-soft)] hover:border-[var(--ink-soft)] hover:text-[var(--ink)]",
+              ].join(" ")}
             >
-              <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
-                <path d="M8 2L4 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              {f.label}
             </button>
-            <span className="font-mono-num text-sm font-medium">{year}</span>
-            <button
-              type="button"
-              onClick={() => setYear((y) => y + 1)}
-              className="rounded p-1.5 hover:bg-[var(--paper-soft)] transition"
-              aria-label="Próximo ano"
-            >
-              <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
-                <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
+          );
+        })}
+      </div>
+
+      {/* Two selectors */}
+      <div className="relative flex items-center gap-2">
+        {/* Início */}
+        <div className="relative flex-1">
+          <div className="mb-1">
+            <span className="text-[10px] uppercase tracking-widest text-[var(--muted)]">Início</span>
           </div>
-
-          {/* Month grid */}
-          <div className="grid grid-cols-4 gap-1">
-            {MESES_CURTOS.map((label, idx) => {
-              const mes = ymParaMes(year, idx + 1);
-              const isSelected = mes === de || mes === ate;
-              const isPicking = mes === picking;
-              const inCurrentRange = mes >= de && mes <= ate;
-              const [cA, cB] = picking && hovered ? clampRange(picking, hovered) : ["", ""];
-              const inCandidateRange = cA && cB && mes >= cA && mes <= cB;
-              const hasSnapshot = snapshotCount.has(mes);
-
-              return (
-                <button
-                  key={mes}
-                  type="button"
-                  onClick={() => handleClickMes(mes)}
-                  onMouseEnter={() => picking && setHovered(mes)}
-                  onMouseLeave={() => picking && setHovered(null)}
-                  className={[
-                    "rounded py-1.5 text-xs font-medium transition select-none",
-                    isSelected || isPicking
-                      ? "bg-[var(--ink)] text-[var(--paper)]"
-                      : inCurrentRange || inCandidateRange
-                      ? "bg-[var(--paper-deep)] text-[var(--ink)]"
-                      : "text-[var(--ink-soft)] hover:bg-[var(--paper-soft)] hover:text-[var(--ink)]",
-                    !hasSnapshot && !isSelected && !isPicking ? "opacity-40" : "",
-                  ].filter(Boolean).join(" ")}
-                  title={hasSnapshot ? `${snapshotCount.get(mes)} snapshot(s)` : "Sem snapshots"}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Hint */}
-          <p className="mt-3 text-center text-[10px] text-[var(--muted)]">
-            {picking
-              ? `Início: ${labelMesCurto(picking)} — clique no mês final`
-              : "Clique no mês inicial do período"}
-          </p>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => v === "de" ? null : "de")}
+            className={[
+              "flex w-full items-center justify-between rounded border px-3 py-2 text-sm transition",
+              open === "de"
+                ? "border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)]"
+                : "border-[var(--rule-soft)] bg-[var(--paper)] text-[var(--ink-soft)] hover:border-[var(--ink-soft)] hover:text-[var(--ink)]",
+            ].join(" ")}
+          >
+            <span className="font-mono-num">{labelMes(de)}</span>
+            <ChevronDown />
+          </button>
+          {open === "de" && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] p-3 shadow-xl">
+              <MonthGrid
+                year={yearDe}
+                setYear={setYearDe}
+                selected={de}
+                inRange={(mes) => mes >= de && mes <= ate}
+                snapshotCount={snapshotCount}
+                onPick={pickDe}
+              />
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Arrow */}
+        <div className="mt-5 text-[var(--muted)]">→</div>
+
+        {/* Fim */}
+        <div className="relative flex-1">
+          <div className="mb-1">
+            <span className="text-[10px] uppercase tracking-widest text-[var(--muted)]">Fim</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => v === "ate" ? null : "ate")}
+            className={[
+              "flex w-full items-center justify-between rounded border px-3 py-2 text-sm transition",
+              open === "ate"
+                ? "border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)]"
+                : "border-[var(--rule-soft)] bg-[var(--paper)] text-[var(--ink-soft)] hover:border-[var(--ink-soft)] hover:text-[var(--ink)]",
+            ].join(" ")}
+          >
+            <span className="font-mono-num">{labelMes(ate)}</span>
+            <ChevronDown />
+          </button>
+          {open === "ate" && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] p-3 shadow-xl">
+              <MonthGrid
+                year={yearAte}
+                setYear={setYearAte}
+                selected={ate}
+                inRange={(mes) => mes >= de && mes <= ate}
+                snapshotCount={snapshotCount}
+                onPick={pickAte}
+              />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
