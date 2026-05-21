@@ -76,15 +76,20 @@ def test_verify_password():
 def test_gestor_router_mounts():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+    from api.gestor import router as gestor_router
     from api.auth import router as auth_router
 
     app = FastAPI()
     app.include_router(auth_router)
+    app.include_router(gestor_router, prefix="/gestor")
 
     client = TestClient(app)
-    # POST /auth/login with bad credentials → must NOT be 404 (route exists)
-    r = client.post("/auth/login", json={"email": "x@x.com", "senha": "bad"})
-    assert r.status_code != 404, f"Route not found: {r.status_code}"
+    # No auth → 401
+    r = client.get("/gestor/clientes")
+    assert r.status_code == 401
+
+    r = client.post("/gestor/reports/trigger", json={"slug": "x", "mes": "2026-04"})
+    assert r.status_code == 401
 
 
 def test_report_slides_import():
