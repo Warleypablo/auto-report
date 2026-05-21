@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     etl_trigger_token: str = Field(default="dev-token-change-me")
     etl_threads: int = Field(default=10)
     etl_periodo_granularidade: str = Field(default="MENSAL")
+    jwt_secret: str = Field(default="dev-jwt-secret-change-me-in-production")
+    jwt_algorithm: str = Field(default="HS256")
+    jwt_expiry_hours: int = Field(default=8)
 
 
 @lru_cache
