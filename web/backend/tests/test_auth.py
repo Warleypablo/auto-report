@@ -99,3 +99,18 @@ def test_report_slides_import():
     assert "slug" in sig.parameters
     assert "nome_cliente" in sig.parameters
     assert "mes" in sig.parameters
+
+
+def test_admin_routes_require_admin():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.gestor import router as gestor_router
+    from api.auth import router as auth_router
+
+    app = FastAPI()
+    app.include_router(auth_router)
+    app.include_router(gestor_router, prefix="/gestor")
+
+    client = TestClient(app)
+    r = client.get("/gestor/admin/usuarios")
+    assert r.status_code == 401  # no auth at all

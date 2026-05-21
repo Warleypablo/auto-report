@@ -208,3 +208,147 @@ def list_jobs(
         stmt = stmt.join(Cliente, Cliente.id == ReportJob.cliente_id).where(Cliente.slug == slug)
     jobs = session.execute(stmt).scalars().all()
     return [_job_to_response(j) for j in jobs]
+
+
+# ── Admin: GET /gestor/admin/usuarios ─────────────────────────────────────
+
+@router.get("/admin/usuarios", response_model=UsuariosListResponse)
+def admin_list_usuarios(
+    admin: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> UsuariosListResponse:
+    stmt = (
+        select(
+            Usuario,
+            func.count(UsuarioCliente.cliente_id).label("n_clientes"),
+        )
+        .outerjoin(UsuarioCliente, UsuarioCliente.usuario_id == Usuario.id)
+        .group_by(Usuario.id)
+        .order_by(Usuario.nome.asc())
+    )
+    rows = session.execute(stmt).all()
+    return UsuariosListResponse(
+        items=[
+            UsuarioListItem(
+                id=u.id,
+                email=u.email,
+                nome=u.nome,
+                is_admin=u.is_admin,
+                ativo=u.ativo,
+                n_clientes=n,
+            )
+            for u, n in rows
+        ]
+    )
+
+
+# ── Admin: POST /gestor/admin/usuarios ────────────────────────────────────
+
+@router.post("/admin/usuarios", response_model=UsuarioResponse, status_code=201)
+def admin_create_usuario(
+    body: CreateUsuarioRequest,
+    admin: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> UsuarioResponse:
+    from api.auth import hash_password
+    from sqlalchemy import select as sa_select
+
+    existing = session.execute(
+        sa_select(Usuario).where(Usuario.email == body.email)
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="Email já cadastrado")
+
+    user = Usuario(
+        email=body.email,
+        nome=body.nome,
+        senha_hash=hash_password(body.senha),
+        is_admin=body.is_admin,
+        ativo=True,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return UsuarioResponse(id=user.id, email=user.email, nome=user.nome, is_admin=user.is_admin)
+
+
+# ── Admin: DELETE /gestor/admin/usuarios/{id} (deactivate) ────────────────
+
+@router.delete("/admin/usuarios/{usuario_id}", status_code=204)
+def admin_deactivate_usuario(
+    usuario_id: uuid.UUID,
+    admin: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> None:
+    user = session.get(Usuario, usuario_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    user.ativo = False
+    session.commit()
+
+
+# ── Admin: GET /gestor/admin/usuarios/{id}/clientes ───────────────────────
+
+@router.get("/admin/usuarios/{usuario_id}/clientes", response_model=ClientesGestorResponse)
+def admin_get_usuario_clientes(
+    usuario_id: uuid.UUID,
+    admin: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> ClientesGestorResponse:
+    stmt = (
+        select(Cliente)
+        .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
+        .where(UsuarioCliente.usuario_id == usuario_id)
+        .order_by(Cliente.nome.asc())
+    )
+    clientes = session.execute(stmt).scalars().all()
+    return ClientesGestorResponse(
+        items=[ClienteGestorItem(id=c.id, slug=c.slug, nome=c.nome, categoria=c.categoria.value) for c in clientes]
+    )
+
+
+# ── Admin: POST /gestor/admin/usuarios/{id}/clientes ──────────────────────
+
+@router.post("/admin/usuarios/{usuario_id}/clientes", status_code=204)
+def admin_assign_clientes(
+    usuario_id: uuid.UUID,
+    body: AssignClientesRequest,
+    admin: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> None:
+    user = session.get(Usuario, usuario_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    existing = {
+        uc.cliente_id
+        for uc in session.execute(
+            select(UsuarioCliente).where(UsuarioCliente.usuario_id == usuario_id)
+        ).scalars().all()
+    }
+
+    for cid in body.cliente_ids:
+        if cid not in existing:
+            session.add(UsuarioCliente(usuario_id=usuario_id, cliente_id=cid))
+
+    session.commit()
+
+
+# ── Admin: DELETE /gestor/admin/usuarios/{id}/clientes/{cliente_id} ───────
+
+@router.delete("/admin/usuarios/{usuario_id}/clientes/{cliente_id}", status_code=204)
+def admin_remove_cliente(
+    usuario_id: uuid.UUID,
+    cliente_id: uuid.UUID,
+    admin: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> None:
+    uc = session.execute(
+        select(UsuarioCliente).where(
+            UsuarioCliente.usuario_id == usuario_id,
+            UsuarioCliente.cliente_id == cliente_id,
+        )
+    ).scalar_one_or_none()
+    if uc:
+        session.delete(uc)
+        session.commit()
