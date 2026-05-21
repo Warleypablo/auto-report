@@ -85,3 +85,12 @@ def test_gestor_router_mounts():
     # POST /auth/login with bad credentials → must NOT be 404 (route exists)
     r = client.post("/auth/login", json={"email": "x@x.com", "senha": "bad"})
     assert r.status_code != 404, f"Route not found: {r.status_code}"
+
+
+def test_report_slides_import():
+    from services.report_slides import gerar_slides
+    import inspect
+    sig = inspect.signature(gerar_slides)
+    assert "slug" in sig.parameters
+    assert "nome_cliente" in sig.parameters
+    assert "mes" in sig.parameters
