@@ -6,7 +6,6 @@ instead of discarding it.
 """
 from __future__ import annotations
 
-import calendar
 import sys
 from datetime import date
 from pathlib import Path
