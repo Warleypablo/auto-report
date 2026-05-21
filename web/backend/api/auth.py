@@ -60,9 +60,9 @@ def require_auth(
     token = authorization.removeprefix("Bearer ").strip()
     try:
         payload = decode_token(token, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm)
-    except JWTError:
+        uid = uuid.UUID(payload["sub"])
+    except (JWTError, ValueError, KeyError):
         raise HTTPException(status_code=401, detail="Token inválido ou expirado")
-    uid = uuid.UUID(payload["sub"])
     user = session.get(Usuario, uid)
     if user is None or not user.ativo:
         raise HTTPException(status_code=401, detail="Usuário inativo ou inexistente")
