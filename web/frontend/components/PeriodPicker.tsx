@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   deslocarMes,
@@ -120,7 +120,6 @@ function MonthGrid({
 
 export default function PeriodPicker({ available, de, ate }: Props) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [open, setOpen] = useState<Which>(null);
   const [yearDe, setYearDe] = useState(() => Number(de.slice(0, 4)));
   const [yearAte, setYearAte] = useState(() => Number(ate.slice(0, 4)));
@@ -148,11 +147,8 @@ export default function PeriodPicker({ available, de, ate }: Props) {
 
   function applyRange(newDe: string, newAte: string) {
     const [d, a] = newDe <= newAte ? [newDe, newAte] : [newAte, newDe];
-    const next = new URLSearchParams(searchParams);
-    next.set("de", d);
-    next.set("ate", a);
-    next.delete("mes");
-    router.push(`?${next.toString()}`);
+    router.push(`?de=${encodeURIComponent(d)}&ate=${encodeURIComponent(a)}`);
+    router.refresh();
     setOpen(null);
   }
 
