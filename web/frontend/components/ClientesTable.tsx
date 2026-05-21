@@ -178,7 +178,12 @@ const COLUMNS: ColumnDef[] = [
   },
 ];
 
-const CATEGORIAS = ["Todas", "E-commerce", "Lead Com Site", "Lead Sem Site"];
+const PLATAFORMAS: Array<{ label: string; categoria: string }> = [
+  { label: "Todos", categoria: "Todas" },
+  { label: "Meta Ads", categoria: "Lead Sem Site" },
+  { label: "Google Ads", categoria: "Lead Com Site" },
+  { label: "GA4", categoria: "E-commerce" },
+];
 const VITRINES = ["Todos", "Pública", "Privada"];
 const STATUS = ["Todos", "Com dados", "Sem dados"];
 
@@ -273,8 +278,24 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
               className="border-0 border-b border-[var(--ink)] bg-transparent py-1 font-display text-lg text-[var(--ink)] placeholder:text-[var(--muted)]/60 focus:border-[var(--forest)] focus:outline-none"
             />
           </Field>
-          <Field label="Categoria">
-            <Select value={categoria} onChange={setCategoria} options={CATEGORIAS} />
+          <Field label="Plataforma">
+            <div className="flex gap-1.5 pt-1">
+              {PLATAFORMAS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => setCategoria(p.categoria)}
+                  className={[
+                    "rounded-full border px-3 py-0.5 text-xs font-medium transition",
+                    categoria === p.categoria
+                      ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
+                      : "border-[var(--rule-soft)] text-[var(--ink-soft)] hover:border-[var(--ink-soft)] hover:text-[var(--ink)]",
+                  ].join(" ")}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </Field>
           <Field label="Setor">
             <Select value={setor} onChange={setSetor} options={setores} />
@@ -302,7 +323,7 @@ export function ClientesTable({ items }: { items: ClienteListItem[] }) {
               type="button"
               onClick={() => {
                 setQuery("");
-                setCategoria("Todas");
+                setCategoria("Todas"); // chip "Todos"
                 setSetor("Todos");
                 setVitrine("Todos");
                 setStatus("Todos");
