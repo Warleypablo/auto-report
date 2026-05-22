@@ -121,6 +121,9 @@ export const gestorApi = {
   gestores: () =>
     apiCall<{ items: string[] }>("gestores"),
 
+  renameGestor: (de: string, para: string) =>
+    apiCall<{ de: string; para: string; atualizados: number }>(`gestores`, "PATCH", { de, para }),
+
   createCliente: (data: ClienteCreateData) =>
     apiCall<ClienteGestor>(`clientes`, "POST", data),
 

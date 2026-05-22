@@ -729,14 +729,18 @@ function emptyCreateForm(): EditForm {
 
 function AbaConfiguracoes({
   clientes,
+  todosClientes,
   onClienteUpdated,
   onClienteDeleted,
   onClienteCriado,
+  onGestorRenomeado,
 }: {
   clientes: ClienteGestor[];
+  todosClientes: ClienteGestor[];
   onClienteUpdated: (c: ClienteGestor) => void;
   onClienteDeleted: (id: string) => void;
   onClienteCriado: (c: ClienteGestor) => void;
+  onGestorRenomeado: (de: string, para: string) => void;
 }) {
   const [busca, setBusca] = useState("");
   const [editando, setEditando] = useState<ClienteGestor | null>(null);
@@ -750,6 +754,10 @@ function AbaConfiguracoes({
   const [criarForm, setCriarForm] = useState<EditForm>(emptyCreateForm());
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
+  const [renomeandoGestor, setRenomeandoGestor] = useState<string | null>(null);
+  const [novoNomeGestor, setNovoNomeGestor] = useState("");
+  const [renamingGestor, setRenamingGestor] = useState(false);
+  const [renameGestorErr, setRenameGestorErr] = useState<string | null>(null);
 
   const filtrados = clientes.filter((c) =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -833,6 +841,23 @@ function AbaConfiguracoes({
       setCreateErr(err instanceof Error ? err.message : "Erro ao criar cliente");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleRenomearGestor(e: React.FormEvent) {
+    e.preventDefault();
+    if (!renomeandoGestor || !novoNomeGestor.trim()) return;
+    setRenamingGestor(true);
+    setRenameGestorErr(null);
+    try {
+      await gestorApi.renameGestor(renomeandoGestor, novoNomeGestor.trim());
+      onGestorRenomeado(renomeandoGestor, novoNomeGestor.trim());
+      setRenomeandoGestor(null);
+      setNovoNomeGestor("");
+    } catch (err: unknown) {
+      setRenameGestorErr(err instanceof Error ? err.message : "Erro ao renomear");
+    } finally {
+      setRenamingGestor(false);
     }
   }
 
@@ -951,6 +976,75 @@ function AbaConfiguracoes({
           </tbody>
         </table>
       </div>
+
+      {/* Seção Gestores */}
+      {(() => {
+        const gestoresUnicos = Array.from(
+          new Set(todosClientes.map((c) => c.gestor).filter((g): g is string => !!g))
+        ).sort();
+        if (gestoresUnicos.length === 0) return null;
+        return (
+          <div className="mt-10">
+            <h2 className="font-display mb-3 text-lg font-medium text-[var(--ink)]">Gestores</h2>
+            <div className="overflow-hidden rounded-lg border border-[var(--rule-soft)]">
+              {gestoresUnicos.map((nome, idx) => {
+                const count = todosClientes.filter((c) => c.gestor === nome).length;
+                const isRenaming = renomeandoGestor === nome;
+                return (
+                  <div
+                    key={nome}
+                    className={[
+                      "flex items-center gap-3 px-4 py-3",
+                      idx < gestoresUnicos.length - 1 ? "border-b border-[var(--rule-soft)]" : "",
+                      idx % 2 === 0 ? "bg-[var(--paper-soft)]" : "bg-[var(--paper)]",
+                    ].join(" ")}
+                  >
+                    {isRenaming ? (
+                      <form onSubmit={handleRenomearGestor} className="flex flex-1 items-center gap-2">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={novoNomeGestor}
+                          onChange={(e) => setNovoNomeGestor(e.target.value)}
+                          className="flex-1 rounded-md border border-[var(--forest)] bg-[var(--paper)] px-3 py-1.5 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+                        />
+                        {renameGestorErr && (
+                          <span className="text-xs text-[var(--crimson)]">{renameGestorErr}</span>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={renamingGestor || !novoNomeGestor.trim()}
+                          className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                        >
+                          {renamingGestor ? "Salvando…" : "Salvar"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setRenomeandoGestor(null); setRenameGestorErr(null); }}
+                          className="rounded-md border border-[var(--rule-soft)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:text-[var(--ink)]"
+                        >
+                          Cancelar
+                        </button>
+                      </form>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm font-medium text-[var(--ink)]">{nome}</span>
+                        <span className="mr-2 text-xs text-[var(--muted)]">{count} cliente{count !== 1 ? "s" : ""}</span>
+                        <button
+                          onClick={() => { setRenomeandoGestor(nome); setNovoNomeGestor(nome); setRenameGestorErr(null); }}
+                          className="rounded border border-[var(--rule-soft)] px-2 py-1 text-xs text-[var(--muted)] transition hover:border-[var(--forest)] hover:text-[var(--forest)]"
+                        >
+                          Renomear
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal de edição */}
       {editando && editForm && (
@@ -1176,6 +1270,7 @@ export default function GestorDashboard() {
           {tab === "configuracoes" && (
             <AbaConfiguracoes
               clientes={clientesFiltrados}
+              todosClientes={clientes}
               onClienteUpdated={(updated) =>
                 setClientes((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
               }
@@ -1184,6 +1279,9 @@ export default function GestorDashboard() {
               }
               onClienteCriado={(novo) =>
                 setClientes((prev) => [...prev, novo].sort((a, b) => a.nome.localeCompare(b.nome)))
+              }
+              onGestorRenomeado={(de, para) =>
+                setClientes((prev) => prev.map((c) => c.gestor === de ? { ...c, gestor: para } : c))
               }
             />
           )}

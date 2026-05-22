@@ -23,6 +23,8 @@ from schemas import (
     ClienteMetricasItem,
     ClientesGestorResponse,
     CreateUsuarioRequest,
+    GestorRenameRequest,
+    GestorRenameResponse,
     GestoresResponse,
     JobStatusResponse,
     MetricasDashboardResponse,
@@ -157,6 +159,38 @@ def list_gestores(
         )
     gestores = [row[0] for row in session.execute(stmt).all()]
     return GestoresResponse(items=gestores)
+
+
+# ── PATCH /gestor/gestores — renomear gestor em lote ─────────────────────────
+
+@router.patch("/gestores", response_model=GestorRenameResponse)
+def rename_gestor(
+    body: GestorRenameRequest,
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> GestorRenameResponse:
+    if not body.para.strip():
+        raise HTTPException(status_code=422, detail="O novo nome não pode ser vazio")
+
+    if user.is_admin:
+        stmt = (
+            update(Cliente)
+            .where(Cliente.gestor == body.de, Cliente.ativo == True)
+            .values(gestor=body.para.strip())
+        )
+    else:
+        cliente_ids = session.execute(
+            select(UsuarioCliente.cliente_id).where(UsuarioCliente.usuario_id == user.id)
+        ).scalars().all()
+        stmt = (
+            update(Cliente)
+            .where(Cliente.gestor == body.de, Cliente.id.in_(cliente_ids), Cliente.ativo == True)
+            .values(gestor=body.para.strip())
+        )
+
+    result = session.execute(stmt)
+    session.commit()
+    return GestorRenameResponse(de=body.de, para=body.para.strip(), atualizados=result.rowcount)
 
 
 # ── PATCH /gestor/clientes/{cliente_id} ───────────────────────────────────

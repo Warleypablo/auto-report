@@ -54,6 +54,17 @@ class ClientesGestorResponse(BaseModel):
     items: list[ClienteGestorItem]
 
 
+class GestorRenameRequest(BaseModel):
+    de: str
+    para: str
+
+
+class GestorRenameResponse(BaseModel):
+    de: str
+    para: str
+    atualizados: int
+
+
 class GestoresResponse(BaseModel):
     items: list[str]
 
