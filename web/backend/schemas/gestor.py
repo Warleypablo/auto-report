@@ -3,6 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
@@ -26,11 +28,26 @@ class LoginResponse(BaseModel):
 
 
 class ClienteGestorItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     slug: str
     nome: str
     categoria: str
     gestor: str | None = None
+    id_google_ads: str | None = None
+    id_meta_ads: str | None = None
+    id_ga4: str | None = None
+    painel_url: str | None = None
+    pasta_url: str | None = None
+    ativo: bool = True
+
+    @field_validator("categoria", mode="before")
+    @classmethod
+    def coerce_categoria(cls, v: object) -> str:
+        if hasattr(v, "value"):
+            return str(v.value)
+        return str(v)
 
 
 class ClientesGestorResponse(BaseModel):
@@ -113,9 +130,6 @@ class MetricasDashboardResponse(BaseModel):
     media_roas: float | None
     total_leads: int
     total_vendas: int
-
-
-from typing import Literal
 
 
 class ClienteEditRequest(BaseModel):

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from api.auth import require_admin, require_auth
 from db import get_session
 from models import Cliente, ReportJob, Usuario, UsuarioCliente
+from models.cliente import Categoria as CatEnum
 from models.report_job import JobStatus
 from schemas import (
     AssignClientesRequest,
@@ -86,13 +87,7 @@ def list_clientes(
         )
     clientes = session.execute(stmt).scalars().all()
     return ClientesGestorResponse(
-        items=[
-            ClienteGestorItem(
-                id=c.id, slug=c.slug, nome=c.nome,
-                categoria=c.categoria.value, gestor=c.gestor,
-            )
-            for c in clientes
-        ]
+        items=[ClienteGestorItem.model_validate(c) for c in clientes]
     )
 
 
@@ -148,7 +143,6 @@ def update_cliente(
 
     for field, value in body.model_dump(exclude_unset=True).items():
         if field == "categoria" and value is not None:
-            from models.cliente import Categoria as CatEnum
             value = CatEnum(value)
         setattr(cliente, field, value)
 
@@ -404,7 +398,7 @@ def admin_get_usuario_clientes(
     )
     clientes = session.execute(stmt).scalars().all()
     return ClientesGestorResponse(
-        items=[ClienteGestorItem(id=c.id, slug=c.slug, nome=c.nome, categoria=c.categoria.value, gestor=c.gestor) for c in clientes]
+        items=[ClienteGestorItem.model_validate(c) for c in clientes]
     )
 
 
