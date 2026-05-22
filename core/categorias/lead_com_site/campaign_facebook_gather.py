@@ -22,7 +22,7 @@ log = get_logger(__name__)
 ###############################################################################
 META_API_VERSION = "v23.0"
 TIMEOUT          = 30            # seg
-_TOP_N           = 5             # anúncios devolvidos
+_TOP_N           = 20            # anúncios devolvidos (top 5 no template, restantes em raw_dados)
 _BATCH_SIZE      = 50            # máx. IDs por chamada a /?ids=
 
 _ATTR_WINDOW = ["7d_click"]      # janela de atribuição única

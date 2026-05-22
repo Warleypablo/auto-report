@@ -18,7 +18,7 @@ from utils.formatting import _fmt_brl, _fmt_int, _fmt_percent, _DEF_DASH
 from core.cred_manager import _build_google_ads_client
 
 log = get_logger(__name__)
-_TOP_N = 5
+_TOP_N = 20  # top 5 usadas no template, restantes ficam em raw_dados
 
 # ------------------------------------------------------------------ helpers
 def _calc_cpl(cost: Optional[float], leads: Optional[int]) -> Optional[float]:

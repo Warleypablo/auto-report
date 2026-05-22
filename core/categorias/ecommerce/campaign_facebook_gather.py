@@ -36,7 +36,7 @@ log = get_logger(__name__)
 ###############################################################################
 META_API_VERSION = "v23.0"        # estável ~fev‑2026
 TIMEOUT          = 30             # seg. para requests
-_TOP_N           = 5              # anúncios a devolver
+_TOP_N           = 20             # anúncios a devolver (top 5 no template, restantes em raw_dados)
 _BATCH_SIZE      = 50             # máx. IDs por chamada no endpoint /?ids=
 _DEF_DASH        = "-"
 
