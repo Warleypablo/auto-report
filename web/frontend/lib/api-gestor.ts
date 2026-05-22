@@ -10,6 +10,24 @@ export type ClienteGestor = {
   slug: string;
   nome: string;
   categoria: string;
+  gestor: string | null;
+  id_google_ads: string | null;
+  id_meta_ads: string | null;
+  id_ga4: string | null;
+  painel_url: string | null;
+  pasta_url: string | null;
+  ativo: boolean;
+};
+
+export type ClienteEditData = {
+  nome?: string | null;
+  categoria?: string | null;
+  gestor?: string | null;
+  id_google_ads?: string | null;
+  id_meta_ads?: string | null;
+  id_ga4?: string | null;
+  painel_url?: string | null;
+  pasta_url?: string | null;
 };
 
 export type JobStatus = "pending" | "running" | "done" | "error";
@@ -24,6 +42,31 @@ export type JobInfo = {
   finished_at: string | null;
   cliente_slug: string;
   cliente_nome: string;
+};
+
+export type ClienteMetricas = {
+  slug: string;
+  nome: string;
+  categoria: string;
+  periodo_inicio: string | null;
+  periodo_fim: string | null;
+  faturamento: number | null;
+  investimento: number | null;
+  roas: number | null;
+  cpa: number | null;
+  leads: number | null;
+  vendas: number | null;
+  faturamento_var_pct: number | null;
+  roas_var_pct: number | null;
+};
+
+export type MetricasDashboard = {
+  items: ClienteMetricas[];
+  total_faturamento: number;
+  total_investimento: number;
+  media_roas: number | null;
+  total_leads: number;
+  total_vendas: number;
 };
 
 export type UsuarioListItem = {
@@ -64,6 +107,15 @@ export const gestorApi = {
   clientes: () =>
     apiCall<{ items: ClienteGestor[] }>("clientes"),
 
+  gestores: () =>
+    apiCall<{ items: string[] }>("gestores"),
+
+  updateCliente: (id: string, data: ClienteEditData) =>
+    apiCall<ClienteGestor>(`clientes/${id}`, "PATCH", data),
+
+  deleteCliente: (id: string) =>
+    apiCall<void>(`clientes/${id}`, "DELETE"),
+
   triggerReport: (slug: string, mes: string) =>
     apiCall<{ job_id: string }>("reports/trigger", "POST", { slug, mes }),
 
@@ -72,6 +124,8 @@ export const gestorApi = {
 
   listJobs: (slug?: string) =>
     apiCall<JobInfo[]>(`reports${slug ? `?slug=${slug}` : ""}`),
+
+  metricas: () => apiCall<MetricasDashboard>("metricas"),
 
   // Admin
   listUsuarios: () =>

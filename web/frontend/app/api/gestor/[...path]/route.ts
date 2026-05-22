@@ -46,4 +46,4 @@ async function handler(
   return NextResponse.json(data, { status: backendRes.status });
 }
 
-export { handler as GET, handler as POST, handler as DELETE };
+export { handler as GET, handler as POST, handler as PATCH, handler as DELETE };
