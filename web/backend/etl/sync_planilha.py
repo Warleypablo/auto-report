@@ -28,11 +28,17 @@ log = logging.getLogger(__name__)
 # que falha em linhas curtas). Devem casar com COL_* em core/leitura_central.py.
 COL_CLIENTE = "CLIENTE"
 COL_CATEGORIA = "CATEGORIA"
+COL_GESTOR = "GESTOR"
 COL_PUBLICAR = "PUBLICAR_VITRINE"
 COL_DESCRICAO = "DESCRICAO_PUBLICA"
 COL_LOGO = "LOGO_URL"
 COL_SETOR_PUB = "SETOR_PUBLICO"
 COL_PORTE_PUB = "PORTE_PUBLICO"
+COL_PAINEL    = "LINK PAINEL DE CONTROLE"
+COL_PASTA     = "LINK PASTA"
+COL_IDGOOGLE  = "ID GOOGLE ADS"
+COL_IDMETA    = "ID META ADS"
+COL_IDGA4     = "ID GA4"
 
 _TRUE = {"TRUE", "VERDADEIRO", "SIM", "X", "1", "Y", "YES"}
 
@@ -45,6 +51,74 @@ def _cell(row: list[str], idx: int | None) -> str:
 
 def _is_true(v: str) -> bool:
     return v.upper() in _TRUE
+
+
+def fetch_clientes_tolerante() -> list:
+    """Lê todos os clientes da Planilha Central como core.Cliente, tolerante a linhas curtas.
+
+    Substituto local para core.leitura_central.fetch_clientes(atualizar=False), que
+    falha quando uma linha tem menos colunas que o header.
+    """
+    from config.settings import CENTRAL_SHEET_URL, CENTRAL_TAB_NAME
+    from core.leitura_central import (
+        _fetch_values,
+        parse_sheet_id,
+        Cliente as CoreCliente,
+        COL_CATEGORIA,
+        COL_CLIENTE,
+        COL_PAINEL,
+        COL_PASTA,
+        COL_IDGOOGLE,
+        COL_IDMETA,
+        COL_IDGA4,
+        COL_STATUS,
+        COL_LASTGEN,
+    )
+
+    spreadsheet_id = parse_sheet_id(CENTRAL_SHEET_URL)
+    rows = _fetch_values(spreadsheet_id, CENTRAL_TAB_NAME)
+    if not rows:
+        return []
+
+    header = {c.strip().upper(): i for i, c in enumerate(rows[0])}
+    status_idx = header.get(COL_STATUS)
+    lastgen_idx = header.get(COL_LASTGEN)
+
+    out = []
+    for row_idx, row in enumerate(rows[1:], start=2):
+        nome = _cell(row, header.get(COL_CLIENTE))
+        if not nome:
+            continue
+        categoria = _cell(row, header.get(COL_CATEGORIA))
+        if not categoria:
+            continue
+        extras = {
+            "_sheet_id": spreadsheet_id,
+            "_tab": CENTRAL_TAB_NAME,
+            "_row": row_idx,
+            "_status_idx": status_idx,
+            "_lastgen_idx": lastgen_idx,
+        }
+        # Inclui todas as colunas extras que não são "core" (para ClientePublico ler)
+        for k, idx in header.items():
+            if k in {COL_CATEGORIA, COL_CLIENTE, COL_PAINEL, COL_PASTA,
+                     COL_IDGOOGLE, COL_IDMETA, COL_IDGA4, COL_STATUS, COL_LASTGEN}:
+                continue
+            extras[k] = _cell(row, idx)
+
+        out.append(
+            CoreCliente(
+                nome=nome,
+                categoria=categoria,
+                painel_url=_cell(row, header.get(COL_PAINEL)),
+                pasta_url=_cell(row, header.get(COL_PASTA)),
+                id_google_ads=_cell(row, header.get(COL_IDGOOGLE)),
+                id_meta_ads=_cell(row, header.get(COL_IDMETA)),
+                id_ga4=_cell(row, header.get(COL_IDGA4)),
+                extras=extras,
+            )
+        )
+    return out
 
 
 def sync_clientes() -> dict:
@@ -98,6 +172,12 @@ def sync_clientes() -> dict:
             slug=slug,
             nome=nome,
             categoria=categoria_enum,
+            gestor=_cell(row, header.get(COL_GESTOR)) or None,
+            id_google_ads=_cell(row, header.get(COL_IDGOOGLE)) or None,
+            id_meta_ads=_cell(row, header.get(COL_IDMETA)) or None,
+            id_ga4=_cell(row, header.get(COL_IDGA4)) or None,
+            painel_url=_cell(row, header.get(COL_PAINEL)) or None,
+            pasta_url=_cell(row, header.get(COL_PASTA)) or None,
             publicar_vitrine=_is_true(_cell(row, header.get(COL_PUBLICAR))),
             descricao_publica=_cell(row, header.get(COL_DESCRICAO)) or None,
             logo_url=_cell(row, header.get(COL_LOGO)) or None,
@@ -123,8 +203,11 @@ def sync_clientes() -> dict:
         for slug, p in desejados.items():
             existing = existentes.get(slug)
             if existing:
+                # Campos estruturais: sempre sincroniza da planilha
                 existing.nome = p["nome"]
                 existing.categoria = p["categoria"]
+                existing.publicar_vitrine = p["publicar_vitrine"]
+                # Campos opcionais estruturais: só atualiza se vieram preenchidos
                 if p["logo_url"]:
                     existing.logo_url = p["logo_url"]
                 if p["descricao_publica"]:
@@ -133,19 +216,39 @@ def sync_clientes() -> dict:
                     existing.setor = p["setor"]
                 if p["porte"]:
                     existing.porte = p["porte"]
-                existing.publicar_vitrine = p["publicar_vitrine"]
+                # Campos operacionais editáveis: só preenche se ainda NULL no DB
+                # (primeira carga), preservando edições manuais posteriores
+                if existing.gestor is None and p["gestor"]:
+                    existing.gestor = p["gestor"]
+                if existing.id_google_ads is None and p["id_google_ads"]:
+                    existing.id_google_ads = p["id_google_ads"]
+                if existing.id_meta_ads is None and p["id_meta_ads"]:
+                    existing.id_meta_ads = p["id_meta_ads"]
+                if existing.id_ga4 is None and p["id_ga4"]:
+                    existing.id_ga4 = p["id_ga4"]
+                if existing.painel_url is None and p["painel_url"]:
+                    existing.painel_url = p["painel_url"]
+                if existing.pasta_url is None and p["pasta_url"]:
+                    existing.pasta_url = p["pasta_url"]
                 updated += 1
             else:
                 session.add(Cliente(
                     slug=slug,
                     nome=p["nome"],
                     categoria=p["categoria"],
+                    gestor=p["gestor"],
+                    id_google_ads=p["id_google_ads"],
+                    id_meta_ads=p["id_meta_ads"],
+                    id_ga4=p["id_ga4"],
+                    painel_url=p["painel_url"],
+                    pasta_url=p["pasta_url"],
                     logo_url=p["logo_url"],
                     descricao_publica=p["descricao_publica"],
                     setor=p["setor"],
                     porte=p["porte"],
                     publicar_vitrine=p["publicar_vitrine"],
                     destaque=False,
+                    ativo=True,
                 ))
                 inserted += 1
 
