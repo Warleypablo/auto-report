@@ -1,0 +1,74 @@
+services:
+  # ── Backend (FastAPI) ────────────────────────────────────────────────────────
+  - type: web
+    name: autoreport-backend
+    runtime: python
+    plan: starter  # free tier dorme após inatividade — starter mantém sempre ativo
+    region: oregon
+    rootDir: .
+    buildCommand: pip install -r web/backend/requirements.txt -r requirements.txt
+    startCommand: bash scripts/start-backend.sh
+    envVars:
+      - key: PYTHONPATH
+        value: /opt/render/project/src:/opt/render/project/src/web/backend
+      - key: DATABASE_URL
+        sync: false  # preencher no dashboard: postgresql+psycopg://user:pass@<cloud-sql-ip>:5432/vitrine
+      - key: CORS_ORIGINS
+        value: '["https://autoreport-frontend.onrender.com"]'  # ajustar para URL real do frontend
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ETL_TRIGGER_TOKEN
+        generateValue: true
+      - key: JWT_EXPIRY_HOURS
+        value: "8"
+      - key: ETL_THREADS
+        value: "5"
+      # Credenciais Google — base64 dos arquivos locais (ver scripts/encode-credentials.sh)
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON_B64
+        sync: false
+      - key: GOOGLE_ADS_YAML_B64
+        sync: false
+      # Planilha central
+      - key: CENTRAL_SHEET_URL
+        sync: false
+      - key: CENTRAL_TAB_NAME
+        value: Automacao-Report
+      - key: TEMPLATE_RELATORIO_ID
+        sync: false
+      - key: RELATORIO_FOLDER_ID
+        sync: false
+      - key: TEMPLATE_ECOMMERCE
+        sync: false
+      - key: TEMPLATE_LEAD_SEM_SITE
+        sync: false
+      - key: TEMPLATE_LEAD_COM_SITE
+        sync: false
+      # Meta Ads
+      - key: ACCESS_TOKEN_META_SYSTEM
+        sync: false
+      - key: ACCESS_TOKEN_META_HUMAN
+        sync: false
+      - key: ID_SYSTEM_USER
+        sync: false
+      - key: BUSINESS_ID_META
+        sync: false
+      - key: APP_ID_META
+        sync: false
+
+  # ── Frontend (Next.js) ───────────────────────────────────────────────────────
+  - type: web
+    name: autoreport-frontend
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: web/frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      # URL interna do Render (sem passar pela internet pública)
+      - key: INTERNAL_API_URL
+        value: http://autoreport-backend:10000
