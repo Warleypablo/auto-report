@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -30,10 +30,15 @@ class ClienteGestorItem(BaseModel):
     slug: str
     nome: str
     categoria: str
+    gestor: str | None = None
 
 
 class ClientesGestorResponse(BaseModel):
     items: list[ClienteGestorItem]
+
+
+class GestoresResponse(BaseModel):
+    items: list[str]
 
 
 class TriggerRequest(BaseModel):
@@ -83,3 +88,65 @@ class UsuariosListResponse(BaseModel):
 
 class AssignClientesRequest(BaseModel):
     cliente_ids: list[uuid.UUID]
+
+
+class ClienteMetricasItem(BaseModel):
+    slug: str
+    nome: str
+    categoria: str
+    periodo_inicio: str | None = None  # YYYY-MM-DD
+    periodo_fim: str | None = None
+    faturamento: float | None = None
+    investimento: float | None = None
+    roas: float | None = None
+    cpa: float | None = None
+    leads: int | None = None
+    vendas: int | None = None
+    faturamento_var_pct: float | None = None
+    roas_var_pct: float | None = None
+
+
+class MetricasDashboardResponse(BaseModel):
+    items: list[ClienteMetricasItem]
+    total_faturamento: float
+    total_investimento: float
+    media_roas: float | None
+    total_leads: int
+    total_vendas: int
+
+
+from typing import Literal
+
+
+class ClienteEditRequest(BaseModel):
+    nome: str | None = None
+    categoria: Literal["E-commerce", "Lead Com Site", "Lead Sem Site"] | None = None
+    gestor: str | None = None
+    id_google_ads: str | None = None
+    id_meta_ads: str | None = None
+    id_ga4: str | None = None
+    painel_url: str | None = None
+    pasta_url: str | None = None
+
+
+class ClienteDetalheItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    slug: str
+    nome: str
+    categoria: str
+    gestor: str | None = None
+    id_google_ads: str | None = None
+    id_meta_ads: str | None = None
+    id_ga4: str | None = None
+    painel_url: str | None = None
+    pasta_url: str | None = None
+    ativo: bool
+
+    @field_validator("categoria", mode="before")
+    @classmethod
+    def coerce_categoria(cls, v: object) -> str:
+        if hasattr(v, "value"):
+            return str(v.value)
+        return str(v)
