@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { gestorApi, ClienteGestor } from "@/lib/api-gestor";
 
-export default function EditUsuarioPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function EditUsuarioPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const [todosClientes, setTodosClientes] = useState<ClienteGestor[]>([]);
   const [atribuidos, setAtribuidos] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);

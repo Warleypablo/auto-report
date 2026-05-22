@@ -1,5 +1,6 @@
 from .base import Base
 from .cliente import Categoria, Cliente
+from .gestor import GestorCadastrado
 from .report_job import JobStatus, ReportJob
 from .snapshot import Frequencia, Snapshot
 from .usuario import Usuario
@@ -10,6 +11,7 @@ __all__ = [
     "Categoria",
     "Cliente",
     "Frequencia",
+    "GestorCadastrado",
     "JobStatus",
     "ReportJob",
     "Snapshot",

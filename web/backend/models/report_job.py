@@ -29,8 +29,11 @@ class ReportJob(Base):
         UUID(as_uuid=True), ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     mes: Mapped[str] = mapped_column(String(7), nullable=False)  # YYYY-MM
+    frequencia: Mapped[str] = mapped_column(String(10), nullable=False, server_default="MENSAL")  # MENSAL | SEMANAL
     status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus, name="job_status"), nullable=False, default=JobStatus.PENDING
+        Enum(JobStatus, name="job_status", values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=JobStatus.PENDING,
     )
     slides_url: Mapped[str | None] = mapped_column(String, nullable=True)
     erro: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -36,3 +36,16 @@ class ClienteListItem(BaseModel):
 class ClientesListResponse(BaseModel):
     items: list[ClienteListItem]
     total: int
+    periodo_inicio: date | None = None
+    periodo_fim: date | None = None
+    com_snapshot: int = 0
+
+
+class PeriodoDisponivel(BaseModel):
+    periodo_inicio: date
+    periodo_fim: date
+    com_snapshot: int
+
+
+class PeriodosResponse(BaseModel):
+    items: list[PeriodoDisponivel]

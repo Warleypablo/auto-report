@@ -69,28 +69,33 @@ def parse_metric(nome: str, valor: Any) -> Decimal | None:
 # fonte=None significa campo de destaque na tabela snapshots
 # fonte="meta"/"google"/"ga4"/"painel" vai para metricas_detalhadas[fonte]
 _MAPA_HANDLER = {
-    # Destaque (colunas tipadas)
-    "{{fat_sem}}": ("faturamento", None),
-    "{{inv_sem}}": ("investimento", None),
-    "{{roas}}": ("roas", None),
+    # Destaque (colunas tipadas) — usamos o consolidado MENSAL, não o semanal.
+    # O placeholder `_sem` cobre apenas a semana corrente (frequentemente zero
+    # antes do fechamento), o que zerava a vitrine inteira.
+    "{{fat_mes}}": ("faturamento", None),
+    "{{inv_mes}}": ("investimento", None),
     "{{cpa}}": ("cpa", None),
     "{{vendas}}": ("vendas", None),
-    "{{leads}}": ("leads", None),
+    "{{lead_mes}}": ("leads", None),
     # Variações
-    "{{fat_sem_var}}": ("faturamento_var_pct", None),
-    "{{roas_var}}": ("roas_var_pct", None),
+    "{{var_fat_sem}}": ("faturamento_var_pct", None),
+    "{{var_roas}}": ("roas_var_pct", None),
     # Meta
     "{{fat_face}}": ("faturamento", "meta"),
     "{{inv_face}}": ("investimento", "meta"),
     "{{roas_face}}": ("roas", "meta"),
     "{{cpa_face}}": ("cpa", "meta"),
     "{{vendas_face}}": ("vendas", "meta"),
+    "{{lead_face}}": ("leads", "meta"),
+    "{{cpl_face}}": ("cpa", "meta"),  # cpl tratado como cpa em lead categories
     # Google
     "{{fat_goog}}": ("faturamento", "google"),
     "{{inv_goog}}": ("investimento", "google"),
     "{{roas_goog}}": ("roas", "google"),
     "{{cpa_goog}}": ("cpa", "google"),
     "{{vendas_goog}}": ("vendas", "google"),
+    "{{lead_goog}}": ("leads", "google"),
+    "{{cpl_goog}}": ("cpa", "google"),
     # GA4
     "{{ses_ga}}": ("sessoes", "ga4"),
     "{{ses_eng_ga}}": ("sessoes_engajadas", "ga4"),
@@ -117,6 +122,46 @@ def map_handler_dados(dados: dict[str, str]) -> dict:
         if fonte is None:
             resultado[campo] = parsed
         else:
-            resultado["metricas_detalhadas"].setdefault(fonte, {})[campo] = parsed
+            valor_json = parsed if isinstance(parsed, int) else float(parsed)
+            resultado["metricas_detalhadas"].setdefault(fonte, {})[campo] = valor_json
+
+    # Fallback: quando o painel mensal vem vazio mas as APIs (Meta/Google)
+    # têm dado, consolidamos top-level somando as fontes. Isso resgata clientes
+    # cujo painel manual está desatualizado mas têm Ads conectado.
+    metricas = resultado["metricas_detalhadas"]
+
+    def _soma_fontes(campo: str) -> Decimal | int | None:
+        total = Decimal(0)
+        achou = False
+        for fonte in ("meta", "google"):
+            v = metricas.get(fonte, {}).get(campo)
+            if v is None:
+                continue
+            total += Decimal(str(v))
+            achou = True
+        if not achou:
+            return None
+        return int(total) if campo in _INTEGER_CAMPOS else total
+
+    for campo in ("faturamento", "investimento", "vendas", "leads"):
+        atual = resultado.get(campo)
+        if atual is None or (isinstance(atual, (int, Decimal)) and atual == 0):
+            somado = _soma_fontes(campo)
+            if somado is not None and somado != 0:
+                resultado[campo] = somado
+
+    # ROAS consolidado: derivado de fat/inv mensais (o `{{roas}}` do handler é
+    # semanal e fica 0 quando a semana não fechou).
+    fat = resultado.get("faturamento")
+    inv = resultado.get("investimento")
+    if fat is not None and inv is not None and inv > 0:
+        resultado["roas"] = (Decimal(str(fat)) / Decimal(str(inv))).quantize(Decimal("0.0001"))
+
+    # CPA/CPL consolidado: inv / (vendas|leads), o que tiver.
+    cpa_atual = resultado.get("cpa")
+    if cpa_atual is None or cpa_atual == 0:
+        divisor = resultado.get("vendas") or resultado.get("leads")
+        if inv is not None and divisor:
+            resultado["cpa"] = (Decimal(str(inv)) / Decimal(divisor)).quantize(Decimal("0.01"))
 
     return resultado

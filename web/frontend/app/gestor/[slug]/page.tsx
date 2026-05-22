@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { gestorApi, JobInfo, ClienteGestor } from "@/lib/api-gestor";
 import { mesUltimoFechado, deslocarMes } from "@/lib/mes-utils";
@@ -11,8 +11,8 @@ function mesLabel(mes: string): string {
   return `${nomes[parseInt(m) - 1]} ${ano}`;
 }
 
-export default function ClienteReportPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
+export default function ClienteReportPage({ params }: { params: { slug: string } }) {
+  const { slug } = params;
   const [cliente, setCliente] = useState<ClienteGestor | null>(null);
   const [mes, setMes] = useState(mesUltimoFechado());
   const [activeJob, setActiveJob] = useState<JobInfo | null>(null);
@@ -78,6 +78,7 @@ export default function ClienteReportPage({ params }: { params: Promise<{ slug: 
       const initialJob: JobInfo = {
         id: job_id,
         mes,
+        frequencia: "MENSAL",
         status: "pending",
         slides_url: null,
         erro: null,

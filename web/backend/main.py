@@ -17,20 +17,22 @@ def _cleanup_stale_jobs() -> None:
         from db import SessionLocal
         from models import ReportJob
         from models.report_job import JobStatus
-        from sqlalchemy import update
+        from sqlalchemy import select
 
-        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
+        from sqlalchemy import text
         with SessionLocal() as session:
-            session.execute(
-                update(ReportJob)
-                .where(ReportJob.status == JobStatus.RUNNING, ReportJob.created_at < cutoff)
-                .values(
-                    status=JobStatus.ERROR,
-                    erro="Timeout detectado no startup — job estava em running há mais de 10 min",
-                    finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            stale = session.execute(
+                select(ReportJob).where(
+                    ReportJob.status == JobStatus.RUNNING,
+                    ReportJob.created_at < text("NOW() - INTERVAL '30 minutes'"),
                 )
-            )
-            session.commit()
+            ).scalars().all()
+            for job in stale:
+                job.status = JobStatus.ERROR
+                job.erro = "Timeout detectado no startup — job estava em running há mais de 30 min"
+                job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            if stale:
+                session.commit()
     except Exception:
         pass  # Don't fail startup because of this
 

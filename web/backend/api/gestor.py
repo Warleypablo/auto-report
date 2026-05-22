@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from api.auth import require_admin, require_auth
 from db import get_session
-from models import Cliente, ReportJob, Usuario, UsuarioCliente
+from models import Cliente, GestorCadastrado, ReportJob, Usuario, UsuarioCliente
 from models.cliente import Categoria as CatEnum
 from models.report_job import JobStatus
 from etl.cliente_publico import slugify
@@ -23,6 +23,9 @@ from schemas import (
     ClienteMetricasItem,
     ClientesGestorResponse,
     CreateUsuarioRequest,
+    GestorCadastradoCreate,
+    GestorCadastradoItem,
+    GestorCadastradosResponse,
     GestorRenameRequest,
     GestorRenameResponse,
     GestoresResponse,
@@ -251,6 +254,54 @@ def normalizar_gestores(
     return {"mapeamento": mapeamento, "nomes_alterados": len(mapeamento)}
 
 
+# ── GET /gestor/gestores-cadastrados ─────────────────────────────────────────
+
+@router.get("/gestores-cadastrados", response_model=GestorCadastradosResponse)
+def list_gestores_cadastrados(
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> GestorCadastradosResponse:
+    items = session.execute(
+        select(GestorCadastrado).order_by(GestorCadastrado.nome)
+    ).scalars().all()
+    return GestorCadastradosResponse(items=[GestorCadastradoItem.model_validate(g) for g in items])
+
+
+# ── POST /gestor/gestores-cadastrados ─────────────────────────────────────────
+
+@router.post("/gestores-cadastrados", response_model=GestorCadastradoItem, status_code=201)
+def create_gestor_cadastrado(
+    body: GestorCadastradoCreate,
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> GestorCadastradoItem:
+    nome = normalize_gestor_name(body.nome)
+    if not nome:
+        raise HTTPException(status_code=422, detail="Nome não pode ser vazio")
+    if session.execute(select(GestorCadastrado).where(GestorCadastrado.nome == nome)).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Gestor '{nome}' já cadastrado")
+    g = GestorCadastrado(nome=nome, squad=body.squad.strip() if body.squad else None)
+    session.add(g)
+    session.commit()
+    session.refresh(g)
+    return GestorCadastradoItem.model_validate(g)
+
+
+# ── DELETE /gestor/gestores-cadastrados/{id} ──────────────────────────────────
+
+@router.delete("/gestores-cadastrados/{gestor_id}", status_code=204)
+def delete_gestor_cadastrado(
+    gestor_id: uuid.UUID,
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> None:
+    g = session.get(GestorCadastrado, gestor_id)
+    if not g:
+        raise HTTPException(status_code=404, detail="Gestor não encontrado")
+    session.delete(g)
+    session.commit()
+
+
 # ── PATCH /gestor/clientes/{cliente_id} ───────────────────────────────────
 
 @router.patch("/clientes/{cliente_id}", response_model=ClienteDetalheItem)
@@ -356,6 +407,7 @@ def trigger_report(
         usuario_id=user.id,
         cliente_id=cliente.id,
         mes=body.mes,
+        frequencia=body.frequencia,
         status=JobStatus.PENDING,
     )
     session.add(job)
@@ -366,6 +418,7 @@ def trigger_report(
     cliente_slug = cliente.slug
     cliente_nome = cliente.nome
     mes = body.mes
+    frequencia = body.frequencia
 
     def _run():
         from db import SessionLocal
@@ -379,7 +432,7 @@ def trigger_report(
             bg_session.commit()
 
         try:
-            url = gerar_slides(slug=cliente_slug, nome_cliente=cliente_nome, mes=mes)
+            url = gerar_slides(slug=cliente_slug, nome_cliente=cliente_nome, mes=mes, frequencia=frequencia)
             with SessionLocal() as bg_session:
                 bg_job = bg_session.get(ReportJob, job_id)
                 if bg_job:
@@ -666,3 +719,102 @@ def get_metricas_dashboard(
         total_leads=sum(i.leads for i in items if i.leads),
         total_vendas=sum(i.vendas for i in items if i.vendas),
     )
+
+
+# ── GET /gestor/metricas/{slug}/breakdown ─────────────────────────────────────
+
+def _parse_br(v: str | None) -> float | None:
+    """Parse PT-BR formatted number like 'R$ 1.026,12' or '17,15'."""
+    if not v or v.strip() in ("-", ""):
+        return None
+    try:
+        cleaned = v.replace("R$", "").replace("\xa0", "").strip()
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+        return float(cleaned)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _parse_int_br(v: str | None) -> int | None:
+    if not v or v.strip() in ("-", ""):
+        return None
+    try:
+        return int(v.replace(".", "").replace(",", "").strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+@router.get("/metricas/{slug}/breakdown")
+def get_metricas_breakdown(
+    slug: str,
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> dict:
+    from models.snapshot import Snapshot
+
+    # Verify access
+    cliente = session.execute(
+        select(Cliente).where(Cliente.slug == slug, Cliente.ativo == True)
+    ).scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(404, "Cliente não encontrado")
+
+    if not user.is_admin:
+        acesso = session.execute(
+            select(UsuarioCliente).where(
+                UsuarioCliente.usuario_id == user.id,
+                UsuarioCliente.cliente_id == cliente.id,
+            )
+        ).scalar_one_or_none()
+        if not acesso:
+            raise HTTPException(403, "Acesso negado")
+
+    snap = session.execute(
+        select(Snapshot)
+        .where(Snapshot.cliente_id == cliente.id, Snapshot.frequencia == "MENSAL")
+        .order_by(Snapshot.periodo_fim.desc())
+    ).scalars().first()
+
+    if not snap or not snap.raw_dados:
+        return {"meta_ads": [], "google_ads": []}
+
+    rd = snap.raw_dados
+
+    meta_ads = []
+    for i in range(1, 21):
+        nome = rd.get(f"{{{{nome_adf{i}}}}}", "")
+        if not nome or nome == "-":
+            continue
+        img = rd.get(f"{{{{img_adf{i}}}}}", "") or ""
+        meta_ads.append({
+            "nome": nome,
+            "investimento": _parse_br(rd.get(f"{{{{inv_adf{i}}}}}")),
+            # lead clients
+            "leads": _parse_int_br(rd.get(f"{{{{lead_adf{i}}}}}")),
+            "cpl": _parse_br(rd.get(f"{{{{cpl_adf{i}}}}}")),
+            # ecommerce clients
+            "conversoes": _parse_int_br(rd.get(f"{{{{conv_adf{i}}}}}")),
+            "faturamento": _parse_br(rd.get(f"{{{{fat_adf{i}}}}}")),
+            "roas": _parse_br(rd.get(f"{{{{roas_adf{i}}}}}")),
+            # shared
+            "cpa": _parse_br(rd.get(f"{{{{cpa_adf{i}}}}}")),
+            "impressoes": _parse_int_br(rd.get(f"{{{{imp_adf{i}}}}}")),
+            "imagem_url": img if img not in ("__NO_IMAGE__", "-", "") else None,
+        })
+
+    google_ads = []
+    for i in range(1, 21):
+        nome = rd.get(f"{{{{nome_adg{i}}}}}", "")
+        if not nome or nome == "-":
+            continue
+        google_ads.append({
+            "nome": nome,
+            "investimento": _parse_br(rd.get(f"{{{{inv_adg{i}}}}}")),
+            "faturamento": _parse_br(rd.get(f"{{{{fat_adg{i}}}}}")),
+            "conversoes": _parse_br(rd.get(f"{{{{conv_adg{i}}}}}")),
+            "cpa": _parse_br(rd.get(f"{{{{cpa_adg{i}}}}}")),
+            "roas": _parse_br(rd.get(f"{{{{roas_adg{i}}}}}")),
+            "impressoes": _parse_int_br(rd.get(f"{{{{imp_adg{i}}}}}")),
+        })
+
+    return {"meta_ads": meta_ads, "google_ads": google_ads}

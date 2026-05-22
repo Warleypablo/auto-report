@@ -72,4 +72,17 @@ export type ClienteListItem = {
 export type ClientesListResponse = {
   items: ClienteListItem[];
   total: number;
+  periodo_inicio: string | null;
+  periodo_fim: string | null;
+  com_snapshot: number;
+};
+
+export type PeriodoDisponivel = {
+  periodo_inicio: string;
+  periodo_fim: string;
+  com_snapshot: number;
+};
+
+export type PeriodosResponse = {
+  items: PeriodoDisponivel[];
 };

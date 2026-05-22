@@ -16,13 +16,14 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 
-def gerar_slides(slug: str, nome_cliente: str, mes: str) -> str:
+def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENSAL") -> str:
     """Generate Google Slides report for one client and return the Drive URL.
 
     Args:
         slug: DB slug (used only for error messages here)
         nome_cliente: Client name as it appears in the Central Sheet
         mes: Reference month in YYYY-MM format
+        frequencia: "MENSAL" or "SEMANAL"
 
     Returns:
         Full URL to the created Google Slides presentation
@@ -62,7 +63,7 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str) -> str:
         )
 
     cliente = clientes[0]
-    FREQ = "MENSAL"
+    FREQ = frequencia.upper()
 
     periodo_ref = periodo_mod.periodo_referencia(today=today, frequencia=FREQ)
     periodo_comp = periodo_mod.periodo_referencia(today=periodo_ref.inicio, frequencia=FREQ)

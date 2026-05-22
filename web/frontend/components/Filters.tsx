@@ -59,27 +59,6 @@ export function Filters() {
         </select>
       </Field>
 
-      <style>{`
-        .select {
-          background: transparent;
-          border: 0;
-          border-bottom: 1px solid var(--ink);
-          padding: 4px 24px 6px 0;
-          font-family: var(--font-fraunces), serif;
-          font-size: 18px;
-          color: var(--ink);
-          letter-spacing: -0.01em;
-          appearance: none;
-          cursor: pointer;
-          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%231A1916' stroke-width='1.4'/></svg>");
-          background-repeat: no-repeat;
-          background-position: right 0 center;
-        }
-        .select:focus {
-          outline: none;
-          border-bottom-color: var(--forest);
-        }
-      `}</style>
     </div>
   );
 }

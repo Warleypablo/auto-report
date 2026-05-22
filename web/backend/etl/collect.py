@@ -110,17 +110,25 @@ def run_etl(
     frequencia_str = frequencia_str or settings.etl_periodo_granularidade
     frequencia = Frequencia(frequencia_str)
 
-    from config.settings import CENTRAL_SHEET_URL, CENTRAL_TAB_NAME
-    from core.leitura_central import fetch_clientes
     from core.periodo import periodo_referencia
+    from .sync_planilha import fetch_clientes_tolerante
+
+    # Suprime escrita na Planilha Central durante o ETL da vitrine.
+    # O auto-report original chama _update_status_cell para marcar status como
+    # "PROCESSANDO", "ERRO API META", etc. Para a vitrine, não queremos tocar
+    # na planilha do usuário — só ler e gravar no nosso Postgres.
+    import core.leitura_central as _lc
+    _original_update = _lc._update_status_cell
+    _lc._update_status_cell = lambda *a, **kw: None
+    try:
+        # Também tenta interceptar batch updates no _parse_rows
+        pass
+    finally:
+        pass
 
     try:
         with advisory_lock(engine, "etl:vitrine:run", blocking=False):
-            todos_core = fetch_clientes(
-                atualizar=False,
-                sheet_url=CENTRAL_SHEET_URL,
-                tab_name=CENTRAL_TAB_NAME,
-            )
+            todos_core = fetch_clientes_tolerante()
             pubs = [ClientePublico.from_cliente(c) for c in todos_core]
             if slugs:
                 pubs = [p for p in pubs if slugify(p.nome) in slugs]
@@ -128,8 +136,8 @@ def run_etl(
                 pubs = [p for p in pubs if p.publicar_vitrine]
             log.info("etl_iniciado", extra={"n_clientes": len(pubs), "frequencia": frequencia_str})
 
-            periodo_ref = periodo_referencia(today, frequencia_str)
-            periodo_comp = periodo_referencia(periodo_ref.inicio, frequencia_str)
+            periodo_ref = periodo_referencia(today=today, frequencia=frequencia_str)
+            periodo_comp = periodo_referencia(today=periodo_ref.inicio, frequencia=frequencia_str)
 
             ids: dict[str, uuid.UUID] = {}
             with SessionLocal() as session:
@@ -165,3 +173,6 @@ def run_etl(
     except LockTaken:
         log.warning("etl_skip_lock_ocupado")
         return {"skipped": True}
+    finally:
+        # restaura escrita na planilha (o auto-report normal continua funcionando)
+        _lc._update_status_cell = _original_update

@@ -32,7 +32,7 @@ from decimal import Decimal, InvalidOperation
 from core.cred_manager import _build_google_ads_client
 
 log = get_logger(__name__)
-_TOP_N = 5  # quantidade padrão de campanhas a capturar
+_TOP_N = 20  # campanhas a capturar (top 5 no template, restantes em raw_dados)
 
 # ---------------------------------------------------------------------------
 # Auxiliares numéricos -------------------------------------------------------

@@ -30,6 +30,12 @@ export type ClienteEditData = {
   pasta_url?: string | null;
 };
 
+export type GestorCadastrado = {
+  id: string;
+  nome: string;
+  squad: string | null;
+};
+
 export type ClienteCreateData = {
   nome: string;
   categoria: string;
@@ -43,9 +49,12 @@ export type ClienteCreateData = {
 
 export type JobStatus = "pending" | "running" | "done" | "error";
 
+export type Frequencia = "MENSAL" | "SEMANAL";
+
 export type JobInfo = {
   id: string;
   mes: string;
+  frequencia: Frequencia;
   status: JobStatus;
   slides_url: string | null;
   erro: string | null;
@@ -69,6 +78,34 @@ export type ClienteMetricas = {
   vendas: number | null;
   faturamento_var_pct: number | null;
   roas_var_pct: number | null;
+};
+
+export type MetaAd = {
+  nome: string;
+  investimento: number | null;
+  leads: number | null;
+  cpl: number | null;
+  conversoes: number | null;
+  faturamento: number | null;
+  roas: number | null;
+  cpa: number | null;
+  impressoes: number | null;
+  imagem_url: string | null;
+};
+
+export type GoogleAd = {
+  nome: string;
+  investimento: number | null;
+  faturamento: number | null;
+  conversoes: number | null;
+  cpa: number | null;
+  roas: number | null;
+  impressoes: number | null;
+};
+
+export type MetricasBreakdown = {
+  meta_ads: MetaAd[];
+  google_ads: GoogleAd[];
 };
 
 export type MetricasDashboard = {
@@ -124,6 +161,15 @@ export const gestorApi = {
   renameGestor: (de: string, para: string) =>
     apiCall<{ de: string; para: string; atualizados: number }>(`gestores`, "PATCH", { de, para }),
 
+  listGestoresCadastrados: () =>
+    apiCall<{ items: GestorCadastrado[] }>("gestores-cadastrados"),
+
+  createGestorCadastrado: (nome: string, squad: string | null) =>
+    apiCall<GestorCadastrado>("gestores-cadastrados", "POST", { nome, squad }),
+
+  deleteGestorCadastrado: (id: string) =>
+    apiCall<void>(`gestores-cadastrados/${id}`, "DELETE"),
+
   normalizarGestores: () =>
     apiCall<{ mapeamento: { de: string; para: string; atualizados: number }[]; nomes_alterados: number }>(
       `gestores/normalizar`, "POST"
@@ -138,8 +184,8 @@ export const gestorApi = {
   deleteCliente: (id: string) =>
     apiCall<void>(`clientes/${id}`, "DELETE"),
 
-  triggerReport: (slug: string, mes: string) =>
-    apiCall<{ job_id: string }>("reports/trigger", "POST", { slug, mes }),
+  triggerReport: (slug: string, mes: string, frequencia: Frequencia = "MENSAL") =>
+    apiCall<{ job_id: string }>("reports/trigger", "POST", { slug, mes, frequencia }),
 
   getJob: (job_id: string) =>
     apiCall<JobInfo>(`reports/${job_id}`),
@@ -148,6 +194,9 @@ export const gestorApi = {
     apiCall<JobInfo[]>(`reports${slug ? `?slug=${slug}` : ""}`),
 
   metricas: () => apiCall<MetricasDashboard>("metricas"),
+
+  metricasBreakdown: (slug: string) =>
+    apiCall<MetricasBreakdown>(`metricas/${slug}/breakdown`),
 
   // Admin
   listUsuarios: () =>

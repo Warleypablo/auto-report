@@ -69,9 +69,27 @@ class GestoresResponse(BaseModel):
     items: list[str]
 
 
+class GestorCadastradoItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    nome: str
+    squad: str | None
+
+
+class GestorCadastradoCreate(BaseModel):
+    nome: str
+    squad: str | None = None
+
+
+class GestorCadastradosResponse(BaseModel):
+    items: list[GestorCadastradoItem]
+
+
 class TriggerRequest(BaseModel):
     slug: str
     mes: str  # YYYY-MM
+    frequencia: Literal["MENSAL", "SEMANAL"] = "MENSAL"
 
 
 class TriggerResponse(BaseModel):
@@ -83,6 +101,7 @@ class JobStatusResponse(BaseModel):
 
     id: uuid.UUID
     mes: str
+    frequencia: str
     status: str
     slides_url: str | None
     erro: str | None
