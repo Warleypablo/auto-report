@@ -734,6 +734,7 @@ function AbaConfiguracoes({
   onClienteDeleted,
   onClienteCriado,
   onGestorRenomeado,
+  onGestoresNormalizados,
 }: {
   clientes: ClienteGestor[];
   todosClientes: ClienteGestor[];
@@ -741,6 +742,7 @@ function AbaConfiguracoes({
   onClienteDeleted: (id: string) => void;
   onClienteCriado: (c: ClienteGestor) => void;
   onGestorRenomeado: (de: string, para: string) => void;
+  onGestoresNormalizados: (mapeamento: { de: string; para: string }[]) => void;
 }) {
   const [busca, setBusca] = useState("");
   const [editando, setEditando] = useState<ClienteGestor | null>(null);
@@ -758,6 +760,8 @@ function AbaConfiguracoes({
   const [novoNomeGestor, setNovoNomeGestor] = useState("");
   const [renamingGestor, setRenamingGestor] = useState(false);
   const [renameGestorErr, setRenameGestorErr] = useState<string | null>(null);
+  const [normalizing, setNormalizing] = useState(false);
+  const [normalizeMsg, setNormalizeMsg] = useState<string | null>(null);
 
   const filtrados = clientes.filter((c) =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -814,6 +818,24 @@ function AbaConfiguracoes({
       setDeleteErr(err instanceof Error ? err.message : "Erro ao desativar");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleNormalizar() {
+    setNormalizing(true);
+    setNormalizeMsg(null);
+    try {
+      const res = await gestorApi.normalizarGestores();
+      onGestoresNormalizados(res.mapeamento);
+      setNormalizeMsg(
+        res.nomes_alterados === 0
+          ? "Nenhum nome precisou de ajuste."
+          : `${res.nomes_alterados} nome${res.nomes_alterados !== 1 ? "s" : ""} normalizado${res.nomes_alterados !== 1 ? "s" : ""}.`
+      );
+    } catch (err: unknown) {
+      setNormalizeMsg(err instanceof Error ? err.message : "Erro ao normalizar");
+    } finally {
+      setNormalizing(false);
     }
   }
 
@@ -985,7 +1007,19 @@ function AbaConfiguracoes({
         if (gestoresUnicos.length === 0) return null;
         return (
           <div className="mt-10">
-            <h2 className="font-display mb-3 text-lg font-medium text-[var(--ink)]">Gestores</h2>
+            <div className="mb-3 flex items-center gap-3">
+              <h2 className="font-display flex-1 text-lg font-medium text-[var(--ink)]">Gestores</h2>
+              {normalizeMsg && (
+                <span className="text-xs text-[var(--muted)]">{normalizeMsg}</span>
+              )}
+              <button
+                onClick={handleNormalizar}
+                disabled={normalizing}
+                className="rounded-md border border-[var(--rule-soft)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:border-[var(--forest)] hover:text-[var(--forest)] disabled:opacity-50"
+              >
+                {normalizing ? "Normalizando…" : "Normalizar capitalização"}
+              </button>
+            </div>
             <div className="overflow-hidden rounded-lg border border-[var(--rule-soft)]">
               {gestoresUnicos.map((nome, idx) => {
                 const count = todosClientes.filter((c) => c.gestor === nome).length;
@@ -1282,6 +1316,12 @@ export default function GestorDashboard() {
               }
               onGestorRenomeado={(de, para) =>
                 setClientes((prev) => prev.map((c) => c.gestor === de ? { ...c, gestor: para } : c))
+              }
+              onGestoresNormalizados={(mapeamento) =>
+                setClientes((prev) => {
+                  const map = new Map(mapeamento.map(({ de, para }) => [de, para]));
+                  return prev.map((c) => ({ ...c, gestor: c.gestor ? (map.get(c.gestor) ?? c.gestor) : c.gestor }));
+                })
               }
             />
           )}

@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, text, update
+from sqlalchemy import distinct, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
 from api.auth import require_admin, require_auth
@@ -39,6 +39,22 @@ from sqlalchemy import func
 router = APIRouter()
 
 _MES_RE = __import__("re").compile(r"^\d{4}-\d{2}$")
+
+_LOWERCASE_PT = {"da", "de", "do", "das", "dos", "e", "von", "van", "del"}
+
+
+def normalize_gestor_name(name: str) -> str:
+    """Normaliza capitalização: 'gabriel taufner' → 'Gabriel Taufner', preserva 'da/de/do'."""
+    name = " ".join(name.split())
+    if not name:
+        return name
+    result = []
+    for i, word in enumerate(name.split()):
+        if i > 0 and word.lower() in _LOWERCASE_PT:
+            result.append(word.lower())
+        else:
+            result.append(word[0].upper() + word[1:].lower() if word else "")
+    return " ".join(result)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -111,7 +127,7 @@ def create_cliente(
         slug=slug,
         nome=body.nome,
         categoria=CatEnum(body.categoria),
-        gestor=body.gestor,
+        gestor=normalize_gestor_name(body.gestor) if body.gestor else None,
         id_google_ads=body.id_google_ads,
         id_meta_ads=body.id_meta_ads,
         id_ga4=body.id_ga4,
@@ -169,14 +185,15 @@ def rename_gestor(
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> GestorRenameResponse:
-    if not body.para.strip():
+    para_normalizado = normalize_gestor_name(body.para)
+    if not para_normalizado:
         raise HTTPException(status_code=422, detail="O novo nome não pode ser vazio")
 
     if user.is_admin:
         stmt = (
             update(Cliente)
             .where(Cliente.gestor == body.de, Cliente.ativo == True)
-            .values(gestor=body.para.strip())
+            .values(gestor=para_normalizado)
         )
     else:
         cliente_ids = session.execute(
@@ -185,12 +202,53 @@ def rename_gestor(
         stmt = (
             update(Cliente)
             .where(Cliente.gestor == body.de, Cliente.id.in_(cliente_ids), Cliente.ativo == True)
-            .values(gestor=body.para.strip())
+            .values(gestor=para_normalizado)
         )
 
     result = session.execute(stmt)
     session.commit()
-    return GestorRenameResponse(de=body.de, para=body.para.strip(), atualizados=result.rowcount)
+    return GestorRenameResponse(de=body.de, para=para_normalizado, atualizados=result.rowcount)
+
+
+# ── POST /gestor/gestores/normalizar — corrige capitalização em lote ──────────
+
+@router.post("/gestores/normalizar")
+def normalizar_gestores(
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> dict:
+    if user.is_admin:
+        nomes = session.execute(
+            select(distinct(Cliente.gestor)).where(Cliente.gestor.isnot(None), Cliente.ativo == True)
+        ).scalars().all()
+    else:
+        cliente_ids_scoped = session.execute(
+            select(UsuarioCliente.cliente_id).where(UsuarioCliente.usuario_id == user.id)
+        ).scalars().all()
+        nomes = session.execute(
+            select(distinct(Cliente.gestor))
+            .where(Cliente.gestor.isnot(None), Cliente.id.in_(cliente_ids_scoped), Cliente.ativo == True)
+        ).scalars().all()
+
+    mapeamento = []
+    for nome in nomes:
+        normalizado = normalize_gestor_name(nome)
+        if normalizado == nome:
+            continue
+        if user.is_admin:
+            r = session.execute(
+                update(Cliente).where(Cliente.gestor == nome, Cliente.ativo == True).values(gestor=normalizado)
+            )
+        else:
+            r = session.execute(
+                update(Cliente)
+                .where(Cliente.gestor == nome, Cliente.id.in_(cliente_ids_scoped), Cliente.ativo == True)
+                .values(gestor=normalizado)
+            )
+        mapeamento.append({"de": nome, "para": normalizado, "atualizados": r.rowcount})
+
+    session.commit()
+    return {"mapeamento": mapeamento, "nomes_alterados": len(mapeamento)}
 
 
 # ── PATCH /gestor/clientes/{cliente_id} ───────────────────────────────────
@@ -217,6 +275,8 @@ def update_cliente(
     for field, value in body.model_dump(exclude_unset=True).items():
         if field == "categoria" and value is not None:
             value = CatEnum(value)
+        elif field == "gestor" and value is not None:
+            value = normalize_gestor_name(value)
         setattr(cliente, field, value)
 
     session.commit()

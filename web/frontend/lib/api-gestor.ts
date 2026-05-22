@@ -124,6 +124,11 @@ export const gestorApi = {
   renameGestor: (de: string, para: string) =>
     apiCall<{ de: string; para: string; atualizados: number }>(`gestores`, "PATCH", { de, para }),
 
+  normalizarGestores: () =>
+    apiCall<{ mapeamento: { de: string; para: string; atualizados: number }[]; nomes_alterados: number }>(
+      `gestores/normalizar`, "POST"
+    ),
+
   createCliente: (data: ClienteCreateData) =>
     apiCall<ClienteGestor>(`clientes`, "POST", data),
 
