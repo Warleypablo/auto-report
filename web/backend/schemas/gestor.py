@@ -132,6 +132,17 @@ class MetricasDashboardResponse(BaseModel):
     total_vendas: int
 
 
+class ClienteCreateRequest(BaseModel):
+    nome: str
+    categoria: Literal["E-commerce", "Lead Com Site", "Lead Sem Site"]
+    gestor: str | None = None
+    id_google_ads: str | None = None
+    id_meta_ads: str | None = None
+    id_ga4: str | None = None
+    painel_url: str | None = None
+    pasta_url: str | None = None
+
+
 class ClienteEditRequest(BaseModel):
     nome: str | None = None
     categoria: Literal["E-commerce", "Lead Com Site", "Lead Sem Site"] | None = None

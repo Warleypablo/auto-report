@@ -7,6 +7,7 @@ from .admin import (
 from .case import CaseDetail, CaseListItem, PontoEvolucao
 from .gestor import (
     AssignClientesRequest,
+    ClienteCreateRequest,
     ClienteDetalheItem,
     ClienteEditRequest,
     ClienteGestorItem,
@@ -29,6 +30,7 @@ from .ranking import RankingItem
 __all__ = [
     "AssignClientesRequest",
     "CaseDetail",
+    "ClienteCreateRequest",
     "CaseListItem",
     "ClienteDetalheItem",
     "ClienteEditRequest",

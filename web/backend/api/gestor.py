@@ -13,8 +13,10 @@ from db import get_session
 from models import Cliente, ReportJob, Usuario, UsuarioCliente
 from models.cliente import Categoria as CatEnum
 from models.report_job import JobStatus
+from etl.cliente_publico import slugify
 from schemas import (
     AssignClientesRequest,
+    ClienteCreateRequest,
     ClienteDetalheItem,
     ClienteEditRequest,
     ClienteGestorItem,
@@ -89,6 +91,43 @@ def list_clientes(
     return ClientesGestorResponse(
         items=[ClienteGestorItem.model_validate(c) for c in clientes]
     )
+
+
+# ── POST /gestor/clientes ─────────────────────────────────────────────────────
+
+@router.post("/clientes", response_model=ClienteDetalheItem, status_code=201)
+def create_cliente(
+    body: ClienteCreateRequest,
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> ClienteDetalheItem:
+    slug = slugify(body.nome)
+    if session.execute(select(Cliente).where(Cliente.slug == slug)).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Já existe um cliente com o slug '{slug}'")
+
+    cliente = Cliente(
+        slug=slug,
+        nome=body.nome,
+        categoria=CatEnum(body.categoria),
+        gestor=body.gestor,
+        id_google_ads=body.id_google_ads,
+        id_meta_ads=body.id_meta_ads,
+        id_ga4=body.id_ga4,
+        painel_url=body.painel_url,
+        pasta_url=body.pasta_url,
+        ativo=True,
+        destaque=False,
+        publicar_vitrine=False,
+    )
+    session.add(cliente)
+    session.flush()
+
+    if not user.is_admin:
+        session.add(UsuarioCliente(usuario_id=user.id, cliente_id=cliente.id))
+
+    session.commit()
+    session.refresh(cliente)
+    return ClienteDetalheItem.model_validate(cliente)
 
 
 # ── GET /gestor/gestores ───────────────────────────────────────────────────────

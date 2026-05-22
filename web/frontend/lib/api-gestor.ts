@@ -30,6 +30,17 @@ export type ClienteEditData = {
   pasta_url?: string | null;
 };
 
+export type ClienteCreateData = {
+  nome: string;
+  categoria: string;
+  gestor?: string | null;
+  id_google_ads?: string | null;
+  id_meta_ads?: string | null;
+  id_ga4?: string | null;
+  painel_url?: string | null;
+  pasta_url?: string | null;
+};
+
 export type JobStatus = "pending" | "running" | "done" | "error";
 
 export type JobInfo = {
@@ -109,6 +120,9 @@ export const gestorApi = {
 
   gestores: () =>
     apiCall<{ items: string[] }>("gestores"),
+
+  createCliente: (data: ClienteCreateData) =>
+    apiCall<ClienteGestor>(`clientes`, "POST", data),
 
   updateCliente: (id: string, data: ClienteEditData) =>
     apiCall<ClienteGestor>(`clientes/${id}`, "PATCH", data),

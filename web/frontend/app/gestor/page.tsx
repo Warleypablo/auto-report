@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   gestorApi,
   ClienteGestor,
+  ClienteCreateData,
   ClienteEditData,
   ClienteMetricas,
   MetricasDashboard,
@@ -713,14 +714,29 @@ function emptyForm(c: ClienteGestor): EditForm {
   };
 }
 
+function emptyCreateForm(): EditForm {
+  return {
+    nome: "",
+    categoria: CATEGORIAS[0],
+    gestor: "",
+    id_google_ads: "",
+    id_meta_ads: "",
+    id_ga4: "",
+    painel_url: "",
+    pasta_url: "",
+  };
+}
+
 function AbaConfiguracoes({
   clientes,
   onClienteUpdated,
   onClienteDeleted,
+  onClienteCriado,
 }: {
   clientes: ClienteGestor[];
   onClienteUpdated: (c: ClienteGestor) => void;
   onClienteDeleted: (id: string) => void;
+  onClienteCriado: (c: ClienteGestor) => void;
 }) {
   const [busca, setBusca] = useState("");
   const [editando, setEditando] = useState<ClienteGestor | null>(null);
@@ -730,6 +746,10 @@ function AbaConfiguracoes({
   const [deletando, setDeletando] = useState<ClienteGestor | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [criando, setCriando] = useState(false);
+  const [criarForm, setCriarForm] = useState<EditForm>(emptyCreateForm());
+  const [creating, setCreating] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
 
   const filtrados = clientes.filter((c) =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -789,22 +809,53 @@ function AbaConfiguracoes({
     }
   }
 
+  async function handleCriar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!criarForm.nome.trim() || !criarForm.categoria) return;
+    setCreating(true);
+    setCreateErr(null);
+    try {
+      const payload: ClienteCreateData = {
+        nome: criarForm.nome.trim(),
+        categoria: criarForm.categoria,
+        gestor: criarForm.gestor || null,
+        id_google_ads: criarForm.id_google_ads || null,
+        id_meta_ads: criarForm.id_meta_ads || null,
+        id_ga4: criarForm.id_ga4 || null,
+        painel_url: criarForm.painel_url || null,
+        pasta_url: criarForm.pasta_url || null,
+      };
+      const novo = await gestorApi.createCliente(payload);
+      onClienteCriado(novo);
+      setCriando(false);
+      setCriarForm(emptyCreateForm());
+    } catch (err: unknown) {
+      setCreateErr(err instanceof Error ? err.message : "Erro ao criar cliente");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   function renderField(
     label: string,
-    key: keyof EditForm,
+    value: string,
+    onChange: (v: string) => void,
     type: "text" | "select" = "text",
+    required = false,
   ) {
-    if (!editForm) return null;
     const inputCls =
       "rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]";
     return (
       <label className="flex flex-col gap-1">
-        <span className="eyebrow text-xs text-[var(--muted)]">{label}</span>
+        <span className="eyebrow text-xs text-[var(--muted)]">
+          {label}{required && <span className="ml-0.5 text-[var(--crimson)]">*</span>}
+        </span>
         {type === "select" ? (
           <select
-            value={editForm[key]}
-            onChange={(e) => setEditForm((f) => f ? { ...f, [key]: e.target.value } : f)}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
             className={inputCls}
+            required={required}
           >
             {CATEGORIAS.map((c) => (
               <option key={c} value={c}>{c}</option>
@@ -813,9 +864,10 @@ function AbaConfiguracoes({
         ) : (
           <input
             type="text"
-            value={editForm[key]}
-            onChange={(e) => setEditForm((f) => f ? { ...f, [key]: e.target.value } : f)}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
             className={inputCls}
+            required={required}
           />
         )}
       </label>
@@ -826,7 +878,15 @@ function AbaConfiguracoes({
     <div className="pb-24">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="font-display text-2xl font-medium text-[var(--ink)]">Configurações</h1>
-        <span className="eyebrow text-xs text-[var(--muted)]">{clientes.length} cliente{clientes.length !== 1 ? "s" : ""}</span>
+        <div className="flex items-center gap-3">
+          <span className="eyebrow text-xs text-[var(--muted)]">{clientes.length} cliente{clientes.length !== 1 ? "s" : ""}</span>
+          <button
+            onClick={() => { setCriando(true); setCriarForm(emptyCreateForm()); setCreateErr(null); }}
+            className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+          >
+            + Adicionar cliente
+          </button>
+        </div>
       </div>
 
       {/* Busca */}
@@ -910,15 +970,15 @@ function AbaConfiguracoes({
             </div>
             <form onSubmit={handleSalvar} className="flex flex-col gap-3">
               <div className="grid grid-cols-2 gap-3">
-                {renderField("Nome", "nome")}
-                {renderField("Categoria", "categoria", "select")}
-                {renderField("Gestor", "gestor")}
-                {renderField("ID Google Ads", "id_google_ads")}
-                {renderField("ID Meta Ads", "id_meta_ads")}
-                {renderField("ID GA4", "id_ga4")}
+                {renderField("Nome", editForm!.nome, (v) => setEditForm((f) => f && { ...f, nome: v }))}
+                {renderField("Categoria", editForm!.categoria, (v) => setEditForm((f) => f && { ...f, categoria: v }), "select")}
+                {renderField("Gestor", editForm!.gestor, (v) => setEditForm((f) => f && { ...f, gestor: v }))}
+                {renderField("ID Google Ads", editForm!.id_google_ads, (v) => setEditForm((f) => f && { ...f, id_google_ads: v }))}
+                {renderField("ID Meta Ads", editForm!.id_meta_ads, (v) => setEditForm((f) => f && { ...f, id_meta_ads: v }))}
+                {renderField("ID GA4", editForm!.id_ga4, (v) => setEditForm((f) => f && { ...f, id_ga4: v }))}
               </div>
-              {renderField("Link Painel de Controle", "painel_url")}
-              {renderField("Link Pasta", "pasta_url")}
+              {renderField("Link Painel de Controle", editForm!.painel_url, (v) => setEditForm((f) => f && { ...f, painel_url: v }))}
+              {renderField("Link Pasta", editForm!.pasta_url, (v) => setEditForm((f) => f && { ...f, pasta_url: v }))}
               {saveErr && (
                 <p className="text-xs text-[var(--crimson)]">{saveErr}</p>
               )}
@@ -933,6 +993,55 @@ function AbaConfiguracoes({
                 <button
                   type="button"
                   onClick={() => setEditando(null)}
+                  className="flex-1 rounded-md border border-[var(--rule-soft)] py-2 text-sm text-[var(--muted)] transition hover:border-[var(--ink)] hover:text-[var(--ink)]"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de criação */}
+      {criando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="font-display text-lg font-medium text-[var(--ink)]">Novo cliente</h2>
+              <button
+                type="button"
+                onClick={() => setCriando(false)}
+                className="text-sm text-[var(--muted)] transition hover:text-[var(--ink)]"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleCriar} className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                {renderField("Nome", criarForm.nome, (v) => setCriarForm((f) => ({ ...f, nome: v })), "text", true)}
+                {renderField("Categoria", criarForm.categoria, (v) => setCriarForm((f) => ({ ...f, categoria: v })), "select", true)}
+                {renderField("Gestor", criarForm.gestor, (v) => setCriarForm((f) => ({ ...f, gestor: v })))}
+                {renderField("ID Google Ads", criarForm.id_google_ads, (v) => setCriarForm((f) => ({ ...f, id_google_ads: v })))}
+                {renderField("ID Meta Ads", criarForm.id_meta_ads, (v) => setCriarForm((f) => ({ ...f, id_meta_ads: v })))}
+                {renderField("ID GA4", criarForm.id_ga4, (v) => setCriarForm((f) => ({ ...f, id_ga4: v })))}
+              </div>
+              {renderField("Link Painel de Controle", criarForm.painel_url, (v) => setCriarForm((f) => ({ ...f, painel_url: v })))}
+              {renderField("Link Pasta", criarForm.pasta_url, (v) => setCriarForm((f) => ({ ...f, pasta_url: v })))}
+              {createErr && (
+                <p className="text-xs text-[var(--crimson)]">{createErr}</p>
+              )}
+              <div className="mt-1 flex gap-3">
+                <button
+                  type="submit"
+                  disabled={creating || !criarForm.nome.trim()}
+                  className="flex-1 rounded-md bg-[var(--forest)] py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {creating ? "Criando…" : "Criar cliente"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCriando(false)}
                   className="flex-1 rounded-md border border-[var(--rule-soft)] py-2 text-sm text-[var(--muted)] transition hover:border-[var(--ink)] hover:text-[var(--ink)]"
                 >
                   Cancelar
@@ -1072,6 +1181,9 @@ export default function GestorDashboard() {
               }
               onClienteDeleted={(id) =>
                 setClientes((prev) => prev.filter((c) => c.id !== id))
+              }
+              onClienteCriado={(novo) =>
+                setClientes((prev) => [...prev, novo].sort((a, b) => a.nome.localeCompare(b.nome)))
               }
             />
           )}
