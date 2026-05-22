@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session, selectinload
 
 from api.auth import require_admin, require_auth
@@ -14,10 +14,15 @@ from models import Cliente, ReportJob, Usuario, UsuarioCliente
 from models.report_job import JobStatus
 from schemas import (
     AssignClientesRequest,
+    ClienteDetalheItem,
+    ClienteEditRequest,
     ClienteGestorItem,
+    ClienteMetricasItem,
     ClientesGestorResponse,
     CreateUsuarioRequest,
+    GestoresResponse,
     JobStatusResponse,
+    MetricasDashboardResponse,
     TriggerRequest,
     TriggerResponse,
     UsuarioListItem,
@@ -48,18 +53,19 @@ def _job_to_response(job: ReportJob) -> JobStatusResponse:
 
 
 def _mark_stale_running_jobs(session: Session) -> None:
-    """Mark jobs stuck in 'running' for more than 10 minutes as error."""
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
-    session.execute(
-        update(ReportJob)
-        .where(ReportJob.status == JobStatus.RUNNING, ReportJob.created_at < cutoff)
-        .values(
-            status=JobStatus.ERROR,
-            erro="Timeout: job ficou em running por mais de 10 minutos",
-            finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    """Mark jobs stuck in 'running' for more than 30 minutes as error."""
+    stale = session.execute(
+        select(ReportJob).where(
+            ReportJob.status == JobStatus.RUNNING,
+            ReportJob.created_at < text("NOW() - INTERVAL '30 minutes'"),
         )
-    )
-    session.commit()
+    ).scalars().all()
+    for job in stale:
+        job.status = JobStatus.ERROR
+        job.erro = "Timeout: job ficou em running por mais de 30 minutos"
+        job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    if stale:
+        session.commit()
 
 
 # ── GET /gestor/clientes ───────────────────────────────────────────────────
@@ -69,19 +75,110 @@ def list_clientes(
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> ClientesGestorResponse:
-    stmt = (
-        select(Cliente)
-        .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
-        .where(UsuarioCliente.usuario_id == user.id)
-        .order_by(Cliente.nome.asc())
-    )
+    if user.is_admin:
+        stmt = select(Cliente).where(Cliente.ativo == True).order_by(Cliente.nome.asc())
+    else:
+        stmt = (
+            select(Cliente)
+            .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
+            .where(UsuarioCliente.usuario_id == user.id, Cliente.ativo == True)
+            .order_by(Cliente.nome.asc())
+        )
     clientes = session.execute(stmt).scalars().all()
     return ClientesGestorResponse(
         items=[
-            ClienteGestorItem(id=c.id, slug=c.slug, nome=c.nome, categoria=c.categoria.value)
+            ClienteGestorItem(
+                id=c.id, slug=c.slug, nome=c.nome,
+                categoria=c.categoria.value, gestor=c.gestor,
+            )
             for c in clientes
         ]
     )
+
+
+# ── GET /gestor/gestores ───────────────────────────────────────────────────────
+
+@router.get("/gestores", response_model=GestoresResponse)
+def list_gestores(
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> GestoresResponse:
+    from sqlalchemy import distinct
+    if user.is_admin:
+        stmt = (
+            select(distinct(Cliente.gestor))
+            .where(Cliente.gestor.isnot(None), Cliente.ativo == True)
+            .order_by(Cliente.gestor)
+        )
+    else:
+        stmt = (
+            select(distinct(Cliente.gestor))
+            .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
+            .where(
+                UsuarioCliente.usuario_id == user.id,
+                Cliente.gestor.isnot(None),
+                Cliente.ativo == True,
+            )
+            .order_by(Cliente.gestor)
+        )
+    gestores = [row[0] for row in session.execute(stmt).all()]
+    return GestoresResponse(items=gestores)
+
+
+# ── PATCH /gestor/clientes/{cliente_id} ───────────────────────────────────
+
+@router.patch("/clientes/{cliente_id}", response_model=ClienteDetalheItem)
+def update_cliente(
+    cliente_id: uuid.UUID,
+    body: ClienteEditRequest,
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> ClienteDetalheItem:
+    if user.is_admin:
+        cliente = session.get(Cliente, cliente_id)
+    else:
+        cliente = session.execute(
+            select(Cliente)
+            .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
+            .where(Cliente.id == cliente_id, UsuarioCliente.usuario_id == user.id)
+        ).scalar_one_or_none()
+
+    if cliente is None or not cliente.ativo:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        if field == "categoria" and value is not None:
+            from models.cliente import Categoria as CatEnum
+            value = CatEnum(value)
+        setattr(cliente, field, value)
+
+    session.commit()
+    session.refresh(cliente)
+    return ClienteDetalheItem.model_validate(cliente)
+
+
+# ── DELETE /gestor/clientes/{cliente_id} (soft delete) ────────────────────
+
+@router.delete("/clientes/{cliente_id}", status_code=204)
+def deactivate_cliente(
+    cliente_id: uuid.UUID,
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> None:
+    if user.is_admin:
+        cliente = session.get(Cliente, cliente_id)
+    else:
+        cliente = session.execute(
+            select(Cliente)
+            .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
+            .where(Cliente.id == cliente_id, UsuarioCliente.usuario_id == user.id)
+        ).scalar_one_or_none()
+
+    if cliente is None or not cliente.ativo:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    cliente.ativo = False
+    session.commit()
 
 
 # ── POST /gestor/reports/trigger ───────────────────────────────────────────
@@ -95,15 +192,20 @@ def trigger_report(
     if not _MES_RE.match(body.mes):
         raise HTTPException(status_code=400, detail="mes deve ser YYYY-MM")
 
-    # Verify user has access to this client
-    cliente = session.execute(
-        select(Cliente)
-        .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
-        .where(
-            Cliente.slug == body.slug,
-            UsuarioCliente.usuario_id == user.id,
-        )
-    ).scalar_one_or_none()
+    # Verify user has access to this client (admins can access all clients)
+    if user.is_admin:
+        cliente = session.execute(
+            select(Cliente).where(Cliente.slug == body.slug)
+        ).scalar_one_or_none()
+    else:
+        cliente = session.execute(
+            select(Cliente)
+            .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
+            .where(
+                Cliente.slug == body.slug,
+                UsuarioCliente.usuario_id == user.id,
+            )
+        ).scalar_one_or_none()
     if cliente is None:
         raise HTTPException(status_code=404, detail="Cliente não encontrado ou sem acesso")
 
@@ -179,11 +281,10 @@ def get_job(
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> JobStatusResponse:
-    job = session.execute(
-        select(ReportJob)
-        .options(selectinload(ReportJob.cliente))
-        .where(ReportJob.id == job_id, ReportJob.usuario_id == user.id)
-    ).scalar_one_or_none()
+    stmt = select(ReportJob).options(selectinload(ReportJob.cliente)).where(ReportJob.id == job_id)
+    if not user.is_admin:
+        stmt = stmt.where(ReportJob.usuario_id == user.id)
+    job = session.execute(stmt).scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=404, detail="Job não encontrado")
     return _job_to_response(job)
@@ -303,7 +404,7 @@ def admin_get_usuario_clientes(
     )
     clientes = session.execute(stmt).scalars().all()
     return ClientesGestorResponse(
-        items=[ClienteGestorItem(id=c.id, slug=c.slug, nome=c.nome, categoria=c.categoria.value) for c in clientes]
+        items=[ClienteGestorItem(id=c.id, slug=c.slug, nome=c.nome, categoria=c.categoria.value, gestor=c.gestor) for c in clientes]
     )
 
 
@@ -352,3 +453,89 @@ def admin_remove_cliente(
     if uc:
         session.delete(uc)
         session.commit()
+
+
+# ── GET /gestor/metricas ───────────────────────────────────────────────────
+
+@router.get("/metricas", response_model=MetricasDashboardResponse)
+def get_metricas_dashboard(
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> MetricasDashboardResponse:
+    from models.snapshot import Snapshot
+    from sqlalchemy import desc
+
+    # Resolve client list for this user
+    if user.is_admin:
+        clientes = session.execute(
+            select(Cliente).where(Cliente.ativo == True).order_by(Cliente.nome)
+        ).scalars().all()
+    else:
+        clientes = session.execute(
+            select(Cliente)
+            .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
+            .where(UsuarioCliente.usuario_id == user.id, Cliente.ativo == True)
+            .order_by(Cliente.nome)
+        ).scalars().all()
+
+    cliente_ids = [c.id for c in clientes]
+    if not cliente_ids:
+        return MetricasDashboardResponse(
+            items=[], total_faturamento=0, total_investimento=0,
+            media_roas=None, total_leads=0, total_vendas=0,
+        )
+
+    # Latest MENSAL snapshot per client via a subquery
+    sub = (
+        select(
+            Snapshot.cliente_id,
+            func.max(Snapshot.periodo_fim).label("max_fim"),
+        )
+        .where(
+            Snapshot.cliente_id.in_(cliente_ids),
+            Snapshot.frequencia == "MENSAL",
+        )
+        .group_by(Snapshot.cliente_id)
+        .subquery()
+    )
+
+    snapshots = session.execute(
+        select(Snapshot).join(
+            sub,
+            (Snapshot.cliente_id == sub.c.cliente_id)
+            & (Snapshot.periodo_fim == sub.c.max_fim),
+        )
+    ).scalars().all()
+
+    snap_by_client = {s.cliente_id: s for s in snapshots}
+
+    items: list[ClienteMetricasItem] = []
+    for c in clientes:
+        s = snap_by_client.get(c.id)
+        items.append(ClienteMetricasItem(
+            slug=c.slug,
+            nome=c.nome,
+            categoria=c.categoria.value,
+            periodo_inicio=str(s.periodo_inicio) if s else None,
+            periodo_fim=str(s.periodo_fim) if s else None,
+            faturamento=float(s.faturamento) if s and s.faturamento is not None else None,
+            investimento=float(s.investimento) if s and s.investimento is not None else None,
+            roas=float(s.roas) if s and s.roas is not None else None,
+            cpa=float(s.cpa) if s and s.cpa is not None else None,
+            leads=s.leads if s else None,
+            vendas=s.vendas if s else None,
+            faturamento_var_pct=float(s.faturamento_var_pct) if s and s.faturamento_var_pct is not None else None,
+            roas_var_pct=float(s.roas_var_pct) if s and s.roas_var_pct is not None else None,
+        ))
+
+    with_data = [i for i in items if i.faturamento is not None or i.investimento is not None]
+    roas_vals = [i.roas for i in items if i.roas is not None]
+
+    return MetricasDashboardResponse(
+        items=items,
+        total_faturamento=sum(i.faturamento for i in with_data if i.faturamento),
+        total_investimento=sum(i.investimento for i in with_data if i.investimento),
+        media_roas=sum(roas_vals) / len(roas_vals) if roas_vals else None,
+        total_leads=sum(i.leads for i in items if i.leads),
+        total_vendas=sum(i.vendas for i in items if i.vendas),
+    )
