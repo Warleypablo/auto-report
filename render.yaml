@@ -74,4 +74,4 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: https://autoreport-backend.onrender.com
       - key: INTERNAL_API_TOKEN
-        sync: false  # copiar o valor de ETL_TRIGGER_TOKEN do serviço autoreport-backend
+        value: "5"
