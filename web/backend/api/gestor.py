@@ -113,10 +113,9 @@ def list_clientes(
         )
     clientes = session.execute(stmt).scalars().all()
 
-    # Busca dados do ClickUp para os clientes vinculados
-    task_ids = [c.cup_task_id for c in clientes if c.cup_task_id]
+    # Busca dados do ClickUp via join direto pelos cup_task_ids dos clientes
     cup_map: dict = {}
-    if task_ids:
+    if clientes:
         rows = session.execute(
             text("""
                 SELECT
@@ -129,16 +128,16 @@ def list_clientes(
                     ct.plano    AS contrato_plano,
                     ct.valorr   AS contrato_valor_recorrente,
                     ct.status   AS contrato_status
-                FROM staging.cup_clientes cc
+                FROM clientes c
+                JOIN staging.cup_clientes cc ON cc.task_id = c.cup_task_id
                 LEFT JOIN LATERAL (
                     SELECT * FROM staging.cup_contratos
                     WHERE id_task = cc.task_id
                     ORDER BY data_inicio DESC NULLS LAST
                     LIMIT 1
                 ) ct ON TRUE
-                WHERE cc.task_id = ANY(:ids)
-            """),
-            {"ids": task_ids},
+                WHERE c.ativo = true
+            """)
         ).mappings().all()
         cup_map = {r["task_id"]: dict(r) for r in rows}
 
