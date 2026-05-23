@@ -1,6 +1,10 @@
 import type { CaseDetail, CaseListResponse, RankingItem } from "./types";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const BASE =
+  (typeof window === "undefined"
+    ? process.env.INTERNAL_API_URL   // SSR: URL interna do Render
+    : process.env.NEXT_PUBLIC_API_URL) // cliente: URL pública
+  ?? "http://localhost:8765";
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
