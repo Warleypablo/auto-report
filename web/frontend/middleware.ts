@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow login page through without auth check
   if (pathname === "/gestor/login") {
     return NextResponse.next();
   }
@@ -20,5 +19,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/gestor/:path*"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon\\.ico).*)",
+  ],
 };
