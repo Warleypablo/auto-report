@@ -189,6 +189,40 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
 
       {erro && <p className="mb-6 text-sm text-[var(--crimson)]">{erro}</p>}
 
+      {/* ClickUp info */}
+      {cliente?.cup && (
+        <div className="mb-8 rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+          <p className="eyebrow mb-3 text-xs text-[var(--muted)]">ClickUp</p>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+            {[
+              ["Status", cliente.cup.status],
+              ["Status conta", cliente.cup.status_conta],
+              ["Squad", cliente.cup.squad],
+              ["Responsável", cliente.cup.responsavel],
+              ["Vendedor", cliente.cup.vendedor],
+              ["Segmento", cliente.cup.segmento],
+              ["Cluster", cliente.cup.cluster],
+              ["Serviço", cliente.cup.contrato_servico],
+              ["Plano", cliente.cup.contrato_plano],
+              ["Valor recorrente", cliente.cup.contrato_valor_recorrente != null
+                ? `R$ ${cliente.cup.contrato_valor_recorrente.toLocaleString("pt-BR")}`
+                : null],
+              ["Status contrato", cliente.cup.contrato_status],
+              cliente.cup.motivo_cancelamento
+                ? ["Motivo cancel.", cliente.cup.motivo_cancelamento]
+                : null,
+            ]
+              .filter((r): r is [string, string | null] => r !== null && r[1] != null && r[1] !== "")
+              .map(([label, value]) => (
+                <div key={label} className="flex flex-col gap-0.5">
+                  <dt className="text-[var(--muted)]">{label}</dt>
+                  <dd className="font-medium text-[var(--ink)]">{value}</dd>
+                </div>
+              ))}
+          </dl>
+        </div>
+      )}
+
       {/* History */}
       {history.filter((j) => j.status === "done" || j.status === "error").length > 0 && (
         <div>

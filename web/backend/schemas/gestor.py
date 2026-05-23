@@ -27,6 +27,25 @@ class LoginResponse(BaseModel):
     usuario: UsuarioResponse
 
 
+class CupClienteInfo(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    status: str | None = None
+    responsavel: str | None = None
+    responsavel_geral: str | None = None
+    vendedor: str | None = None
+    squad: str | None = None
+    segmento: str | None = None
+    cluster: str | None = None
+    status_conta: str | None = None
+    motivo_cancelamento: str | None = None
+    contrato_servico: str | None = None
+    contrato_produto: str | None = None
+    contrato_plano: str | None = None
+    contrato_valor_recorrente: float | None = None
+    contrato_status: str | None = None
+
+
 class ClienteGestorItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -40,7 +59,9 @@ class ClienteGestorItem(BaseModel):
     id_ga4: str | None = None
     painel_url: str | None = None
     pasta_url: str | None = None
+    cup_task_id: str | None = None
     ativo: bool = True
+    cup: CupClienteInfo | None = None
 
     @field_validator("categoria", mode="before")
     @classmethod

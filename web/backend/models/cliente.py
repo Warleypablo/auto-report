@@ -31,6 +31,7 @@ class Cliente(Base):
     id_ga4: Mapped[str | None] = mapped_column(String, nullable=True)
     painel_url: Mapped[str | None] = mapped_column(String, nullable=True)
     pasta_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    cup_task_id: Mapped[str | None] = mapped_column(String, nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     setor: Mapped[str | None] = mapped_column(String, nullable=True)
     porte: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -8,6 +8,7 @@ from .case import CaseDetail, CaseListItem, PontoEvolucao
 from .gestor import (
     AssignClientesRequest,
     ClienteCreateRequest,
+    CupClienteInfo,
     ClienteDetalheItem,
     ClienteEditRequest,
     ClienteGestorItem,

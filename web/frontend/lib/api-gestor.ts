@@ -5,6 +5,23 @@ export type UsuarioInfo = {
   is_admin: boolean;
 };
 
+export type CupInfo = {
+  status: string | null;
+  responsavel: string | null;
+  responsavel_geral: string | null;
+  vendedor: string | null;
+  squad: string | null;
+  segmento: string | null;
+  cluster: string | null;
+  status_conta: string | null;
+  motivo_cancelamento: string | null;
+  contrato_servico: string | null;
+  contrato_produto: string | null;
+  contrato_plano: string | null;
+  contrato_valor_recorrente: number | null;
+  contrato_status: string | null;
+};
+
 export type ClienteGestor = {
   id: string;
   slug: string;
@@ -16,7 +33,9 @@ export type ClienteGestor = {
   id_ga4: string | null;
   painel_url: string | null;
   pasta_url: string | null;
+  cup_task_id: string | null;
   ativo: boolean;
+  cup: CupInfo | null;
 };
 
 export type ClienteEditData = {

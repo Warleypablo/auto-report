@@ -17,6 +17,7 @@ from etl.cliente_publico import slugify
 from schemas import (
     AssignClientesRequest,
     ClienteCreateRequest,
+    CupClienteInfo,
     ClienteDetalheItem,
     ClienteEditRequest,
     ClienteGestorItem,
@@ -99,6 +100,8 @@ def list_clientes(
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> ClientesGestorResponse:
+    from sqlalchemy import text
+
     if user.is_admin:
         stmt = select(Cliente).where(Cliente.ativo == True).order_by(Cliente.nome.asc())
     else:
@@ -109,9 +112,44 @@ def list_clientes(
             .order_by(Cliente.nome.asc())
         )
     clientes = session.execute(stmt).scalars().all()
-    return ClientesGestorResponse(
-        items=[ClienteGestorItem.model_validate(c) for c in clientes]
-    )
+
+    # Busca dados do ClickUp para os clientes vinculados
+    task_ids = [c.cup_task_id for c in clientes if c.cup_task_id]
+    cup_map: dict = {}
+    if task_ids:
+        rows = session.execute(
+            text("""
+                SELECT
+                    cc.task_id,
+                    cc.status, cc.responsavel, cc.responsavel_geral,
+                    cc.vendedor, cc.squad, cc.segmento, cc.cluster,
+                    cc.status_conta, cc.motivo_cancelamento,
+                    ct.servico  AS contrato_servico,
+                    ct.produto  AS contrato_produto,
+                    ct.plano    AS contrato_plano,
+                    ct.valorr   AS contrato_valor_recorrente,
+                    ct.status   AS contrato_status
+                FROM staging.cup_clientes cc
+                LEFT JOIN LATERAL (
+                    SELECT * FROM staging.cup_contratos
+                    WHERE id_task = cc.task_id
+                    ORDER BY data_inicio DESC NULLS LAST
+                    LIMIT 1
+                ) ct ON TRUE
+                WHERE cc.task_id = ANY(:ids)
+            """),
+            {"ids": task_ids},
+        ).mappings().all()
+        cup_map = {r["task_id"]: dict(r) for r in rows}
+
+    items = []
+    for c in clientes:
+        data = ClienteGestorItem.model_validate(c)
+        if c.cup_task_id and c.cup_task_id in cup_map:
+            data.cup = CupClienteInfo.model_validate(cup_map[c.cup_task_id])
+        items.append(data)
+
+    return ClientesGestorResponse(items=items)
 
 
 # ── POST /gestor/clientes ─────────────────────────────────────────────────────
