@@ -18,7 +18,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: ETL_TRIGGER_TOKEN
-        generateValue: true
+        value: "turbo-internal-token-2026"
       - key: JWT_EXPIRY_HOURS
         value: "8"
       - key: ETL_THREADS
@@ -74,4 +74,4 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: https://autoreport-backend.onrender.com
       - key: INTERNAL_API_TOKEN
-        value: "5"
+        value: "turbo-internal-token-2026"
