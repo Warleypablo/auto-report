@@ -69,6 +69,7 @@ services:
         value: production
       - key: PORT
         value: "3000"
-      # URL interna do Render (sem passar pela internet pública)
       - key: INTERNAL_API_URL
-        value: http://autoreport-backend:10000
+        value: https://autoreport-backend.onrender.com
+      - key: NEXT_PUBLIC_API_URL
+        value: https://autoreport-backend.onrender.com
