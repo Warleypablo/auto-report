@@ -204,10 +204,12 @@ export const gestorApi = {
     apiCall<void>(`clientes/${id}`, "DELETE"),
 
   syncGestoresFromClickup: () =>
-    apiCall<{ atualizados: number; sem_vinculo: number; sem_responsavel_clickup: number }>(
-      "clientes/sync-gestores",
-      "POST",
-    ),
+    apiCall<{
+      atualizados: number;
+      sem_vinculo: number;
+      sem_contrato_performance: number;
+      sem_responsavel_no_contrato: number;
+    }>("clientes/sync-gestores", "POST"),
 
   listClientesSemVinculoCup: () =>
     apiCall<{

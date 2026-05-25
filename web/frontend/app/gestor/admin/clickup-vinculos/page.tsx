@@ -48,6 +48,31 @@ export default function ClickupVinculosPage() {
   } | null>(null);
   const [automatchErro, setAutomatchErro] = useState<string | null>(null);
 
+  // Estado da sincronização de gestores
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    atualizados: number;
+    sem_vinculo: number;
+    sem_contrato_performance: number;
+    sem_responsavel_no_contrato: number;
+  } | null>(null);
+  const [syncErro, setSyncErro] = useState<string | null>(null);
+
+  async function syncGestores() {
+    if (!confirm("Atribuir gestores do ClickUp aos clientes do sistema?\n\nIsso vai sobrescrever clientes.gestor com o responsavel do contrato 'Performance' (cup_contratos) para todos os clientes vinculados.")) return;
+    setSyncing(true);
+    setSyncResult(null);
+    setSyncErro(null);
+    try {
+      const r = await gestorApi.syncGestoresFromClickup();
+      setSyncResult(r);
+    } catch (e) {
+      setSyncErro(e instanceof Error ? e.message : "Erro ao sincronizar");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function rodarAutomatchDryRun() {
     setAutomatchErro(null);
     setAutomatching(true);
@@ -186,6 +211,38 @@ export default function ClickupVinculosPage() {
           {automatchErro && <p className="mt-3 text-xs text-[var(--crimson)]">{automatchErro}</p>}
         </section>
       )}
+
+      {/* Sincronizar gestores do contrato Performance */}
+      <section className="mb-6 rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-[var(--ink)]">Sincronizar gestores do ClickUp</p>
+            <p className="text-xs text-[var(--muted)]">
+              Atribui clientes.gestor = responsavel do contrato cujo produto contém &ldquo;Performance&rdquo;
+              (cup_contratos), para todos os clientes vinculados.
+            </p>
+          </div>
+          <button
+            onClick={syncGestores}
+            disabled={syncing}
+            className="rounded-full border border-[var(--forest)] px-4 py-1.5 text-xs uppercase tracking-[0.18em] text-[var(--forest)] transition hover:bg-[var(--forest)] hover:text-[var(--paper)] disabled:opacity-50"
+          >
+            {syncing ? "Sincronizando…" : "Sincronizar"}
+          </button>
+        </div>
+        {syncResult && (
+          <p className="mt-3 text-xs text-[var(--ink-soft)]">
+            <span className="text-[var(--forest)]">{syncResult.atualizados} atualizados</span>
+            {" · "}
+            {syncResult.sem_vinculo} sem cup_task_id
+            {" · "}
+            {syncResult.sem_contrato_performance} sem contrato Performance
+            {" · "}
+            {syncResult.sem_responsavel_no_contrato} sem responsável no contrato
+          </p>
+        )}
+        {syncErro && <p className="mt-3 text-xs text-[var(--crimson)]">{syncErro}</p>}
+      </section>
 
       {/* Modal de preview do automatch */}
       {automatchPreview && (

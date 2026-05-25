@@ -372,52 +372,80 @@ def sync_gestores_from_clickup(
     user: Usuario = Depends(require_admin),
     session: Session = Depends(get_session),
 ) -> dict:
-    # Pré-contagem para o relatório de retorno
+    """Atribui clientes.gestor = responsável do contrato 'Performance' no ClickUp.
+
+    Caminho do dado:
+      clientes.cup_task_id → staging.cup_clientes.task_id
+                           → staging.cup_contratos.id_task (filtro: produto ILIKE '%performance%')
+                           → responsavel (do contrato mais recente)
+    """
+    # Pré-contagem: agrupa por situação
     counts = session.execute(
         text("""
+            WITH performance_resp AS (
+                SELECT DISTINCT ON (ct.id_task)
+                    ct.id_task,
+                    ct.responsavel
+                FROM staging.cup_contratos ct
+                WHERE LOWER(ct.produto) LIKE '%performance%'
+                ORDER BY ct.id_task, ct.data_inicio DESC NULLS LAST
+            )
             SELECT
                 COUNT(*) FILTER (WHERE c.cup_task_id IS NULL) AS sem_vinculo,
                 COUNT(*) FILTER (
                     WHERE c.cup_task_id IS NOT NULL
-                      AND cc.responsavel IS NOT NULL
-                      AND TRIM(cc.responsavel) <> ''
-                      AND (c.gestor IS DISTINCT FROM cc.responsavel)
+                      AND pr.responsavel IS NOT NULL
+                      AND TRIM(pr.responsavel) <> ''
+                      AND (c.gestor IS DISTINCT FROM pr.responsavel)
                 ) AS a_atualizar,
                 COUNT(*) FILTER (
                     WHERE c.cup_task_id IS NOT NULL
-                      AND (cc.responsavel IS NULL OR TRIM(cc.responsavel) = '')
-                ) AS sem_responsavel_clickup
+                      AND pr.id_task IS NULL
+                ) AS sem_contrato_performance,
+                COUNT(*) FILTER (
+                    WHERE c.cup_task_id IS NOT NULL
+                      AND pr.id_task IS NOT NULL
+                      AND (pr.responsavel IS NULL OR TRIM(pr.responsavel) = '')
+                ) AS sem_responsavel_no_contrato
             FROM clientes c
-            LEFT JOIN staging.cup_clientes cc ON cc.task_id = c.cup_task_id
+            LEFT JOIN performance_resp pr ON pr.id_task = c.cup_task_id
             WHERE c.ativo = true
         """)
     ).mappings().one()
 
-    # UPDATE em massa — só onde há mudança real e responsável não vazio
+    # UPDATE: só onde tem contrato Performance com responsável definido E mudou
     result = session.execute(
         text("""
             UPDATE clientes c
-            SET gestor = cc.responsavel,
+            SET gestor = pr.responsavel,
                 atualizado_em = NOW()
-            FROM staging.cup_clientes cc
-            WHERE cc.task_id = c.cup_task_id
+            FROM (
+                SELECT DISTINCT ON (ct.id_task)
+                    ct.id_task,
+                    ct.responsavel
+                FROM staging.cup_contratos ct
+                WHERE LOWER(ct.produto) LIKE '%performance%'
+                  AND ct.responsavel IS NOT NULL
+                  AND TRIM(ct.responsavel) <> ''
+                ORDER BY ct.id_task, ct.data_inicio DESC NULLS LAST
+            ) pr
+            WHERE pr.id_task = c.cup_task_id
               AND c.ativo = true
-              AND cc.responsavel IS NOT NULL
-              AND TRIM(cc.responsavel) <> ''
-              AND (c.gestor IS DISTINCT FROM cc.responsavel)
+              AND (c.gestor IS DISTINCT FROM pr.responsavel)
         """)
     )
     session.commit()
 
     _log.info(
-        "sync-gestores: atualizados=%d, sem_vinculo=%d, sem_responsavel_clickup=%d",
-        result.rowcount, counts["sem_vinculo"], counts["sem_responsavel_clickup"],
+        "sync-gestores: atualizados=%d, sem_vinculo=%d, sem_contrato_performance=%d, sem_responsavel_no_contrato=%d",
+        result.rowcount, counts["sem_vinculo"], counts["sem_contrato_performance"], counts["sem_responsavel_no_contrato"],
     )
 
     return {
         "atualizados": result.rowcount,
         "sem_vinculo": counts["sem_vinculo"],
-        "sem_responsavel_clickup": counts["sem_responsavel_clickup"],
+        "sem_contrato_performance": counts["sem_contrato_performance"],
+        "sem_responsavel_no_contrato": counts["sem_responsavel_no_contrato"],
     }
 
 
