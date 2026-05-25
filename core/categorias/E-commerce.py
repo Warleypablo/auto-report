@@ -85,7 +85,7 @@ def coletar_dados(cliente, periodo_ref, periodo_comp) -> dict:
         ]
 
         step_logger.start("coletar_apis_paralelo")
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             futures = {executor.submit(fn): name for name, fn in tasks}
             for future in as_completed(futures):
                 name = futures[future]
