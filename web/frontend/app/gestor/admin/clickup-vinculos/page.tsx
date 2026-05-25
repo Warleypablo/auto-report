@@ -39,6 +39,44 @@ export default function ClickupVinculosPage() {
   const [vinculando, setVinculando] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, { ok: boolean; msg: string }>>({});
 
+  // Estado do automatch (preview + confirmação)
+  const [automatching, setAutomatching] = useState(false);
+  const [automatchPreview, setAutomatchPreview] = useState<{
+    matches: Array<{ cliente_id: string; cliente_nome: string; task_id: string; cup_nome: string }>;
+    ambiguos: Array<{ cliente_id: string; cliente_nome: string; candidatos: Array<{ task_id: string; nome: string }> }>;
+    stats: { total_clientes_sem_vinculo: number; matches_propostos: number; ambiguos: number; sem_candidato: number };
+  } | null>(null);
+  const [automatchErro, setAutomatchErro] = useState<string | null>(null);
+
+  async function rodarAutomatchDryRun() {
+    setAutomatchErro(null);
+    setAutomatching(true);
+    try {
+      const r = await gestorApi.automatchClickup(true);
+      setAutomatchPreview({ matches: r.matches, ambiguos: r.ambiguos, stats: r.stats });
+    } catch (e) {
+      setAutomatchErro(e instanceof Error ? e.message : "Erro no preview");
+    } finally {
+      setAutomatching(false);
+    }
+  }
+
+  async function aplicarAutomatch() {
+    setAutomatchErro(null);
+    setAutomatching(true);
+    try {
+      const r = await gestorApi.automatchClickup(false);
+      setAutomatchPreview(null);
+      // Recarrega a lista — os matches aplicados devem sumir
+      load();
+      alert(`${r.aplicados} clientes vinculados automaticamente.`);
+    } catch (e) {
+      setAutomatchErro(e instanceof Error ? e.message : "Erro ao aplicar");
+    } finally {
+      setAutomatching(false);
+    }
+  }
+
   function load() {
     setLoading(true);
     setErro(null);
@@ -125,6 +163,94 @@ export default function ClickupVinculosPage() {
       </p>
 
       {erro && <p className="mb-4 text-sm text-[var(--crimson)]">{erro}</p>}
+
+      {/* Match automático em lote */}
+      {items.length > 0 && (
+        <section className="mb-6 rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-[var(--ink)]">Match automático em lote</p>
+              <p className="text-xs text-[var(--muted)]">
+                Normaliza nomes (remove sufixos como LTDA, ME, S.A., acentos e pontuação) e vincula
+                apenas onde há candidato único no ClickUp.
+              </p>
+            </div>
+            <button
+              onClick={rodarAutomatchDryRun}
+              disabled={automatching}
+              className="rounded-full border border-[var(--forest)] px-4 py-1.5 text-xs uppercase tracking-[0.18em] text-[var(--forest)] transition hover:bg-[var(--forest)] hover:text-[var(--paper)] disabled:opacity-50"
+            >
+              {automatching ? "Processando…" : "Visualizar match"}
+            </button>
+          </div>
+          {automatchErro && <p className="mt-3 text-xs text-[var(--crimson)]">{automatchErro}</p>}
+        </section>
+      )}
+
+      {/* Modal de preview do automatch */}
+      {automatchPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] shadow-xl">
+            <div className="border-b border-[var(--rule-soft)] px-5 py-3">
+              <h2 className="font-display text-lg font-medium text-[var(--ink)]">
+                Preview do match automático
+              </h2>
+              <p className="text-xs text-[var(--muted)]">
+                {automatchPreview.stats.matches_propostos} ser{automatchPreview.stats.matches_propostos !== 1 ? "ão" : "á"} vinculado{automatchPreview.stats.matches_propostos !== 1 ? "s" : ""} · {automatchPreview.stats.ambiguos} ambíguo{automatchPreview.stats.ambiguos !== 1 ? "s" : ""} (precisam vínculo manual) · {automatchPreview.stats.sem_candidato} sem candidato
+              </p>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
+              {automatchPreview.matches.length > 0 ? (
+                <>
+                  <p className="eyebrow mb-2 text-xs text-[var(--forest)]">Matches a aplicar</p>
+                  <ul className="mb-4 flex flex-col gap-1">
+                    {automatchPreview.matches.map((m) => (
+                      <li key={m.cliente_id} className="flex items-baseline justify-between gap-3 text-xs">
+                        <span className="font-medium text-[var(--ink)]">{m.cliente_nome}</span>
+                        <span className="text-[var(--muted)]">→</span>
+                        <span className="flex-1 text-right text-[var(--ink-soft)]">{m.cup_nome}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="text-xs text-[var(--muted)]">Nenhum match automático encontrado.</p>
+              )}
+              {automatchPreview.ambiguos.length > 0 && (
+                <>
+                  <p className="eyebrow mb-2 mt-4 text-xs text-[var(--amber)]">Ambíguos (não vinculados)</p>
+                  <ul className="flex flex-col gap-1">
+                    {automatchPreview.ambiguos.map((a) => (
+                      <li key={a.cliente_id} className="text-xs">
+                        <span className="font-medium text-[var(--ink)]">{a.cliente_nome}</span>
+                        <span className="ml-2 text-[var(--muted)]">
+                          ({a.candidatos.length} candidatos: {a.candidatos.map((c) => c.nome).join(", ")})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[var(--rule-soft)] px-5 py-3">
+              <button
+                onClick={() => setAutomatchPreview(null)}
+                disabled={automatching}
+                className="rounded-full px-4 py-1.5 text-xs uppercase tracking-[0.18em] text-[var(--muted)] hover:text-[var(--ink)] disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={aplicarAutomatch}
+                disabled={automatching || automatchPreview.matches.length === 0}
+                className="rounded-full border border-[var(--forest)] bg-[var(--forest)] px-4 py-1.5 text-xs uppercase tracking-[0.18em] text-[var(--paper)] transition hover:opacity-90 disabled:opacity-50"
+              >
+                {automatching ? "Aplicando…" : `Aplicar ${automatchPreview.matches.length} vínculo${automatchPreview.matches.length !== 1 ? "s" : ""}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {items.length === 0 ? (
         <p className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-6 text-center text-sm text-[var(--muted)]">

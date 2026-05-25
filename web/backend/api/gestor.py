@@ -244,6 +244,124 @@ def patch_cup_task(
     return {"cliente_id": str(cliente.id), "cup_task_id": cliente.cup_task_id}
 
 
+# ── POST /gestor/clickup/automatch ─────────────────────────────────────────
+# Tenta vincular clientes sem cup_task_id usando matching tolerante:
+# - normaliza nome (lower, sem acentos, sem sufixos jurídicos, sem pontuação)
+# - só aplica match se houver candidato ÚNICO (sem ambiguidade)
+# - dry_run=true (default) retorna proposta sem aplicar
+
+import re
+import unicodedata
+from collections import defaultdict
+
+
+_SUFIXOS_JURIDICOS_RE = re.compile(
+    r"\s+(ltda|me|mei|epp|eireli|s\.?a\.?|sa|inc\.?|corp\.?)\s*\.?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_nome(s: str | None) -> str:
+    if not s:
+        return ""
+    # Remove acentos
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    s = s.lower().strip()
+    # Remove sufixos jurídicos no fim
+    s = _SUFIXOS_JURIDICOS_RE.sub("", s)
+    # Remove pontuação (mantém alfanumérico + espaço)
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    # Colapsa espaços
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+@router.post("/clickup/automatch", status_code=200)
+def automatch_clickup(
+    dry_run: bool = Query(True),
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    # 1. Carrega todas as tasks do ClickUp e agrupa por nome normalizado
+    cup_rows = session.execute(
+        text("SELECT task_id, nome FROM staging.cup_clientes WHERE nome IS NOT NULL AND TRIM(nome) <> ''")
+    ).mappings().all()
+
+    cup_by_norm: dict[str, list[dict]] = defaultdict(list)
+    for r in cup_rows:
+        norm = _normalize_nome(r["nome"])
+        if norm:
+            cup_by_norm[norm].append({"task_id": r["task_id"], "nome": r["nome"]})
+
+    # 2. Carrega clientes ativos sem vínculo
+    clientes = session.execute(
+        select(Cliente)
+        .where(Cliente.cup_task_id.is_(None), Cliente.ativo == True)
+        .order_by(Cliente.nome.asc())
+    ).scalars().all()
+
+    # 3. Pra cada cliente, tenta match
+    matches: list[dict] = []
+    ambiguos: list[dict] = []
+    sem_candidato: list[dict] = []
+
+    for c in clientes:
+        norm = _normalize_nome(c.nome)
+        candidates = cup_by_norm.get(norm, [])
+
+        if len(candidates) == 1:
+            matches.append({
+                "cliente_id": str(c.id),
+                "cliente_nome": c.nome,
+                "task_id": candidates[0]["task_id"],
+                "cup_nome": candidates[0]["nome"],
+            })
+        elif len(candidates) > 1:
+            ambiguos.append({
+                "cliente_id": str(c.id),
+                "cliente_nome": c.nome,
+                "candidatos": candidates,
+            })
+        else:
+            sem_candidato.append({
+                "cliente_id": str(c.id),
+                "cliente_nome": c.nome,
+            })
+
+    # 4. Aplica se não for dry_run
+    aplicados = 0
+    if not dry_run and matches:
+        for m in matches:
+            # Re-verifica que ninguém pegou esse task_id no meio do caminho
+            ja_usado = session.execute(
+                select(Cliente.id).where(Cliente.cup_task_id == m["task_id"])
+            ).scalar_one_or_none()
+            if ja_usado is not None:
+                continue
+            session.execute(
+                update(Cliente)
+                .where(Cliente.id == uuid.UUID(m["cliente_id"]))
+                .values(cup_task_id=m["task_id"])
+            )
+            aplicados += 1
+        session.commit()
+        _log.info("automatch: aplicados=%d (de %d propostos)", aplicados, len(matches))
+
+    return {
+        "dry_run": dry_run,
+        "matches": matches,
+        "aplicados": aplicados,
+        "ambiguos": ambiguos,
+        "sem_candidato": sem_candidato,
+        "stats": {
+            "total_clientes_sem_vinculo": len(clientes),
+            "matches_propostos": len(matches),
+            "ambiguos": len(ambiguos),
+            "sem_candidato": len(sem_candidato),
+        },
+    }
+
+
 # ── POST /gestor/clientes/sync-gestores ────────────────────────────────────
 # Atribui clientes.gestor = staging.cup_clientes.responsavel para todos os
 # clientes vinculados (cup_task_id IS NOT NULL). Útil quando há rotatividade

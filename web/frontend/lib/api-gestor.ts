@@ -239,6 +239,21 @@ export const gestorApi = {
       { cup_task_id: cupTaskId },
     ),
 
+  automatchClickup: (dryRun: boolean) =>
+    apiCall<{
+      dry_run: boolean;
+      matches: Array<{ cliente_id: string; cliente_nome: string; task_id: string; cup_nome: string }>;
+      aplicados: number;
+      ambiguos: Array<{ cliente_id: string; cliente_nome: string; candidatos: Array<{ task_id: string; nome: string }> }>;
+      sem_candidato: Array<{ cliente_id: string; cliente_nome: string }>;
+      stats: {
+        total_clientes_sem_vinculo: number;
+        matches_propostos: number;
+        ambiguos: number;
+        sem_candidato: number;
+      };
+    }>(`clickup/automatch?dry_run=${dryRun}`, "POST"),
+
   triggerReport: (slug: string, mes: string, frequencia: Frequencia = "MENSAL") =>
     apiCall<{ job_id: string }>("reports/trigger", "POST", { slug, mes, frequencia }),
 
