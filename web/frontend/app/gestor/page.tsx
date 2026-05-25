@@ -422,7 +422,9 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
                   )}
                   {j.status === "done" && !j.slides_url && <span className="text-xs text-[var(--muted)]">Concluído</span>}
                   {(j.status === "error" || j.status === "dispatch_error") && (
-                    <span className="max-w-xs truncate text-xs text-[var(--crimson)]" title={j.erro ?? ""}>{j.erro ?? "Erro desconhecido"}</span>
+                    <span className="max-w-[60ch] whitespace-pre-wrap break-words text-right text-xs text-[var(--crimson)]" title={j.erro ?? ""}>
+                      {j.erro ?? "Erro desconhecido"}
+                    </span>
                   )}
                 </li>
               );
