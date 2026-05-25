@@ -11,7 +11,7 @@ antes da primeira execução.
 
 from __future__ import annotations
 
-from core.status import set_status, set_last_generated # type: ignore
+from core.status import set_status, set_last_generated, set_status_e_lastgen # type: ignore
 
 import argparse
 import sys
@@ -87,19 +87,15 @@ def processar_cliente(cliente, FREQ: str = "SEMANAL") -> None:
         handler.pos_processar(presentation_id, dados)
         step_logger.end("pos_processar_categoria")
 
-        step_logger.start("set_status_GERADO")
-        set_status(cliente, "GERADO ✅")
-        step_logger.end("set_status_GERADO")
-
-        step_logger.start("set_last_generated")
+        step_logger.start("set_status_e_lastgen")
         try:
-            set_last_generated(cliente, date.today())
+            set_status_e_lastgen(cliente, "GERADO ✅", date.today())
         except Exception:
             log.exception(
-                "Falha ao gravar 'ULTIMA VEZ GERADO (AUTO)'",
+                "Falha ao gravar STATUS + ULTIMA VEZ GERADO",
                 extra={"cliente": cliente.nome},
             )
-        step_logger.end("set_last_generated")
+        step_logger.end("set_status_e_lastgen")
 
         step_logger.start("log_sucesso")
         log.info(

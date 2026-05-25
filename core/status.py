@@ -6,7 +6,8 @@ from googleapiclient.errors import HttpError
 from utils.logger import get_logger            # type: ignore
 from core.leitura_central import (             # type: ignore
     _get_sheets_service,
-    _update_status_cell,   # apesar do nome, serve para qualquer célula única
+    _update_status_cell,
+    _col_to_letter,
 )                                              # type: ignore
 from utils.retry import execute_with_retries
 
@@ -108,3 +109,45 @@ def set_last_generated(cliente, quando: date) -> None:  # noqa: ANN001
             cliente.nome,
             exc,
         )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# BATCH: STATUS + ULTIMA VEZ GERADO em uma única chamada Sheets
+# ────────────────────────────────────────────────────────────────────────────────
+def set_status_e_lastgen(cliente, msg: str, quando: date) -> None:
+    """Grava STATUS (AUTO) e ULTIMA VEZ GERADO (AUTO) em uma única chamada batchUpdate."""
+    meta = getattr(cliente, "extras", {})
+    sid, tab, row, status_col = (
+        meta.get("_sheet_id"),
+        meta.get("_tab"),
+        meta.get("_row"),
+        meta.get("_status_idx"),
+    )
+    if None in {sid, tab, row, status_col}:
+        return
+
+    lastgen_col = meta.get("_lastgen_idx")
+
+    try:
+        service = _get_sheets_service()
+
+        if lastgen_col is None:
+            lastgen_col = _descobrir_coluna_lastgen(service, sid, tab)
+            if lastgen_col is not None:
+                meta["_lastgen_idx"] = lastgen_col
+
+        data = [{"range": f"{tab}!{_col_to_letter(status_col)}{row}", "values": [[msg]]}]
+        if lastgen_col is not None:
+            data.append({"range": f"{tab}!{_col_to_letter(lastgen_col)}{row}", "values": [[quando.strftime("%d/%m/%Y")]]})
+
+        execute_with_retries(
+            lambda: service.spreadsheets().values().batchUpdate(
+                spreadsheetId=sid,
+                body={"data": data, "valueInputOption": "RAW"},
+            ).execute(),
+            logger=log,
+            context=f"sheets.batchUpdate (status+lastgen, row={row})",
+        )
+        log.info("STATUS='%s' e ULTIMA VEZ GERADO gravados em lote (%s)", msg, tab)
+    except HttpError as exc:
+        log.error("Falha ao gravar status+lastgen (%s): %s", getattr(cliente, "nome", "?"), exc)

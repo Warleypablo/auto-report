@@ -27,8 +27,22 @@ from utils.logger import get_logger
 import yaml # type: ignore
 import os
 from google.ads.googleads.client import GoogleAdsClient # type: ignore
+
+# Raiz do projeto (dois níveis acima de core/)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Caminho padrão (fallback legacy)
-_YAML_PATH = Path(__file__).resolve().parent.parent / "credentials" / "google-ads.yaml"
+_YAML_PATH = _PROJECT_ROOT / "credentials" / "google-ads.yaml"
+
+
+def _resolve(p: Path) -> Path:
+    """Resolve relative paths against the project root, not CWD."""
+    if not p.parts or str(p) == ".":
+        return p
+    if p.is_absolute():
+        return p
+    return (_PROJECT_ROOT / p).resolve()
+
+
 _GOOGLE_ADS_CLIENT: Optional[GoogleAdsClient] = None
 
 
@@ -91,14 +105,14 @@ def load_oauth() -> Credentials:
     scopes = settings.SCOPES
 
     # 1) Service Account global (se houver)
-    sa_path = Path(getattr(settings, "SERVICE_ACCOUNT_FILE", ""))
+    sa_path = _resolve(Path(getattr(settings, "SERVICE_ACCOUNT_FILE", "")))
     creds = _sa_if_exists(sa_path, scopes)
     if creds:
         return creds
 
-    # 2) OAuth “Desktop App” global
-    client = Path(getattr(settings, "OAUTH_CLIENT_FILE", ""))
-    token  = Path(getattr(settings, "TOKEN_FILE", "credentials/token.json"))
+    # 2) OAuth "Desktop App" global
+    client = _resolve(Path(getattr(settings, "OAUTH_CLIENT_FILE", "")))
+    token  = _resolve(Path(getattr(settings, "TOKEN_FILE", "credentials/token.json")))
     creds = _oauth_if_exists(client, token, scopes)
     if creds:
         return creds
@@ -112,14 +126,14 @@ def load_google_account() -> Credentials:
     scopes = settings.SCOPE_GOOGLE_ACCOUNT
 
     # 1) Service Account dedicada (caso não queira OAuth)
-    sa_path = Path(getattr(settings, "GOOGLE_SERVICE_ACCOUNT_FILE", ""))
+    sa_path = _resolve(Path(getattr(settings, "GOOGLE_SERVICE_ACCOUNT_FILE", "")))
     creds = _sa_if_exists(sa_path, scopes)
     if creds:
         return creds
 
     # 2) OAuth dedicada ao GA4
-    client = Path(settings.GOOGLE_OAUTH_CLIENT_FILE)
-    token  = Path(settings.GOOGLE_TOKEN_FILE)
+    client = _resolve(Path(settings.GOOGLE_OAUTH_CLIENT_FILE))
+    token  = _resolve(Path(settings.GOOGLE_TOKEN_FILE))
     creds = _oauth_if_exists(client, token, scopes)
     if creds:
         return creds
@@ -159,7 +173,8 @@ def _build_google_ads_client_cloud() -> GoogleAdsClient:
             log.warning("Falha ao carregar GOOGLE_ADS_YAML inline: %s", exc)
 
     # ─── 2) Caminho fornecido via env ───────────────────────────
-    yaml_path_env = os.getenv("GOOGLE_ADS_YAML_PATH")
+    yaml_path_env_raw = os.getenv("GOOGLE_ADS_YAML_PATH")
+    yaml_path_env = str(_resolve(Path(yaml_path_env_raw))) if yaml_path_env_raw else None
     if yaml_path_env and Path(yaml_path_env).is_file():
         try:
             _GOOGLE_ADS_CLIENT = GoogleAdsClient.load_from_storage(yaml_path_env)

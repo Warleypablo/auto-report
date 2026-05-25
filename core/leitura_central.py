@@ -322,7 +322,7 @@ def fetch_clientes(
 
         clientes = []
         for i, r in enumerate(rows[1:], start=2):
-            if r[header_map[COL_CLIENTE]].strip() == "":
+            if len(r) <= header_map[COL_CLIENTE] or r[header_map[COL_CLIENTE]].strip() == "":
                 break
             if only and only.lower() not in r[header_map[COL_CLIENTE]].lower():
                 continue

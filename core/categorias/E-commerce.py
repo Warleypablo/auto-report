@@ -6,6 +6,7 @@ redimensionamento de barras de meta) vive aqui, deixando o orquestrador limpo.
 """
 
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Set
 
 # ─────────────────── imports dos sub-módulos já existentes ────────────────────
@@ -67,31 +68,32 @@ def coletar_dados(cliente, periodo_ref, periodo_comp) -> dict:
     -------
     dict
         Chave = {{PLACEHOLDER}}, Valor = string já formatada (PT-BR)."""
-    from utils.logger import StepLogger, OTIMIZACAO, get_logger
-    import time
+    from utils.logger import StepLogger, get_logger
     log = get_logger(__name__)
     step_logger = StepLogger(log)
     dados: dict = {}
     try:
-        step_logger.start("painel_controle")
-        dados = painel_scraper.coletar_metricas(cliente, periodo_ref)
-        dados.update(painel_scraper.coletar_metricas(cliente, periodo_comp, sufixo="_comp"))
-        step_logger.end("painel_controle")
+        tasks = [
+            ("painel_ref",    lambda: painel_scraper.coletar_metricas(cliente, periodo_ref)),
+            ("painel_comp",   lambda: painel_scraper.coletar_metricas(cliente, periodo_comp, sufixo="_comp")),
+            ("facebook_ref",  lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref)),
+            ("facebook_comp", lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp")),
+            ("google_ref",    lambda: google_metrics_gather.coletar_metricas_google(cliente, periodo_ref)),
+            ("google_comp",   lambda: google_metrics_gather.coletar_metricas_google(cliente, periodo_comp, "_comp")),
+            ("ga4_ref",       lambda: ga4_scraper.coletar_metricas_ga4(cliente, periodo_ref)),
+            ("ga4_comp",      lambda: ga4_scraper.coletar_metricas_ga4(cliente, periodo_comp, sufixo="_comp")),
+        ]
 
-        step_logger.start("meta_ads")
-        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref))
-        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp"))
-        step_logger.end("meta_ads")
-
-        step_logger.start("google_ads")
-        dados.update(google_metrics_gather.coletar_metricas_google(cliente, periodo_ref))
-        dados.update(google_metrics_gather.coletar_metricas_google(cliente, periodo_comp, "_comp"))
-        step_logger.end("google_ads")
-
-        step_logger.start("ga4")
-        dados.update(ga4_scraper.coletar_metricas_ga4(cliente, periodo_ref))
-        dados.update(ga4_scraper.coletar_metricas_ga4(cliente, periodo_comp, sufixo="_comp"))
-        step_logger.end("ga4")
+        step_logger.start("coletar_apis_paralelo")
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(fn): name for name, fn in tasks}
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    dados.update(future.result())
+                except Exception:
+                    log.exception("Erro em %s", name, extra={"cliente": getattr(cliente, "nome", None)})
+        step_logger.end("coletar_apis_paralelo")
 
         step_logger.start("variacoes_percentuais")
         dados.update(variacao_dados_comparativos.calcular_variacoes(dados, _VARIATION_KEYS))
@@ -101,7 +103,7 @@ def coletar_dados(cliente, periodo_ref, periodo_comp) -> dict:
         step_logger.summary()
         step_logger.end("summary_etapas_coletar_dados")
     except Exception as exc:
-        log.exception("Erro em coletar_dados", extra={"cliente": getattr(cliente, 'nome', None)})
+        log.exception("Erro em coletar_dados", extra={"cliente": getattr(cliente, "nome", None)})
     return dados
 
 def pos_processar(presentation_id: str, dados: dict) -> None:

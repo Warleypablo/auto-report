@@ -78,16 +78,16 @@ def _job_to_response(job: ReportJob) -> JobStatusResponse:
 
 
 def _mark_stale_running_jobs(session: Session) -> None:
-    """Mark jobs stuck in 'running' for more than 30 minutes as error."""
+    """Mark jobs stuck in 'running' for more than 10 minutes as error."""
     stale = session.execute(
         select(ReportJob).where(
             ReportJob.status == JobStatus.RUNNING,
-            ReportJob.created_at < text("NOW() - INTERVAL '30 minutes'"),
+            ReportJob.created_at < text("NOW() - INTERVAL '10 minutes'"),
         )
     ).scalars().all()
     for job in stale:
         job.status = JobStatus.ERROR
-        job.erro = "Timeout: job ficou em running por mais de 30 minutos"
+        job.erro = "Timeout: job ficou em running por mais de 10 minutos"
         job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
     if stale:
         session.commit()
@@ -486,7 +486,9 @@ def trigger_report(
                     bg_job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
                     bg_session.commit()
 
-    threading.Thread(target=_run, daemon=True).start()
+    # daemon=False: o processo espera o thread terminar antes de sair (SIGTERM do Render).
+    # daemon=True causava o thread ser morto no meio da execução, deixando o job preso em RUNNING.
+    threading.Thread(target=_run, daemon=False).start()
     return TriggerResponse(job_id=job.id)
 
 

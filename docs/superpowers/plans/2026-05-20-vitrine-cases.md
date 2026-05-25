@@ -6,7 +6,9 @@
 
 **Architecture:** ETL Python diário consome `core.categorias.get_handler(...).coletar_dados(...)`, parseia strings PT-BR para numéricos, grava snapshots em Postgres. FastAPI expõe API pública de leitura. Next.js (App Router + ISR) renderiza o site público.
 
-**Tech Stack:** Python 3.11, FastAPI, SQLAlchemy 2, Alembic, psycopg, Postgres 15, Node 20, Next.js 14 (App Router), TypeScript, TailwindCSS, shadcn/ui, Recharts, pytest, Vitest, Playwright, Docker.
+**Tech Stack:** Python 3.14 (instalado via Homebrew), FastAPI, SQLAlchemy 2, Alembic, psycopg, Postgres 18 (nativo em dev, qualquer 15+ em prod), Node 20+ (v25 instalado), Next.js 14 (App Router), TypeScript, TailwindCSS, shadcn/ui, Recharts, pytest, Vitest, Playwright, Docker (apenas para prod/CI).
+
+**Dev environment:** Em dev local, usamos Postgres nativo (já rodando) + venv com `python3.14`. Docker e `docker-compose.yml` ficam reservados para produção e CI. A Task 0.4 cria os Dockerfiles mas não exige que o daemon esteja rodando localmente.
 
 ---
 

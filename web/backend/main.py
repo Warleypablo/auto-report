@@ -24,12 +24,12 @@ def _cleanup_stale_jobs() -> None:
             stale = session.execute(
                 select(ReportJob).where(
                     ReportJob.status == JobStatus.RUNNING,
-                    ReportJob.created_at < text("NOW() - INTERVAL '30 minutes'"),
+                    ReportJob.created_at < text("NOW() - INTERVAL '10 minutes'"),
                 )
             ).scalars().all()
             for job in stale:
                 job.status = JobStatus.ERROR
-                job.erro = "Timeout detectado no startup — job estava em running há mais de 30 min"
+                job.erro = "Timeout detectado no startup — job estava em running há mais de 10 min"
                 job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
             if stale:
                 session.commit()

@@ -24,6 +24,10 @@ def execute_with_retries(
         try:
             return request_fn()
         except exceptions as e:
+            # Erros HTTP 4xx são permanentes — retry não vai resolver
+            # Exceto 429 (Too Many Requests), que é transitório
+            if isinstance(e, HttpError) and 400 <= e.resp.status < 500 and e.resp.status != 429:
+                raise
             elapsed = time.monotonic() - start_time
             if total_timeout and elapsed >= total_timeout:
                 msg = f"[RETRY] Timeout global ({total_timeout}s) excedido ao executar {context}: {type(e).__name__} - {e}"

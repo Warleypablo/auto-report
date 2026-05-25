@@ -10,6 +10,7 @@ As integrações específicas (CRM, Painel, Meta) vivem dentro do pacote
 """
 
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Set
 
 # ─────────────────── imports dos sub‑módulos da categoria ────────────────────
@@ -62,20 +63,28 @@ def coletar_dados(cliente, periodo_ref, periodo_comp):
     dict
         Chave = {{PLACEHOLDER}}, Valor = string já formatada (PT‑BR).
     """
-    from utils.logger import StepLogger, OTIMIZACAO, get_logger
-    import time
+    from utils.logger import StepLogger, get_logger
     log = get_logger(__name__)
     step_logger = StepLogger(log)
+    dados: dict = {}
     try:
-        step_logger.start("painel_crm")
-        dados = painel_scraper.coletar_metricas_leads(cliente, periodo_ref)
-        dados.update(painel_scraper.coletar_metricas_leads(cliente, periodo_comp, sufixo="_comp"))
-        step_logger.end("painel_crm")
+        tasks = [
+            ("painel_ref",    lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_ref)),
+            ("painel_comp",   lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_comp, sufixo="_comp")),
+            ("facebook_ref",  lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref)),
+            ("facebook_comp", lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp")),
+        ]
 
-        step_logger.start("meta_ads_leads")
-        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref))
-        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp"))
-        step_logger.end("meta_ads_leads")
+        step_logger.start("coletar_apis_paralelo")
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {executor.submit(fn): name for name, fn in tasks}
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    dados.update(future.result())
+                except Exception:
+                    log.exception("Erro em %s", name, extra={"cliente": getattr(cliente, "nome", None)})
+        step_logger.end("coletar_apis_paralelo")
 
         step_logger.start("variacoes_percentuais")
         dados.update(variacao_dados_comparativos.calcular_variacoes(dados, _METRIC_VAR_KEYS))
@@ -85,7 +94,7 @@ def coletar_dados(cliente, periodo_ref, periodo_comp):
         step_logger.summary()
         step_logger.end("summary_etapas_coletar_dados")
     except Exception as exc:
-        log.exception("Erro em coletar_dados", extra={"cliente": getattr(cliente, 'nome', None)})
+        log.exception("Erro em coletar_dados", extra={"cliente": getattr(cliente, "nome", None)})
     return dados
 
 
