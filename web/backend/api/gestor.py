@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -45,8 +46,10 @@ router = APIRouter()
 _log = logging.getLogger(__name__)
 
 # Limita quantos jobs de geração de relatório rodam simultaneamente por processo.
-# Previne esgotamento do pool de conexões do DB e sobrecarga de threads com muitos clientes.
-_JOB_SEMAPHORE = threading.BoundedSemaphore(6)
+# Previne esgotamento do pool de conexões do DB e sobrecarga de threads/quotas Google
+# com muitos clientes disparados de uma vez. Ajustável via env MAX_CONCURRENT_REPORT_JOBS.
+_MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_REPORT_JOBS", "8"))
+_JOB_SEMAPHORE = threading.BoundedSemaphore(_MAX_CONCURRENT_JOBS)
 
 _MES_RE = __import__("re").compile(r"^\d{4}-\d{2}$")
 

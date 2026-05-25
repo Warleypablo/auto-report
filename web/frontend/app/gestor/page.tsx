@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   gestorApi,
   ClienteGestor,
@@ -196,7 +196,17 @@ type DispatchedJob = {
   status: JobInfo["status"] | "dispatch_error";
   slides_url: string | null;
   erro: string | null;
+  dispatched_at: number;  // Date.now() quando o disparo foi feito (client-side)
 };
+
+function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}min ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h${m % 60 > 0 ? ` ${m % 60}min` : ""}`;
+}
 
 function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
   const [busca, setBusca] = useState("");
@@ -206,6 +216,30 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState<{ atual: number; total: number; ok: number; erro: number } | null>(null);
   const [dispatched, setDispatched] = useState<DispatchedJob[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Ticker de 1s para atualizar tempo decorrido enquanto há jobs incompletos
+  useEffect(() => {
+    const hasIncomplete = dispatched.some((j) => j.status === "pending" || j.status === "running");
+    if (!hasIncomplete) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [dispatched]);
+
+  // Contadores agregados para o painel de progresso
+  const counts = useMemo(() => {
+    const c = { done: 0, running: 0, pending: 0, error: 0 };
+    for (const j of dispatched) {
+      if (j.status === "done") c.done++;
+      else if (j.status === "running") c.running++;
+      else if (j.status === "pending") c.pending++;
+      else c.error++;  // error + dispatch_error
+    }
+    return c;
+  }, [dispatched]);
+  const totalDispatched = dispatched.length;
+  const concluidos = counts.done + counts.error;
+  const progressPercent = totalDispatched > 0 ? (concluidos / totalDispatched) * 100 : 0;
 
   const filtrados = clientes.filter((c) =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -242,13 +276,14 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
     for (let i = 0; i < slugs.length; i++) {
       const slug = slugs[i];
       const nome = clientes.find((c) => c.slug === slug)?.nome ?? slug;
+      const dispatched_at = Date.now();
       try {
         const { job_id } = await gestorApi.triggerReport(slug, mes, frequencia);
         ok++;
-        results.push({ job_id, slug, nome, status: "pending", slides_url: null, erro: null });
+        results.push({ job_id, slug, nome, status: "pending", slides_url: null, erro: null, dispatched_at });
       } catch (e: any) {
         erro++;
-        results.push({ job_id: "", slug, nome, status: "dispatch_error", slides_url: null, erro: e?.message ?? "Erro ao disparar" });
+        results.push({ job_id: "", slug, nome, status: "dispatch_error", slides_url: null, erro: e?.message ?? "Erro ao disparar", dispatched_at });
       }
       setProgresso({ atual: i + 1, total, ok, erro });
       await new Promise((r) => setTimeout(r, 120));
@@ -325,40 +360,67 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
       {/* Painel de jobs disparados com polling de status */}
       {dispatched.length > 0 && (
         <div className="mb-6 overflow-hidden rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)]">
-          <div className="flex items-center justify-between border-b border-[var(--rule-soft)] px-4 py-2">
-            <p className="text-xs font-medium text-[var(--ink)]">
-              Reports disparados — {mesLabel(mes)} ({frequencia === "MENSAL" ? "Mensal" : "Semanal"})
-              {dispatched.some((j) => j.status === "pending" || j.status === "running") && (
-                <span className="ml-2 text-[var(--amber)]">atualizando…</span>
-              )}
+          <div className="border-b border-[var(--rule-soft)] px-4 py-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium text-[var(--ink)]">
+                Reports disparados — {mesLabel(mes)} ({frequencia === "MENSAL" ? "Mensal" : "Semanal"})
+              </p>
+              <button onClick={() => setDispatched([])} className="text-xs text-[var(--muted)] hover:text-[var(--ink)]">✕</button>
+            </div>
+            {/* Barra de progresso */}
+            <div className="mb-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--rule-soft)]">
+              <div
+                className="h-full bg-[var(--forest)] transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            {/* Contadores */}
+            <p className="text-[10px] text-[var(--muted)]">
+              <span className="font-medium text-[var(--ink)]">{concluidos}/{totalDispatched}</span> concluídos
+              {counts.running > 0 && <> · <span className="text-[var(--amber)]">{counts.running} gerando</span></>}
+              {counts.pending > 0 && <> · {counts.pending} na fila</>}
+              {counts.done > 0 && <> · <span className="text-[var(--forest)]">{counts.done} ok</span></>}
+              {counts.error > 0 && <> · <span className="text-[var(--crimson)]">{counts.error} erro{counts.error > 1 ? "s" : ""}</span></>}
             </p>
-            <button onClick={() => setDispatched([])} className="text-xs text-[var(--muted)] hover:text-[var(--ink)]">✕</button>
           </div>
           <ul>
-            {dispatched.map((j, idx) => (
-              <li
-                key={j.slug}
-                className={["flex items-center gap-3 px-4 py-3", idx < dispatched.length - 1 ? "border-b border-[var(--rule-soft)]" : ""].join(" ")}
-              >
-                {j.status === "pending" && <span className="w-3 text-center text-xs text-[var(--muted)]">◌</span>}
-                {j.status === "running" && <div className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[var(--rule-soft)] border-t-[var(--amber)]" />}
-                {j.status === "done" && <span className="w-3 text-center text-xs text-[var(--forest)]">✓</span>}
-                {(j.status === "error" || j.status === "dispatch_error") && <span className="w-3 text-center text-xs text-[var(--crimson)]">✗</span>}
-                <span className="flex-1 text-sm text-[var(--ink)]">{j.nome}</span>
-                {j.status === "pending" && <span className="text-xs text-[var(--muted)]">Na fila…</span>}
-                {j.status === "running" && <span className="text-xs text-[var(--amber)]">Gerando…</span>}
-                {j.status === "done" && j.slides_url && (
-                  <a href={j.slides_url} target="_blank" rel="noopener noreferrer"
-                    className="rounded-md bg-[var(--forest)] px-3 py-1 text-xs font-medium text-white transition hover:opacity-90">
-                    Abrir report →
-                  </a>
-                )}
-                {j.status === "done" && !j.slides_url && <span className="text-xs text-[var(--muted)]">Concluído</span>}
-                {(j.status === "error" || j.status === "dispatch_error") && (
-                  <span className="max-w-xs truncate text-xs text-[var(--crimson)]" title={j.erro ?? ""}>{j.erro ?? "Erro desconhecido"}</span>
-                )}
-              </li>
-            ))}
+            {dispatched.map((j, idx) => {
+              const elapsed = j.status === "pending" || j.status === "running"
+                ? formatElapsed(now - j.dispatched_at)
+                : null;
+              return (
+                <li
+                  key={j.slug}
+                  className={["flex items-center gap-3 px-4 py-3", idx < dispatched.length - 1 ? "border-b border-[var(--rule-soft)]" : ""].join(" ")}
+                >
+                  {j.status === "pending" && <span className="w-3 text-center text-xs text-[var(--muted)]">◌</span>}
+                  {j.status === "running" && <div className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[var(--rule-soft)] border-t-[var(--amber)]" />}
+                  {j.status === "done" && <span className="w-3 text-center text-xs text-[var(--forest)]">✓</span>}
+                  {(j.status === "error" || j.status === "dispatch_error") && <span className="w-3 text-center text-xs text-[var(--crimson)]">✗</span>}
+                  <span className="flex-1 text-sm text-[var(--ink)]">{j.nome}</span>
+                  {j.status === "pending" && (
+                    <span className="text-xs text-[var(--muted)]">
+                      Na fila… <span className="opacity-60">({elapsed})</span>
+                    </span>
+                  )}
+                  {j.status === "running" && (
+                    <span className="text-xs text-[var(--amber)]">
+                      Gerando… <span className="opacity-60">({elapsed})</span>
+                    </span>
+                  )}
+                  {j.status === "done" && j.slides_url && (
+                    <a href={j.slides_url} target="_blank" rel="noopener noreferrer"
+                      className="rounded-md bg-[var(--forest)] px-3 py-1 text-xs font-medium text-white transition hover:opacity-90">
+                      Abrir report →
+                    </a>
+                  )}
+                  {j.status === "done" && !j.slides_url && <span className="text-xs text-[var(--muted)]">Concluído</span>}
+                  {(j.status === "error" || j.status === "dispatch_error") && (
+                    <span className="max-w-xs truncate text-xs text-[var(--crimson)]" title={j.erro ?? ""}>{j.erro ?? "Erro desconhecido"}</span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
