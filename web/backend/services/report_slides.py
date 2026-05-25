@@ -10,10 +10,22 @@ import sys
 from datetime import date
 from pathlib import Path
 
-# Ensure project root (auto-report-main/) is on sys.path for core imports
+# Garante que a raiz do projeto vem PRIMEIRO no sys.path, mesmo que já esteja
+# em outra posição. Necessário para que 'from config import settings' resolva
+# para o nosso pacote local e não para um eventual pacote 'config' externo
+# instalado em site-packages.
 _ROOT = Path(__file__).resolve().parents[3]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+_ROOT_STR = str(_ROOT)
+if _ROOT_STR in sys.path:
+    sys.path.remove(_ROOT_STR)
+sys.path.insert(0, _ROOT_STR)
+
+# Se um pacote 'config' diferente (ex: do PyPI) foi carregado primeiro,
+# remove do cache para forçar o reimport apontando para o nosso.
+_cached_config = sys.modules.get("config")
+if _cached_config is not None and not hasattr(_cached_config, "settings"):
+    del sys.modules["config"]
+    sys.modules.pop("config.settings", None)
 
 
 def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENSAL") -> str:
