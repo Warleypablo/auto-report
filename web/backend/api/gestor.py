@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -41,6 +42,11 @@ from schemas import (
 from sqlalchemy import func
 
 router = APIRouter()
+_log = logging.getLogger(__name__)
+
+# Limita quantos jobs de geração de relatório rodam simultaneamente por processo.
+# Previne esgotamento do pool de conexões do DB e sobrecarga de threads com muitos clientes.
+_JOB_SEMAPHORE = threading.BoundedSemaphore(6)
 
 _MES_RE = __import__("re").compile(r"^\d{4}-\d{2}$")
 
@@ -77,17 +83,17 @@ def _job_to_response(job: ReportJob) -> JobStatusResponse:
     )
 
 
-def _mark_stale_running_jobs(session: Session) -> None:
-    """Mark jobs stuck in 'running' for more than 10 minutes as error."""
+def _mark_stale_jobs(session: Session) -> None:
+    """Mark jobs stuck in 'running' or 'pending' for more than 10 minutes as error."""
     stale = session.execute(
         select(ReportJob).where(
-            ReportJob.status == JobStatus.RUNNING,
+            ReportJob.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
             ReportJob.created_at < text("NOW() - INTERVAL '10 minutes'"),
         )
     ).scalars().all()
     for job in stale:
         job.status = JobStatus.ERROR
-        job.erro = "Timeout: job ficou em running por mais de 10 minutos"
+        job.erro = f"Timeout: job ficou em {job.status.value} por mais de 10 minutos"
         job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
     if stale:
         session.commit()
@@ -424,20 +430,20 @@ def trigger_report(
     if cliente is None:
         raise HTTPException(status_code=404, detail="Cliente não encontrado ou sem acesso")
 
-    # Mark any stale running jobs before checking for duplicates
-    _mark_stale_running_jobs(session)
+    # Limpa stale jobs (RUNNING e PENDING) antes de checar duplicatas
+    _mark_stale_jobs(session)
 
-    # Prevent duplicate running job for same client
-    running = session.execute(
+    # Impede job duplicado para o mesmo cliente (RUNNING ou PENDING)
+    in_progress = session.execute(
         select(ReportJob).where(
             ReportJob.cliente_id == cliente.id,
-            ReportJob.status == JobStatus.RUNNING,
+            ReportJob.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
         )
     ).scalar_one_or_none()
-    if running is not None:
+    if in_progress is not None:
         raise HTTPException(
             status_code=409,
-            detail=f"Já existe um job em andamento para este cliente (job_id={running.id})",
+            detail=f"Já existe um job em andamento para este cliente (job_id={in_progress.id}, status={in_progress.status.value})",
         )
 
     job = ReportJob(
@@ -461,33 +467,40 @@ def trigger_report(
         from db import SessionLocal
         from services.report_slides import gerar_slides
 
-        with SessionLocal() as bg_session:
-            bg_job = bg_session.get(ReportJob, job_id)
-            if bg_job is None:
-                return
-            bg_job.status = JobStatus.RUNNING
-            bg_session.commit()
-
+        # Proteção total: qualquer falha antes, durante ou depois de gerar_slides
+        # fica registrada no banco como ERROR — nunca silenciosa.
         try:
-            url = gerar_slides(slug=cliente_slug, nome_cliente=cliente_nome, mes=mes, frequencia=frequencia)
-            with SessionLocal() as bg_session:
-                bg_job = bg_session.get(ReportJob, job_id)
-                if bg_job:
-                    bg_job.status = JobStatus.DONE
-                    bg_job.slides_url = url
-                    bg_job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                    bg_session.commit()
-        except Exception as exc:
-            with SessionLocal() as bg_session:
-                bg_job = bg_session.get(ReportJob, job_id)
-                if bg_job:
-                    bg_job.status = JobStatus.ERROR
-                    bg_job.erro = str(exc)[:500]
-                    bg_job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            with _JOB_SEMAPHORE:  # limita concorrência para não esgotar pool de conexões
+                with SessionLocal() as bg_session:
+                    bg_job = bg_session.get(ReportJob, job_id)
+                    if bg_job is None:
+                        return
+                    bg_job.status = JobStatus.RUNNING
                     bg_session.commit()
 
-    # daemon=False: o processo espera o thread terminar antes de sair (SIGTERM do Render).
-    # daemon=True causava o thread ser morto no meio da execução, deixando o job preso em RUNNING.
+                url = gerar_slides(slug=cliente_slug, nome_cliente=cliente_nome, mes=mes, frequencia=frequencia)
+
+                with SessionLocal() as bg_session:
+                    bg_job = bg_session.get(ReportJob, job_id)
+                    if bg_job:
+                        bg_job.status = JobStatus.DONE
+                        bg_job.slides_url = url
+                        bg_job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                        bg_session.commit()
+
+        except Exception as exc:
+            _log.exception("Falha no job %s (%s)", job_id, cliente_nome)
+            try:
+                with SessionLocal() as bg_session:
+                    bg_job = bg_session.get(ReportJob, job_id)
+                    if bg_job and bg_job.status not in (JobStatus.DONE,):
+                        bg_job.status = JobStatus.ERROR
+                        bg_job.erro = str(exc)[:500]
+                        bg_job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                        bg_session.commit()
+            except Exception:
+                _log.exception("Falha ao gravar ERROR para job %s — job ficará preso no banco", job_id)
+
     threading.Thread(target=_run, daemon=False).start()
     return TriggerResponse(job_id=job.id)
 

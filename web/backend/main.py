@@ -12,24 +12,23 @@ from logging_config import setup_logging
 
 
 def _cleanup_stale_jobs() -> None:
-    """On startup: mark jobs stuck in 'running' for >10 min as error."""
+    """On startup: mark jobs stuck in 'running' or 'pending' for >10 min as error."""
     try:
         from db import SessionLocal
         from models import ReportJob
         from models.report_job import JobStatus
-        from sqlalchemy import select
+        from sqlalchemy import select, text
 
-        from sqlalchemy import text
         with SessionLocal() as session:
             stale = session.execute(
                 select(ReportJob).where(
-                    ReportJob.status == JobStatus.RUNNING,
+                    ReportJob.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
                     ReportJob.created_at < text("NOW() - INTERVAL '10 minutes'"),
                 )
             ).scalars().all()
             for job in stale:
                 job.status = JobStatus.ERROR
-                job.erro = "Timeout detectado no startup — job estava em running há mais de 10 min"
+                job.erro = f"Timeout no startup — job estava em {job.status.value} há mais de 10 min"
                 job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
             if stale:
                 session.commit()
