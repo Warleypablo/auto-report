@@ -467,13 +467,25 @@ def trigger_report(
     frequencia = body.frequencia
 
     def _run():
-        from db import SessionLocal
-        from services.report_slides import gerar_slides
-
-        # Proteção total: qualquer falha antes, durante ou depois de gerar_slides
-        # fica registrada no banco como ERROR — nunca silenciosa.
+        # Imports DENTRO do try para que qualquer ImportError também caia no handler.
+        # Logging em cada transição para diagnosticar travas via Render logs.
         try:
-            with _JOB_SEMAPHORE:  # limita concorrência para não esgotar pool de conexões
+            from db import SessionLocal
+            from services.report_slides import gerar_slides
+
+            _log.info("[job %s/%s] thread iniciada", job_id, cliente_nome)
+
+            # Acquire com timeout: se a fila estiver congestionada (threads antigos
+            # presos em gerar_slides), falha rápido em vez de bloquear para sempre.
+            acquired = _JOB_SEMAPHORE.acquire(timeout=90)
+            if not acquired:
+                raise TimeoutError(
+                    f"Sem vaga na fila após 90s (max concorrente: {_MAX_CONCURRENT_JOBS}). "
+                    "Provável trava em jobs anteriores — reinicie o serviço no Render."
+                )
+            try:
+                _log.info("[job %s/%s] semáforo OK, marcando RUNNING", job_id, cliente_nome)
+
                 with SessionLocal() as bg_session:
                     bg_job = bg_session.get(ReportJob, job_id)
                     if bg_job is None:
@@ -481,7 +493,9 @@ def trigger_report(
                     bg_job.status = JobStatus.RUNNING
                     bg_session.commit()
 
+                _log.info("[job %s/%s] chamando gerar_slides", job_id, cliente_nome)
                 url = gerar_slides(slug=cliente_slug, nome_cliente=cliente_nome, mes=mes, frequencia=frequencia)
+                _log.info("[job %s/%s] gerar_slides retornou url=%s", job_id, cliente_nome, url)
 
                 with SessionLocal() as bg_session:
                     bg_job = bg_session.get(ReportJob, job_id)
@@ -490,22 +504,50 @@ def trigger_report(
                         bg_job.slides_url = url
                         bg_job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
                         bg_session.commit()
+                _log.info("[job %s/%s] DONE", job_id, cliente_nome)
+            finally:
+                _JOB_SEMAPHORE.release()
 
         except Exception as exc:
-            _log.exception("Falha no job %s (%s)", job_id, cliente_nome)
+            _log.exception("[job %s/%s] FALHOU", job_id, cliente_nome)
             try:
-                with SessionLocal() as bg_session:
+                from db import SessionLocal as _SL
+                with _SL() as bg_session:
                     bg_job = bg_session.get(ReportJob, job_id)
-                    if bg_job and bg_job.status not in (JobStatus.DONE,):
+                    if bg_job and bg_job.status != JobStatus.DONE:
                         bg_job.status = JobStatus.ERROR
                         bg_job.erro = str(exc)[:500]
                         bg_job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
                         bg_session.commit()
             except Exception:
-                _log.exception("Falha ao gravar ERROR para job %s — job ficará preso no banco", job_id)
+                _log.exception("[job %s] falhou também ao gravar ERROR — ficará preso no DB", job_id)
 
     threading.Thread(target=_run, daemon=False).start()
     return TriggerResponse(job_id=job.id)
+
+
+# ── POST /gestor/reports/cleanup-stuck ─────────────────────────────────────
+# Endpoint para forçar limpeza de jobs presos em PENDING/RUNNING sem precisar
+# reiniciar o serviço no Render. Útil quando threads ficaram travados em
+# chamadas Google API que não retornam.
+
+@router.post("/reports/cleanup-stuck", status_code=200)
+def cleanup_stuck_jobs(
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    stuck = session.execute(
+        select(ReportJob).where(
+            ReportJob.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
+        )
+    ).scalars().all()
+    for job in stuck:
+        job.status = JobStatus.ERROR
+        job.erro = f"Limpeza manual: job estava em {job.status.value}"
+        job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    if stuck:
+        session.commit()
+    return {"cleaned": len(stuck)}
 
 
 # ── GET /gestor/reports/{job_id} ───────────────────────────────────────────
