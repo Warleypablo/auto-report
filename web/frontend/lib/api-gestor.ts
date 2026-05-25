@@ -203,6 +203,12 @@ export const gestorApi = {
   deleteCliente: (id: string) =>
     apiCall<void>(`clientes/${id}`, "DELETE"),
 
+  syncGestoresFromClickup: () =>
+    apiCall<{ atualizados: number; sem_vinculo: number; sem_responsavel_clickup: number }>(
+      "clientes/sync-gestores",
+      "POST",
+    ),
+
   triggerReport: (slug: string, mes: string, frequencia: Frequencia = "MENSAL") =>
     apiCall<{ job_id: string }>("reports/trigger", "POST", { slug, mes, frequencia }),
 

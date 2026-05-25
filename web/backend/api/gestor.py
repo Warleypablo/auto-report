@@ -103,6 +103,65 @@ def _mark_stale_jobs(session: Session) -> None:
         session.commit()
 
 
+# ── POST /gestor/clientes/sync-gestores ────────────────────────────────────
+# Atribui clientes.gestor = staging.cup_clientes.responsavel para todos os
+# clientes vinculados (cup_task_id IS NOT NULL). Útil quando há rotatividade
+# de gestores no ClickUp e queremos refletir no sistema.
+
+@router.post("/clientes/sync-gestores", status_code=200)
+def sync_gestores_from_clickup(
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    # Pré-contagem para o relatório de retorno
+    counts = session.execute(
+        text("""
+            SELECT
+                COUNT(*) FILTER (WHERE c.cup_task_id IS NULL) AS sem_vinculo,
+                COUNT(*) FILTER (
+                    WHERE c.cup_task_id IS NOT NULL
+                      AND cc.responsavel IS NOT NULL
+                      AND TRIM(cc.responsavel) <> ''
+                      AND (c.gestor IS DISTINCT FROM cc.responsavel)
+                ) AS a_atualizar,
+                COUNT(*) FILTER (
+                    WHERE c.cup_task_id IS NOT NULL
+                      AND (cc.responsavel IS NULL OR TRIM(cc.responsavel) = '')
+                ) AS sem_responsavel_clickup
+            FROM clientes c
+            LEFT JOIN staging.cup_clientes cc ON cc.task_id = c.cup_task_id
+            WHERE c.ativo = true
+        """)
+    ).mappings().one()
+
+    # UPDATE em massa — só onde há mudança real e responsável não vazio
+    result = session.execute(
+        text("""
+            UPDATE clientes c
+            SET gestor = cc.responsavel,
+                atualizado_em = NOW()
+            FROM staging.cup_clientes cc
+            WHERE cc.task_id = c.cup_task_id
+              AND c.ativo = true
+              AND cc.responsavel IS NOT NULL
+              AND TRIM(cc.responsavel) <> ''
+              AND (c.gestor IS DISTINCT FROM cc.responsavel)
+        """)
+    )
+    session.commit()
+
+    _log.info(
+        "sync-gestores: atualizados=%d, sem_vinculo=%d, sem_responsavel_clickup=%d",
+        result.rowcount, counts["sem_vinculo"], counts["sem_responsavel_clickup"],
+    )
+
+    return {
+        "atualizados": result.rowcount,
+        "sem_vinculo": counts["sem_vinculo"],
+        "sem_responsavel_clickup": counts["sem_responsavel_clickup"],
+    }
+
+
 # ── GET /gestor/clientes ───────────────────────────────────────────────────
 
 @router.get("/clientes", response_model=ClientesGestorResponse)

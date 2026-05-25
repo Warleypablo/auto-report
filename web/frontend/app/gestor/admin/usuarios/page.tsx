@@ -12,6 +12,24 @@ export default function AdminUsuariosPage() {
   const [form, setForm] = useState({ email: "", nome: "", senha: "", is_admin: false });
   const [criando, setCriando] = useState(false);
   const [formErro, setFormErro] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ atualizados: number; sem_vinculo: number; sem_responsavel_clickup: number } | null>(null);
+  const [syncErro, setSyncErro] = useState<string | null>(null);
+
+  async function handleSyncGestores() {
+    if (!confirm("Atribuir gestores do ClickUp aos clientes do sistema?\n\nIsso vai sobrescrever o campo 'gestor' dos clientes vinculados com o 'responsavel' do ClickUp.")) return;
+    setSyncing(true);
+    setSyncResult(null);
+    setSyncErro(null);
+    try {
+      const r = await gestorApi.syncGestoresFromClickup();
+      setSyncResult(r);
+    } catch (e) {
+      setSyncErro(e instanceof Error ? e.message : "Erro ao sincronizar");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   function load() {
     setLoading(true);
@@ -65,6 +83,36 @@ export default function AdminUsuariosPage() {
           {showForm ? "Cancelar" : "+ Novo gestor"}
         </button>
       </div>
+
+      {/* Operações administrativas */}
+      <section className="mb-8 rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+        <p className="eyebrow mb-2 text-xs text-[var(--muted)]">Operações</p>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-[var(--ink)]">Sincronizar gestores do ClickUp</p>
+            <p className="text-xs text-[var(--muted)]">
+              Atribui clientes.gestor = cup_clientes.responsavel para todos os clientes vinculados.
+            </p>
+          </div>
+          <button
+            onClick={handleSyncGestores}
+            disabled={syncing}
+            className="rounded-full border border-[var(--forest)] px-4 py-1.5 text-xs uppercase tracking-[0.18em] text-[var(--forest)] transition hover:bg-[var(--forest)] hover:text-[var(--paper)] disabled:opacity-50"
+          >
+            {syncing ? "Sincronizando…" : "Sincronizar"}
+          </button>
+        </div>
+        {syncResult && (
+          <p className="mt-3 text-xs text-[var(--ink-soft)]">
+            <span className="text-[var(--forest)]">{syncResult.atualizados} atualizados</span>
+            {" · "}
+            {syncResult.sem_vinculo} sem cup_task_id
+            {" · "}
+            {syncResult.sem_responsavel_clickup} sem responsável no ClickUp
+          </p>
+        )}
+        {syncErro && <p className="mt-3 text-xs text-[var(--crimson)]">{syncErro}</p>}
+      </section>
 
       {erro && <p className="mb-4 text-sm text-[var(--crimson)]">{erro}</p>}
 
