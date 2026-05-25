@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   gestorApi,
   ClienteGestor,
@@ -652,6 +652,7 @@ function AbaDashboard({
   slugsFiltro,
   mesFiltro,
   setMesFiltro,
+  mesesDisponiveis,
 }: {
   clientes: ClienteGestor[];
   jobs: JobInfo[];
@@ -661,6 +662,7 @@ function AbaDashboard({
   slugsFiltro: Set<string> | null;
   mesFiltro: string;
   setMesFiltro: (v: string) => void;
+  mesesDisponiveis: string[];
 }) {
   const [expandido, setExpandido] = useState<string | null>(null);
   const [breakdown, setBreakdown] = useState<Record<string, MetricasBreakdown>>({});
@@ -723,14 +725,13 @@ function AbaDashboard({
 
   const hasMetricas = itens.some((i) => i.faturamento != null || i.roas != null || i.investimento != null);
 
-  // Opções do seletor de mês: 12 meses retroativos + 1 à frente
+  // Opções do seletor: meses com snapshots (mais recente primeiro).
+  // Se o mês filtrado não estiver na lista (caso raro), inclui ele também
+  // pra evitar valor "fora do range" no select.
   const mesOpcoes = (() => {
-    const opts: Array<{ value: string; label: string }> = [];
-    const now = new Date();
-    for (let i = 1; i >= -12; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      opts.push({ value, label: mesLabel(value) });
+    const opts = mesesDisponiveis.map((m) => ({ value: m, label: mesLabel(m) }));
+    if (mesFiltro && !mesesDisponiveis.includes(mesFiltro)) {
+      opts.unshift({ value: mesFiltro, label: `${mesLabel(mesFiltro)} (sem dados)` });
     }
     return opts;
   })();
@@ -745,8 +746,10 @@ function AbaDashboard({
             id="mes-filtro"
             value={mesFiltro}
             onChange={(e) => setMesFiltro(e.target.value)}
-            className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-1.5 text-xs text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+            disabled={mesOpcoes.length === 0}
+            className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-1.5 text-xs text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)] disabled:opacity-50"
           >
+            {mesOpcoes.length === 0 && <option value="">(sem snapshots)</option>}
             {mesOpcoes.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
@@ -1118,6 +1121,94 @@ function emptyCreateForm(): EditForm {
     painel_url: "",
     pasta_url: "",
   };
+}
+
+// Combobox com busca para selecionar gestor cadastrado
+function GestorSelect({
+  value,
+  onChange,
+  gestores,
+  label = "Gestor",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  gestores: GestorCadastrado[];
+  label?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [filtro, setFiltro] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Fecha ao clicar fora
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setFiltro("");
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const lista = filtro
+    ? gestores.filter((g) => g.nome.toLowerCase().includes(filtro.toLowerCase()))
+    : gestores;
+
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="eyebrow text-xs text-[var(--muted)]">{label}</span>
+      <div ref={containerRef} className="relative">
+        <input
+          type="text"
+          value={open ? filtro : value}
+          onChange={(e) => {
+            setFiltro(e.target.value);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => { setOpen(true); setFiltro(""); }}
+          placeholder={open ? "Buscar gestor..." : "— sem gestor —"}
+          className="w-full rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2 pr-8 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+        />
+        {value && !open && (
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); onChange(""); }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-[var(--muted)] transition hover:text-[var(--crimson)]"
+            title="Limpar"
+          >✕</button>
+        )}
+        {open && (
+          <div className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] shadow-lg">
+            {lista.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-[var(--muted)]">Nenhum gestor encontrado</p>
+            ) : (
+              lista.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onChange(g.nome);
+                    setOpen(false);
+                    setFiltro("");
+                  }}
+                  className={[
+                    "block w-full px-3 py-2 text-left text-sm transition hover:bg-[var(--paper-soft)]",
+                    value === g.nome ? "font-medium text-[var(--forest)]" : "text-[var(--ink)]",
+                  ].join(" ")}
+                >
+                  {g.nome}
+                  {g.squad && <span className="ml-2 text-xs text-[var(--muted)]">· {g.squad}</span>}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </label>
+  );
 }
 
 function AbaConfiguracoes({
@@ -1555,7 +1646,11 @@ function AbaConfiguracoes({
               <div className="grid grid-cols-2 gap-3">
                 {renderField("Nome", editForm!.nome, (v) => setEditForm((f) => f && { ...f, nome: v }))}
                 {renderField("Categoria", editForm!.categoria, (v) => setEditForm((f) => f && { ...f, categoria: v }), "select")}
-                {renderField("Gestor", editForm!.gestor, (v) => setEditForm((f) => f && { ...f, gestor: v }))}
+                <GestorSelect
+                  value={editForm!.gestor}
+                  onChange={(v) => setEditForm((f) => f && { ...f, gestor: v })}
+                  gestores={gestoresCadastrados}
+                />
                 {renderField("ID Google Ads", editForm!.id_google_ads, (v) => setEditForm((f) => f && { ...f, id_google_ads: v }))}
                 {renderField("ID Meta Ads", editForm!.id_meta_ads, (v) => setEditForm((f) => f && { ...f, id_meta_ads: v }))}
                 {renderField("ID GA4", editForm!.id_ga4, (v) => setEditForm((f) => f && { ...f, id_ga4: v }))}
@@ -1583,7 +1678,11 @@ function AbaConfiguracoes({
               <div className="grid grid-cols-2 gap-3">
                 {renderField("Nome", criarForm.nome, (v) => setCriarForm((f) => ({ ...f, nome: v })), "text", true)}
                 {renderField("Categoria", criarForm.categoria, (v) => setCriarForm((f) => ({ ...f, categoria: v })), "select", true)}
-                {renderField("Gestor", criarForm.gestor, (v) => setCriarForm((f) => ({ ...f, gestor: v })))}
+                <GestorSelect
+                  value={criarForm.gestor}
+                  onChange={(v) => setCriarForm((f) => ({ ...f, gestor: v }))}
+                  gestores={gestoresCadastrados}
+                />
                 {renderField("ID Google Ads", criarForm.id_google_ads, (v) => setCriarForm((f) => ({ ...f, id_google_ads: v })))}
                 {renderField("ID Meta Ads", criarForm.id_meta_ads, (v) => setCriarForm((f) => ({ ...f, id_meta_ads: v })))}
                 {renderField("ID GA4", criarForm.id_ga4, (v) => setCriarForm((f) => ({ ...f, id_ga4: v })))}
@@ -1636,8 +1735,9 @@ export default function GestorDashboard() {
   // Gestor filter — derived from client list (field comes from the central sheet)
   const [gestorFiltro, setGestorFiltro] = useState<string>("");
 
-  // Filtro de mês das métricas no dashboard (default: mês atual)
-  const [mesFiltro, setMesFiltro] = useState<string>(() => new Date().toISOString().slice(0, 7));
+  // Filtro de mês: default = "" até descobrirmos qual é o último mês com dados
+  const [mesFiltro, setMesFiltro] = useState<string>("");
+  const [mesesDisponiveis, setMesesDisponiveis] = useState<string[]>([]);
 
   useEffect(() => {
     Promise.all([gestorApi.me(), gestorApi.clientes()])
@@ -1646,10 +1746,24 @@ export default function GestorDashboard() {
       .finally(() => setLoading(false));
 
     gestorApi.listJobs().then(setJobs).catch(console.error).finally(() => setLoadingJobs(false));
+
+    // Carrega meses com snapshots e usa o mais recente como default
+    gestorApi.metricasMesesDisponiveis()
+      .then(({ meses }) => {
+        setMesesDisponiveis(meses);
+        if (meses.length > 0) {
+          setMesFiltro(meses[0]); // mais recente vem primeiro (ORDER BY DESC no backend)
+        } else {
+          // fallback: mês atual se não houver nenhum snapshot
+          setMesFiltro(new Date().toISOString().slice(0, 7));
+        }
+      })
+      .catch(console.error);
   }, []);
 
-  // Refetch das métricas sempre que o filtro de mês mudar
+  // Refetch das métricas quando o mês muda (e só dispara quando mesFiltro estiver pronto)
   useEffect(() => {
+    if (!mesFiltro) return;
     setLoadingMetricas(true);
     gestorApi.metricas(mesFiltro).then(setMetricas).catch(console.error).finally(() => setLoadingMetricas(false));
   }, [mesFiltro]);
@@ -1717,6 +1831,7 @@ export default function GestorDashboard() {
               slugsFiltro={slugsFiltro}
               mesFiltro={mesFiltro}
               setMesFiltro={setMesFiltro}
+              mesesDisponiveis={mesesDisponiveis}
             />
           )}
           {tab === "configuracoes" && (

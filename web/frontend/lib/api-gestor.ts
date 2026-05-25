@@ -269,6 +269,9 @@ export const gestorApi = {
   metricas: (mes?: string) =>
     apiCall<MetricasDashboard>(`metricas${mes ? `?mes=${encodeURIComponent(mes)}` : ""}`),
 
+  metricasMesesDisponiveis: () =>
+    apiCall<{ meses: string[] }>("metricas/meses-disponiveis"),
+
   metricasBreakdown: (slug: string) =>
     apiCall<MetricasBreakdown>(`metricas/${slug}/breakdown`),
 

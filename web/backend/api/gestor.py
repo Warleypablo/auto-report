@@ -1152,6 +1152,46 @@ def admin_remove_cliente(
         session.commit()
 
 
+# ── GET /gestor/metricas/meses-disponiveis ─────────────────────────────────
+# Lista os meses (YYYY-MM) que têm pelo menos um snapshot MENSAL, restritos
+# aos clientes do usuário. Usado pelo frontend pra popular o dropdown de
+# filtro só com meses que efetivamente têm dados.
+
+@router.get("/metricas/meses-disponiveis", status_code=200)
+def metricas_meses_disponiveis(
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> dict:
+    from models.snapshot import Snapshot
+
+    if user.is_admin:
+        cliente_ids = session.execute(
+            select(Cliente.id).where(Cliente.ativo == True)
+        ).scalars().all()
+    else:
+        cliente_ids = session.execute(
+            select(Cliente.id)
+            .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
+            .where(UsuarioCliente.usuario_id == user.id, Cliente.ativo == True)
+        ).scalars().all()
+
+    if not cliente_ids:
+        return {"meses": []}
+
+    rows = session.execute(
+        text("""
+            SELECT DISTINCT TO_CHAR(periodo_fim, 'YYYY-MM') AS mes
+            FROM snapshots
+            WHERE frequencia = 'MENSAL'
+              AND cliente_id = ANY(:ids)
+            ORDER BY mes DESC
+        """),
+        {"ids": list(cliente_ids)},
+    ).all()
+
+    return {"meses": [r[0] for r in rows]}
+
+
 # ── GET /gestor/metricas ───────────────────────────────────────────────────
 
 @router.get("/metricas", response_model=MetricasDashboardResponse)
