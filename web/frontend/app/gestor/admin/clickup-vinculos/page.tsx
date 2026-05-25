@@ -52,14 +52,15 @@ export default function ClickupVinculosPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{
     atualizados: number;
-    sem_vinculo: number;
-    sem_contrato_performance: number;
-    sem_responsavel_no_contrato: number;
+    total_ativos: number;
+    com_match_nome: number;
+    com_contrato_performance: number;
+    com_responsavel: number;
   } | null>(null);
   const [syncErro, setSyncErro] = useState<string | null>(null);
 
   async function syncGestores() {
-    if (!confirm("Atribuir gestores do ClickUp aos clientes do sistema?\n\nIsso vai sobrescrever clientes.gestor com o responsavel do contrato 'Performance' (cup_contratos) para todos os clientes vinculados.")) return;
+    if (!confirm("Atribuir gestores do ClickUp aos clientes do sistema?\n\nMatch por nome (normalizado) com staging.cup_clientes → expande subtask_ids → JOIN com cup_contratos → filtra servico contendo 'Performance' → grava responsavel em clientes.gestor.")) return;
     setSyncing(true);
     setSyncResult(null);
     setSyncErro(null);
@@ -218,8 +219,9 @@ export default function ClickupVinculosPage() {
           <div className="flex-1">
             <p className="text-sm font-medium text-[var(--ink)]">Sincronizar gestores do ClickUp</p>
             <p className="text-xs text-[var(--muted)]">
-              Atribui clientes.gestor = responsavel do contrato cujo produto contém &ldquo;Performance&rdquo;
-              (cup_contratos), para todos os clientes vinculados.
+              Match por nome (normalizado) → expande subtask_ids de cup_clientes → JOIN com
+              cup_contratos onde servico contém &ldquo;Performance&rdquo; → grava responsavel
+              em clientes.gestor.
             </p>
           </div>
           <button
@@ -234,11 +236,13 @@ export default function ClickupVinculosPage() {
           <p className="mt-3 text-xs text-[var(--ink-soft)]">
             <span className="text-[var(--forest)]">{syncResult.atualizados} atualizados</span>
             {" · "}
-            {syncResult.sem_vinculo} sem cup_task_id
+            {syncResult.total_ativos} clientes ativos
             {" · "}
-            {syncResult.sem_contrato_performance} sem contrato Performance
+            {syncResult.com_match_nome} casaram pelo nome
             {" · "}
-            {syncResult.sem_responsavel_no_contrato} sem responsável no contrato
+            {syncResult.com_contrato_performance} têm contrato Performance
+            {" · "}
+            {syncResult.com_responsavel} com responsável
           </p>
         )}
         {syncErro && <p className="mt-3 text-xs text-[var(--crimson)]">{syncErro}</p>}

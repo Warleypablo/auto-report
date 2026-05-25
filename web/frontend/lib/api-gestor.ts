@@ -206,9 +206,10 @@ export const gestorApi = {
   syncGestoresFromClickup: () =>
     apiCall<{
       atualizados: number;
-      sem_vinculo: number;
-      sem_contrato_performance: number;
-      sem_responsavel_no_contrato: number;
+      total_ativos: number;
+      com_match_nome: number;
+      com_contrato_performance: number;
+      com_responsavel: number;
     }>("clientes/sync-gestores", "POST"),
 
   listClientesSemVinculoCup: () =>

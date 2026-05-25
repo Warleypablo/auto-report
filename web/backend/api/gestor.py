@@ -374,78 +374,148 @@ def sync_gestores_from_clickup(
 ) -> dict:
     """Atribui clientes.gestor = responsável do contrato 'Performance' no ClickUp.
 
-    Caminho do dado:
-      clientes.cup_task_id → staging.cup_clientes.task_id
-                           → staging.cup_contratos.id_task (filtro: produto ILIKE '%performance%')
-                           → responsavel (do contrato mais recente)
+    Caminho do dado (relaciona por NOME, não por cup_task_id):
+      clientes.nome  ←normaliza→  staging.cup_clientes.nome
+                                   ↓
+                                   subtask_ids  (string com ";" como separador)
+                                   ↓ split
+                                   ↓ JOIN com cup_contratos.id_subtask
+                                   ↓ filtra servico ILIKE '%performance%'
+                                   ↓ contrato mais recente por data_inicio
+                                   responsavel  →  clientes.gestor
     """
-    # Pré-contagem: agrupa por situação
+    # Subquery de normalização compartilhada entre clientes e cup_clientes.
+    # Usa TRANSLATE para remover acentos comuns + LOWER + colapso de espaços.
+    sql_norm = """
+        LOWER(REGEXP_REPLACE(TRANSLATE(TRIM($1),
+            'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
+            'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
+            '\\s+', ' ', 'g'))
+    """  # noqa — placeholder, será inlineado abaixo
+
+    # Pré-contagem com a mesma lógica do UPDATE pra mostrar pro admin onde estão as lacunas
     counts = session.execute(
         text("""
-            WITH performance_resp AS (
-                SELECT DISTINCT ON (ct.id_task)
-                    ct.id_task,
-                    ct.responsavel
-                FROM staging.cup_contratos ct
-                WHERE LOWER(ct.produto) LIKE '%performance%'
-                ORDER BY ct.id_task, ct.data_inicio DESC NULLS LAST
+            WITH cliente_norm AS (
+                SELECT
+                    c.id,
+                    c.nome,
+                    c.gestor,
+                    LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(c.nome),
+                        'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
+                        'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
+                        '\\s+', ' ', 'g')) AS nome_norm
+                FROM clientes c
+                WHERE c.ativo = true
+            ),
+            cup_norm AS (
+                SELECT
+                    cc.nome,
+                    cc.subtask_ids,
+                    LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(cc.nome),
+                        'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
+                        'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
+                        '\\s+', ' ', 'g')) AS nome_norm
+                FROM staging.cup_clientes cc
+            ),
+            cliente_matched AS (
+                SELECT cn.id, cn.gestor, cup.subtask_ids
+                FROM cliente_norm cn
+                JOIN cup_norm cup ON cn.nome_norm = cup.nome_norm
+            ),
+            subtasks_explodidas AS (
+                SELECT cm.id AS cliente_id, cm.gestor, TRIM(s.subtask_id) AS subtask_id
+                FROM cliente_matched cm
+                CROSS JOIN LATERAL UNNEST(STRING_TO_ARRAY(cm.subtask_ids, ';')) AS s(subtask_id)
+                WHERE COALESCE(cm.subtask_ids, '') <> ''
+            ),
+            performance_resp AS (
+                SELECT DISTINCT ON (se.cliente_id)
+                    se.cliente_id,
+                    se.gestor AS gestor_atual,
+                    ct.responsavel AS novo_gestor
+                FROM subtasks_explodidas se
+                JOIN staging.cup_contratos ct ON TRIM(ct.id_subtask) = se.subtask_id
+                WHERE LOWER(ct.servico) LIKE '%performance%'
+                ORDER BY se.cliente_id, ct.data_inicio DESC NULLS LAST
             )
             SELECT
-                COUNT(*) FILTER (WHERE c.cup_task_id IS NULL) AS sem_vinculo,
-                COUNT(*) FILTER (
-                    WHERE c.cup_task_id IS NOT NULL
-                      AND pr.responsavel IS NOT NULL
-                      AND TRIM(pr.responsavel) <> ''
-                      AND (c.gestor IS DISTINCT FROM pr.responsavel)
-                ) AS a_atualizar,
-                COUNT(*) FILTER (
-                    WHERE c.cup_task_id IS NOT NULL
-                      AND pr.id_task IS NULL
-                ) AS sem_contrato_performance,
-                COUNT(*) FILTER (
-                    WHERE c.cup_task_id IS NOT NULL
-                      AND pr.id_task IS NOT NULL
-                      AND (pr.responsavel IS NULL OR TRIM(pr.responsavel) = '')
-                ) AS sem_responsavel_no_contrato
-            FROM clientes c
-            LEFT JOIN performance_resp pr ON pr.id_task = c.cup_task_id
-            WHERE c.ativo = true
+                (SELECT COUNT(*) FROM clientes WHERE ativo = true) AS total_ativos,
+                (SELECT COUNT(*) FROM cliente_matched) AS com_match_nome,
+                (SELECT COUNT(*) FROM performance_resp) AS com_contrato_performance,
+                (SELECT COUNT(*) FROM performance_resp WHERE novo_gestor IS NOT NULL AND TRIM(novo_gestor) <> '') AS com_responsavel,
+                (SELECT COUNT(*) FROM performance_resp pr
+                  WHERE pr.novo_gestor IS NOT NULL AND TRIM(pr.novo_gestor) <> ''
+                    AND pr.gestor_atual IS DISTINCT FROM pr.novo_gestor) AS a_atualizar
         """)
     ).mappings().one()
 
-    # UPDATE: só onde tem contrato Performance com responsável definido E mudou
+    # UPDATE: aplica o gestor onde tudo bate
     result = session.execute(
         text("""
-            UPDATE clientes c
-            SET gestor = pr.responsavel,
-                atualizado_em = NOW()
-            FROM (
-                SELECT DISTINCT ON (ct.id_task)
-                    ct.id_task,
-                    ct.responsavel
-                FROM staging.cup_contratos ct
-                WHERE LOWER(ct.produto) LIKE '%performance%'
+            WITH cliente_norm AS (
+                SELECT
+                    c.id, c.gestor,
+                    LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(c.nome),
+                        'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
+                        'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
+                        '\\s+', ' ', 'g')) AS nome_norm
+                FROM clientes c
+                WHERE c.ativo = true
+            ),
+            cup_norm AS (
+                SELECT
+                    cc.subtask_ids,
+                    LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(cc.nome),
+                        'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
+                        'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
+                        '\\s+', ' ', 'g')) AS nome_norm
+                FROM staging.cup_clientes cc
+                WHERE COALESCE(cc.subtask_ids, '') <> ''
+            ),
+            cliente_matched AS (
+                SELECT cn.id, cn.gestor, cup.subtask_ids
+                FROM cliente_norm cn
+                JOIN cup_norm cup ON cn.nome_norm = cup.nome_norm
+            ),
+            subtasks_explodidas AS (
+                SELECT cm.id AS cliente_id, TRIM(s.subtask_id) AS subtask_id
+                FROM cliente_matched cm
+                CROSS JOIN LATERAL UNNEST(STRING_TO_ARRAY(cm.subtask_ids, ';')) AS s(subtask_id)
+            ),
+            performance_resp AS (
+                SELECT DISTINCT ON (se.cliente_id)
+                    se.cliente_id,
+                    ct.responsavel AS novo_gestor
+                FROM subtasks_explodidas se
+                JOIN staging.cup_contratos ct ON TRIM(ct.id_subtask) = se.subtask_id
+                WHERE LOWER(ct.servico) LIKE '%performance%'
                   AND ct.responsavel IS NOT NULL
                   AND TRIM(ct.responsavel) <> ''
-                ORDER BY ct.id_task, ct.data_inicio DESC NULLS LAST
-            ) pr
-            WHERE pr.id_task = c.cup_task_id
-              AND c.ativo = true
-              AND (c.gestor IS DISTINCT FROM pr.responsavel)
+                ORDER BY se.cliente_id, ct.data_inicio DESC NULLS LAST
+            )
+            UPDATE clientes c
+            SET gestor = pr.novo_gestor,
+                atualizado_em = NOW()
+            FROM performance_resp pr
+            WHERE c.id = pr.cliente_id
+              AND (c.gestor IS DISTINCT FROM pr.novo_gestor)
         """)
     )
     session.commit()
 
     _log.info(
-        "sync-gestores: atualizados=%d, sem_vinculo=%d, sem_contrato_performance=%d, sem_responsavel_no_contrato=%d",
-        result.rowcount, counts["sem_vinculo"], counts["sem_contrato_performance"], counts["sem_responsavel_no_contrato"],
+        "sync-gestores: atualizados=%d | total_ativos=%d com_match_nome=%d com_contrato_performance=%d com_responsavel=%d",
+        result.rowcount, counts["total_ativos"], counts["com_match_nome"],
+        counts["com_contrato_performance"], counts["com_responsavel"],
     )
 
     return {
         "atualizados": result.rowcount,
-        "sem_vinculo": counts["sem_vinculo"],
-        "sem_contrato_performance": counts["sem_contrato_performance"],
-        "sem_responsavel_no_contrato": counts["sem_responsavel_no_contrato"],
+        "total_ativos": counts["total_ativos"],
+        "com_match_nome": counts["com_match_nome"],
+        "com_contrato_performance": counts["com_contrato_performance"],
+        "com_responsavel": counts["com_responsavel"],
     }
 
 
