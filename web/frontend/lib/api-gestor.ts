@@ -266,7 +266,8 @@ export const gestorApi = {
   listJobs: (slug?: string) =>
     apiCall<JobInfo[]>(`reports${slug ? `?slug=${slug}` : ""}`),
 
-  metricas: () => apiCall<MetricasDashboard>("metricas"),
+  metricas: (mes?: string) =>
+    apiCall<MetricasDashboard>(`metricas${mes ? `?mes=${encodeURIComponent(mes)}` : ""}`),
 
   metricasBreakdown: (slug: string) =>
     apiCall<MetricasBreakdown>(`metricas/${slug}/breakdown`),

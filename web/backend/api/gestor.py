@@ -1156,9 +1156,11 @@ def admin_remove_cliente(
 
 @router.get("/metricas", response_model=MetricasDashboardResponse)
 def get_metricas_dashboard(
+    mes: str | None = Query(None, pattern=r"^\d{4}-\d{2}$", description="Filtro YYYY-MM"),
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> MetricasDashboardResponse:
+    from datetime import date, timedelta
     from models.snapshot import Snapshot
     from sqlalchemy import desc
 
@@ -1182,16 +1184,29 @@ def get_metricas_dashboard(
             media_roas=None, total_leads=0, total_vendas=0,
         )
 
-    # Latest MENSAL snapshot per client via a subquery
+    # Snapshot MENSAL mais recente por cliente:
+    # - se `mes` for passado, restringe periodo_fim ao mês escolhido
+    # - se `mes` for None, pega o snapshot mais recente disponível (comportamento legado)
+    snapshot_filter = [
+        Snapshot.cliente_id.in_(cliente_ids),
+        Snapshot.frequencia == "MENSAL",
+    ]
+    if mes:
+        ano, mes_num = int(mes[:4]), int(mes[5:7])
+        primeiro = date(ano, mes_num, 1)
+        if mes_num == 12:
+            ultimo = date(ano + 1, 1, 1) - timedelta(days=1)
+        else:
+            ultimo = date(ano, mes_num + 1, 1) - timedelta(days=1)
+        snapshot_filter.append(Snapshot.periodo_fim >= primeiro)
+        snapshot_filter.append(Snapshot.periodo_fim <= ultimo)
+
     sub = (
         select(
             Snapshot.cliente_id,
             func.max(Snapshot.periodo_fim).label("max_fim"),
         )
-        .where(
-            Snapshot.cliente_id.in_(cliente_ids),
-            Snapshot.frequencia == "MENSAL",
-        )
+        .where(*snapshot_filter)
         .group_by(Snapshot.cliente_id)
         .subquery()
     )

@@ -650,6 +650,8 @@ function AbaDashboard({
   metricas,
   loadingMetricas,
   slugsFiltro,
+  mesFiltro,
+  setMesFiltro,
 }: {
   clientes: ClienteGestor[];
   jobs: JobInfo[];
@@ -657,6 +659,8 @@ function AbaDashboard({
   metricas: MetricasDashboard | null;
   loadingMetricas: boolean;
   slugsFiltro: Set<string> | null;
+  mesFiltro: string;
+  setMesFiltro: (v: string) => void;
 }) {
   const [expandido, setExpandido] = useState<string | null>(null);
   const [breakdown, setBreakdown] = useState<Record<string, MetricasBreakdown>>({});
@@ -677,8 +681,6 @@ function AbaDashboard({
     }
   }
 
-  const mesAtual = new Date().toISOString().slice(0, 7);
-
   // Apply gestor filter to jobs and metrics
   const jobsFiltrados = slugsFiltro ? jobs.filter((j) => slugsFiltro.has(j.cliente_slug)) : jobs;
   const itens = metricas
@@ -693,7 +695,7 @@ function AbaDashboard({
   const totalLeads = itens.reduce((s, i) => s + (i.leads ?? 0), 0);
   const totalVendas = itens.reduce((s, i) => s + (i.vendas ?? 0), 0);
 
-  const jobsMes = jobsFiltrados.filter((j) => j.mes === mesAtual);
+  const jobsMes = jobsFiltrados.filter((j) => j.mes === mesFiltro);
   const concluidos = jobsFiltrados.filter((j) => j.status === "done").length;
   const taxa = jobsFiltrados.length > 0 ? Math.round((concluidos / jobsFiltrados.length) * 100) : 0;
   const emAndamento = jobsFiltrados.filter((j) => j.status === "running" || j.status === "pending");
@@ -721,15 +723,43 @@ function AbaDashboard({
 
   const hasMetricas = itens.some((i) => i.faturamento != null || i.roas != null || i.investimento != null);
 
+  // Opções do seletor de mês: 12 meses retroativos + 1 à frente
+  const mesOpcoes = (() => {
+    const opts: Array<{ value: string; label: string }> = [];
+    const now = new Date();
+    for (let i = 1; i >= -12; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      opts.push({ value, label: mesLabel(value) });
+    }
+    return opts;
+  })();
+
   return (
     <div>
-      <h1 className="font-display mb-6 text-2xl font-medium text-[var(--ink)]">Dashboard</h1>
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <h1 className="font-display text-2xl font-medium text-[var(--ink)]">Dashboard</h1>
+        <div className="flex items-center gap-2">
+          <label htmlFor="mes-filtro" className="text-xs text-[var(--muted)]">Mês:</label>
+          <select
+            id="mes-filtro"
+            value={mesFiltro}
+            onChange={(e) => setMesFiltro(e.target.value)}
+            className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-1.5 text-xs text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+          >
+            {mesOpcoes.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          {loadingMetricas && <span className="text-[10px] text-[var(--amber)]">carregando…</span>}
+        </div>
+      </div>
 
       {/* ── Cards de resumo ── */}
       <div className="mb-8 grid grid-cols-3 gap-4 xl:grid-cols-6">
         {[
           { label: "Clientes",          value: clientes.length,                              sub: "ativos" },
-          { label: "Reports este mês",  value: jobsMes.length,                               sub: mesLabel(mesAtual) },
+          { label: "Reports do mês",    value: jobsMes.length,                               sub: mesLabel(mesFiltro) },
           { label: "Taxa de sucesso",   value: `${taxa}%`,                                   sub: `${concluidos}/${jobsFiltrados.length}` },
           { label: "Faturamento total", value: metricas ? fmtBRL(totalFaturamento) : "—",    sub: "última coleta" },
           { label: "Investimento total",value: metricas ? fmtBRL(totalInvestimento) : "—",   sub: "última coleta" },
@@ -1606,6 +1636,9 @@ export default function GestorDashboard() {
   // Gestor filter — derived from client list (field comes from the central sheet)
   const [gestorFiltro, setGestorFiltro] = useState<string>("");
 
+  // Filtro de mês das métricas no dashboard (default: mês atual)
+  const [mesFiltro, setMesFiltro] = useState<string>(() => new Date().toISOString().slice(0, 7));
+
   useEffect(() => {
     Promise.all([gestorApi.me(), gestorApi.clientes()])
       .then(([u, c]) => { setUser(u); setClientes(c.items); })
@@ -1613,8 +1646,13 @@ export default function GestorDashboard() {
       .finally(() => setLoading(false));
 
     gestorApi.listJobs().then(setJobs).catch(console.error).finally(() => setLoadingJobs(false));
-    gestorApi.metricas().then(setMetricas).catch(console.error).finally(() => setLoadingMetricas(false));
   }, []);
+
+  // Refetch das métricas sempre que o filtro de mês mudar
+  useEffect(() => {
+    setLoadingMetricas(true);
+    gestorApi.metricas(mesFiltro).then(setMetricas).catch(console.error).finally(() => setLoadingMetricas(false));
+  }, [mesFiltro]);
 
   // Unique gestor names from the loaded clients list
   const gestores: string[] = Array.from(
@@ -1677,6 +1715,8 @@ export default function GestorDashboard() {
               metricas={metricas}
               loadingMetricas={loadingMetricas}
               slugsFiltro={slugsFiltro}
+              mesFiltro={mesFiltro}
+              setMesFiltro={setMesFiltro}
             />
           )}
           {tab === "configuracoes" && (
