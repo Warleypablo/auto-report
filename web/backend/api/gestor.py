@@ -76,6 +76,7 @@ def _job_to_response(job: ReportJob) -> JobStatusResponse:
     return JobStatusResponse(
         id=job.id,
         mes=job.mes,
+        frequencia=job.frequencia,
         status=job.status.value,
         slides_url=job.slides_url,
         erro=job.erro,

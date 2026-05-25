@@ -303,6 +303,12 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
       if (cancelled) return;
       const results = await Promise.allSettled(incomplete.map((j) => gestorApi.getJob(j.job_id)));
       if (cancelled) return;
+      // Log das falhas de polling — fica visível no console pra diagnóstico
+      results.forEach((r, i) => {
+        if (r.status === "rejected") {
+          console.error(`[poll] job ${incomplete[i].job_id} (${incomplete[i].nome}) falhou:`, r.reason);
+        }
+      });
       setDispatched((prev) =>
         prev.map((j) => {
           const idx = incomplete.findIndex((inc) => inc.job_id === j.job_id);
