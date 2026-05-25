@@ -18,28 +18,33 @@ socket.setdefaulttimeout(90)
 
 
 def _cleanup_stale_jobs() -> None:
-    """On startup: mark jobs stuck in 'running' or 'pending' for >10 min as error."""
+    """On startup: marca TODOS os jobs em RUNNING/PENDING como ERROR.
+
+    Como rodamos com --workers 1, todo restart do uvicorn = threads de jobs
+    morreram. Não há jobs legítimos em andamento no momento do startup —
+    todos são órfãos do processo anterior que crashou/reiniciou.
+    """
     try:
         from db import SessionLocal
         from models import ReportJob
         from models.report_job import JobStatus
-        from sqlalchemy import select, text
+        from sqlalchemy import select
 
         with SessionLocal() as session:
-            stale = session.execute(
+            orphans = session.execute(
                 select(ReportJob).where(
                     ReportJob.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
-                    ReportJob.created_at < text("NOW() - INTERVAL '10 minutes'"),
                 )
             ).scalars().all()
-            for job in stale:
+            for job in orphans:
                 job.status = JobStatus.ERROR
-                job.erro = f"Timeout no startup — job estava em {job.status.value} há mais de 10 min"
+                job.erro = f"Processo reiniciado — job ficou órfão em {job.status.value}"
                 job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            if stale:
+            if orphans:
                 session.commit()
-    except Exception:
-        pass  # Don't fail startup because of this
+                print(f"[startup] limpos {len(orphans)} jobs órfãos do processo anterior")
+    except Exception as exc:
+        print(f"[startup] falha ao limpar jobs órfãos: {exc}")
 
 
 @asynccontextmanager

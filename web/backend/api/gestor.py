@@ -48,7 +48,7 @@ _log = logging.getLogger(__name__)
 # Limita quantos jobs de geração de relatório rodam simultaneamente por processo.
 # Previne esgotamento do pool de conexões do DB e sobrecarga de threads/quotas Google
 # com muitos clientes disparados de uma vez. Ajustável via env MAX_CONCURRENT_REPORT_JOBS.
-_MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_REPORT_JOBS", "2"))
+_MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_REPORT_JOBS", "1"))
 _JOB_SEMAPHORE = threading.BoundedSemaphore(_MAX_CONCURRENT_JOBS)
 
 _MES_RE = __import__("re").compile(r"^\d{4}-\d{2}$")
@@ -508,6 +508,9 @@ def trigger_report(
                 _log.info("[job %s/%s] DONE", job_id, cliente_nome)
             finally:
                 _JOB_SEMAPHORE.release()
+                # Libera memória de pandas/google clients carregados pelo job
+                import gc
+                gc.collect()
 
         except Exception as exc:
             _log.exception("[job %s/%s] FALHOU", job_id, cliente_nome)
