@@ -146,9 +146,14 @@ function Sidebar({
         <p className="text-xs font-medium text-[var(--ink-soft)]">{user?.nome ?? "—"}</p>
         <p className="mb-3 truncate text-xs text-[var(--muted)]">{user?.email ?? ""}</p>
         {user?.is_admin && (
-          <Link href="/gestor/admin/usuarios" className="mb-2 block text-xs text-[var(--forest)] hover:underline">
-            Administração →
-          </Link>
+          <>
+            <Link href="/gestor/admin/usuarios" className="mb-1 block text-xs text-[var(--forest)] hover:underline">
+              Administração →
+            </Link>
+            <Link href="/gestor/admin/clickup-vinculos" className="mb-2 block text-xs text-[var(--forest)] hover:underline">
+              Vínculos ClickUp →
+            </Link>
+          </>
         )}
         <button onClick={onLogout} className="text-xs text-[var(--muted)] transition hover:text-[var(--crimson)]">
           Sair

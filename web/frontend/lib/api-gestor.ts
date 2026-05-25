@@ -209,6 +209,36 @@ export const gestorApi = {
       "POST",
     ),
 
+  listClientesSemVinculoCup: () =>
+    apiCall<{
+      total: number;
+      items: Array<{
+        cliente_id: string;
+        cliente_nome: string;
+        cliente_categoria: string;
+        cliente_gestor: string | null;
+        sugestoes: Array<{ task_id: string; nome: string; responsavel: string | null; score: number }>;
+      }>;
+    }>("clickup/sem-vinculo"),
+
+  searchClickupTasks: (q: string) =>
+    apiCall<{
+      items: Array<{
+        task_id: string;
+        nome: string;
+        responsavel: string | null;
+        status: string | null;
+        vinculado_a: { id: string; nome: string } | null;
+      }>;
+    }>(`clickup/tasks?q=${encodeURIComponent(q)}`),
+
+  vincularCupTask: (clienteId: string, cupTaskId: string | null) =>
+    apiCall<{ cliente_id: string; cup_task_id: string | null }>(
+      `clientes/${clienteId}/cup-task`,
+      "PATCH",
+      { cup_task_id: cupTaskId },
+    ),
+
   triggerReport: (slug: string, mes: string, frequencia: Frequencia = "MENSAL") =>
     apiCall<{ job_id: string }>("reports/trigger", "POST", { slug, mes, frequencia }),
 

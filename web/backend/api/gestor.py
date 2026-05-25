@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import distinct, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
@@ -101,6 +102,146 @@ def _mark_stale_jobs(session: Session) -> None:
         job.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
     if stale:
         session.commit()
+
+
+# ── GET /gestor/clickup/sem-vinculo ────────────────────────────────────────
+# Lista clientes ativos sem cup_task_id + sugestões automáticas por similaridade
+# de nome com staging.cup_clientes. Usado pela UI admin de vinculação manual.
+
+@router.get("/clickup/sem-vinculo", status_code=200)
+def listar_clientes_sem_vinculo_cup(
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    rows = session.execute(
+        text("""
+            SELECT
+                c.id::text   AS cliente_id,
+                c.nome       AS cliente_nome,
+                c.categoria  AS cliente_categoria,
+                c.gestor     AS cliente_gestor,
+                COALESCE(
+                    (
+                        SELECT json_agg(s ORDER BY s.score DESC)
+                        FROM (
+                            SELECT
+                                cc.task_id,
+                                cc.nome,
+                                cc.responsavel,
+                                CASE
+                                    WHEN LOWER(TRIM(cc.nome)) = LOWER(TRIM(c.nome)) THEN 1.0
+                                    WHEN LOWER(TRIM(cc.nome)) LIKE LOWER(TRIM(c.nome)) || '%' THEN 0.85
+                                    WHEN LOWER(TRIM(c.nome)) LIKE LOWER(TRIM(cc.nome)) || '%' THEN 0.80
+                                    WHEN LOWER(cc.nome) LIKE '%' || LOWER(TRIM(c.nome)) || '%' THEN 0.7
+                                    WHEN LOWER(c.nome) LIKE '%' || LOWER(TRIM(cc.nome)) || '%' THEN 0.65
+                                    ELSE 0.0
+                                END AS score
+                            FROM staging.cup_clientes cc
+                            WHERE LOWER(cc.nome) LIKE '%' || LOWER(SPLIT_PART(TRIM(c.nome), ' ', 1)) || '%'
+                               OR LOWER(c.nome) LIKE '%' || LOWER(SPLIT_PART(TRIM(cc.nome), ' ', 1)) || '%'
+                            ORDER BY score DESC
+                            LIMIT 5
+                        ) s
+                        WHERE s.score > 0
+                    ),
+                    '[]'::json
+                ) AS sugestoes
+            FROM clientes c
+            WHERE c.ativo = true
+              AND c.cup_task_id IS NULL
+            ORDER BY c.nome ASC
+        """)
+    ).mappings().all()
+
+    return {
+        "total": len(rows),
+        "items": [dict(r) for r in rows],
+    }
+
+
+# ── GET /gestor/clickup/tasks ──────────────────────────────────────────────
+# Busca tasks no ClickUp por nome (substring case-insensitive) — autocomplete
+
+@router.get("/clickup/tasks", status_code=200)
+def buscar_clickup_tasks(
+    q: str = Query("", min_length=0, max_length=120),
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    q = q.strip()
+    if len(q) < 2:
+        return {"items": []}
+
+    rows = session.execute(
+        text("""
+            SELECT
+                cc.task_id,
+                cc.nome,
+                cc.responsavel,
+                cc.status,
+                -- já está vinculado a algum cliente?
+                (SELECT json_build_object('id', cl.id::text, 'nome', cl.nome)
+                 FROM clientes cl WHERE cl.cup_task_id = cc.task_id LIMIT 1
+                ) AS vinculado_a
+            FROM staging.cup_clientes cc
+            WHERE LOWER(cc.nome) LIKE '%' || LOWER(:q) || '%'
+            ORDER BY cc.nome ASC
+            LIMIT 20
+        """),
+        {"q": q},
+    ).mappings().all()
+
+    return {"items": [dict(r) for r in rows]}
+
+
+# ── PATCH /gestor/clientes/{id}/cup-task ───────────────────────────────────
+# Vincula (ou desvincula com null) um cliente a um task_id do ClickUp.
+
+class _CupTaskPatch(BaseModel):
+    cup_task_id: str | None = None
+
+
+@router.patch("/clientes/{cliente_id}/cup-task", status_code=200)
+def patch_cup_task(
+    cliente_id: uuid.UUID,
+    body: _CupTaskPatch,
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    cliente = session.get(Cliente, cliente_id)
+    if cliente is None:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    novo_task_id = (body.cup_task_id or "").strip() or None
+
+    if novo_task_id:
+        # Validar que o task_id existe em staging.cup_clientes
+        exists = session.execute(
+            text("SELECT 1 FROM staging.cup_clientes WHERE task_id = :tid LIMIT 1"),
+            {"tid": novo_task_id},
+        ).scalar()
+        if not exists:
+            raise HTTPException(
+                status_code=422,
+                detail=f"task_id '{novo_task_id}' não existe em staging.cup_clientes",
+            )
+
+        # Validar que ninguém mais está vinculado a esse task_id
+        outro = session.execute(
+            select(Cliente).where(
+                Cliente.cup_task_id == novo_task_id,
+                Cliente.id != cliente_id,
+            )
+        ).scalar_one_or_none()
+        if outro is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"task_id '{novo_task_id}' já está vinculado ao cliente '{outro.nome}'",
+            )
+
+    cliente.cup_task_id = novo_task_id
+    session.commit()
+    return {"cliente_id": str(cliente.id), "cup_task_id": cliente.cup_task_id}
 
 
 # ── POST /gestor/clientes/sync-gestores ────────────────────────────────────
