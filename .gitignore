@@ -15,7 +15,7 @@ google-ads.yaml
 
 # Configurações sensíveis do projeto
 config/settings_puro.py
-config/settings.py
+# config/settings.py agora é versionado (tokens vêm de env vars)
 !config/settings_example.py
 
 # Logs (opcional)
