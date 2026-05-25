@@ -73,27 +73,26 @@ def coletar_dados(cliente, periodo_ref, periodo_comp) -> dict:
     step_logger = StepLogger(log)
     dados: dict = {}
     try:
-        tasks = [
-            ("painel_ref",    lambda: painel_scraper.coletar_metricas(cliente, periodo_ref)),
-            ("painel_comp",   lambda: painel_scraper.coletar_metricas(cliente, periodo_comp, sufixo="_comp")),
-            ("facebook_ref",  lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref)),
-            ("facebook_comp", lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp")),
-            ("google_ref",    lambda: google_metrics_gather.coletar_metricas_google(cliente, periodo_ref)),
-            ("google_comp",   lambda: google_metrics_gather.coletar_metricas_google(cliente, periodo_comp, "_comp")),
-            ("ga4_ref",       lambda: ga4_scraper.coletar_metricas_ga4(cliente, periodo_ref)),
-            ("ga4_comp",      lambda: ga4_scraper.coletar_metricas_ga4(cliente, periodo_comp, sufixo="_comp")),
-        ]
+        # Sequencial — paralelização revertida para diagnóstico do hang em produção
+        step_logger.start("painel")
+        dados.update(painel_scraper.coletar_metricas(cliente, periodo_ref))
+        dados.update(painel_scraper.coletar_metricas(cliente, periodo_comp, sufixo="_comp"))
+        step_logger.end("painel")
 
-        step_logger.start("coletar_apis_paralelo")
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(fn): name for name, fn in tasks}
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    dados.update(future.result())
-                except Exception:
-                    log.exception("Erro em %s", name, extra={"cliente": getattr(cliente, "nome", None)})
-        step_logger.end("coletar_apis_paralelo")
+        step_logger.start("facebook")
+        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref))
+        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp"))
+        step_logger.end("facebook")
+
+        step_logger.start("google_ads")
+        dados.update(google_metrics_gather.coletar_metricas_google(cliente, periodo_ref))
+        dados.update(google_metrics_gather.coletar_metricas_google(cliente, periodo_comp, "_comp"))
+        step_logger.end("google_ads")
+
+        step_logger.start("ga4")
+        dados.update(ga4_scraper.coletar_metricas_ga4(cliente, periodo_ref))
+        dados.update(ga4_scraper.coletar_metricas_ga4(cliente, periodo_comp, sufixo="_comp"))
+        step_logger.end("ga4")
 
         step_logger.start("variacoes_percentuais")
         dados.update(variacao_dados_comparativos.calcular_variacoes(dados, _VARIATION_KEYS))

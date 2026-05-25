@@ -79,47 +79,30 @@ def coletar_dados(cliente, periodo_ref, periodo_comp):
     step_logger = StepLogger(log)
     dados: dict = {}
     try:
-        # Batch 1: GA4 + Facebook + Google Ads (todos independentes)
-        batch1 = [
-            ("ga4_ref",       lambda: ga4_scraper.coletar_metricas_ga4(cliente, periodo_ref)),
-            ("ga4_comp",      lambda: ga4_scraper.coletar_metricas_ga4(cliente, periodo_comp, sufixo="_comp")),
-            ("facebook_ref",  lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref)),
-            ("facebook_comp", lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp")),
-            ("google_ref",    lambda: google_metrics_gather.coletar_metricas_google(cliente, periodo_ref)),
-            ("google_comp",   lambda: google_metrics_gather.coletar_metricas_google(cliente, periodo_comp, "_comp")),
-        ]
+        # Sequencial — paralelização foi revertida temporariamente para diagnóstico
+        # do hang em produção (502 / "gerando eternamente"). Cada etapa loga seu tempo.
+        step_logger.start("ga4")
+        dados.update(ga4_scraper.coletar_metricas_ga4(cliente, periodo_ref))
+        dados.update(ga4_scraper.coletar_metricas_ga4(cliente, periodo_comp, sufixo="_comp"))
+        step_logger.end("ga4")
 
-        step_logger.start("batch1_paralelo")
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(fn): name for name, fn in batch1}
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    dados.update(future.result())
-                except Exception:
-                    log.exception("Erro em %s", name, extra={"cliente": getattr(cliente, "nome", None)})
-        step_logger.end("batch1_paralelo")
-
-        # Extrai sessões após GA4 — necessárias para calcular cps/lps no painel
         ses = variacao_dados_comparativos._to_float(dados.get("{{ses}}"))
         ses_comp = variacao_dados_comparativos._to_float(dados.get("{{ses_comp}}"))
 
-        # Batch 2: Painel (depende de ses do GA4)
-        batch2 = [
-            ("painel_ref",  lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_ref, ses)),
-            ("painel_comp", lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_comp, ses_comp, "_comp")),
-        ]
+        step_logger.start("painel")
+        dados.update(painel_scraper.coletar_metricas_leads(cliente, periodo_ref, ses))
+        dados.update(painel_scraper.coletar_metricas_leads(cliente, periodo_comp, ses_comp, "_comp"))
+        step_logger.end("painel")
 
-        step_logger.start("batch2_painel_paralelo")
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = {executor.submit(fn): name for name, fn in batch2}
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    dados.update(future.result())
-                except Exception:
-                    log.exception("Erro em %s", name, extra={"cliente": getattr(cliente, "nome", None)})
-        step_logger.end("batch2_painel_paralelo")
+        step_logger.start("facebook")
+        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref))
+        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp"))
+        step_logger.end("facebook")
+
+        step_logger.start("google_ads")
+        dados.update(google_metrics_gather.coletar_metricas_google(cliente, periodo_ref))
+        dados.update(google_metrics_gather.coletar_metricas_google(cliente, periodo_comp, "_comp"))
+        step_logger.end("google_ads")
 
         step_logger.start("variacoes_percentuais")
         dados.update(variacao_dados_comparativos.calcular_variacoes(dados, _METRIC_VAR_KEYS))

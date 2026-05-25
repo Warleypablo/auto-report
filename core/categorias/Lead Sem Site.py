@@ -68,23 +68,16 @@ def coletar_dados(cliente, periodo_ref, periodo_comp):
     step_logger = StepLogger(log)
     dados: dict = {}
     try:
-        tasks = [
-            ("painel_ref",    lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_ref)),
-            ("painel_comp",   lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_comp, sufixo="_comp")),
-            ("facebook_ref",  lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref)),
-            ("facebook_comp", lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp")),
-        ]
+        # Sequencial — paralelização revertida para diagnóstico do hang em produção
+        step_logger.start("painel")
+        dados.update(painel_scraper.coletar_metricas_leads(cliente, periodo_ref))
+        dados.update(painel_scraper.coletar_metricas_leads(cliente, periodo_comp, sufixo="_comp"))
+        step_logger.end("painel")
 
-        step_logger.start("coletar_apis_paralelo")
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(fn): name for name, fn in tasks}
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    dados.update(future.result())
-                except Exception:
-                    log.exception("Erro em %s", name, extra={"cliente": getattr(cliente, "nome", None)})
-        step_logger.end("coletar_apis_paralelo")
+        step_logger.start("facebook")
+        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref))
+        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp"))
+        step_logger.end("facebook")
 
         step_logger.start("variacoes_percentuais")
         dados.update(variacao_dados_comparativos.calcular_variacoes(dados, _METRIC_VAR_KEYS))
