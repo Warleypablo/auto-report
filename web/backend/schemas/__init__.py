@@ -5,6 +5,7 @@ from .admin import (
     PeriodosResponse,
 )
 from .case import CaseDetail, CaseListItem, PontoEvolucao
+from .cliente import ClienteLoginRequest, ClienteLoginResponse, ClientePublic
 from .gestor import (
     AssignClientesRequest,
     ClienteCreateRequest,
@@ -42,7 +43,10 @@ __all__ = [
     "ClienteEditRequest",
     "ClienteGestorItem",
     "ClienteListItem",
+    "ClienteLoginRequest",
+    "ClienteLoginResponse",
     "ClienteMetricasItem",
+    "ClientePublic",
     "ClientesGestorResponse",
     "ClientesListResponse",
     "CreateUsuarioRequest",
