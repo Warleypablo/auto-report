@@ -17,6 +17,7 @@ from db import get_session
 from models import Cliente
 from schemas import ClienteLoginRequest, ClienteLoginResponse, ClientePublic
 from services.metricas import build_breakdown, build_timeline, meses_disponiveis_for_cliente
+from services.cliente_highlight import compute_highlight
 
 router = APIRouter()
 _log = logging.getLogger(__name__)
@@ -235,3 +236,12 @@ def metricas_meses_disponiveis(
     session: Session = Depends(get_session),
 ) -> dict:
     return {"meses": meses_disponiveis_for_cliente(cliente.id, session)}
+
+
+@router.get("/metricas/highlight")
+def metricas_highlight(
+    cliente: Cliente = Depends(require_cliente),
+    session: Session = Depends(get_session),
+) -> dict:
+    timeline = build_timeline(cliente.id, 12, session)
+    return {"highlight": compute_highlight(timeline)}
