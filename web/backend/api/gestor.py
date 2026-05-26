@@ -621,33 +621,46 @@ def list_gestores(
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> GestoresResponse:
-    """Lista gestores distintos com pelo menos 1 cliente ATIVO no ClickUp.
+    """Lista gestores OFICIAIS (gestores_cadastrados) que têm pelo menos 1
+    cliente ATIVO no ClickUp.
 
-    Filtro reduz lista de ~30 (todos os gestores históricos) para os que
-    têm conta ativa hoje. Requer cup_task_id populado em clientes.
+    Filtra dropdown por whitelist + status comercial:
+    - Nome aparece SOMENTE se constar em gestores_cadastrados
+    - Cliente associado precisa ter clientes.ativo=true E
+      staging.cup_clientes.status='ativo'
+
+    Variantes/abreviações em clientes.gestor que não batem exato com
+    gestores_cadastrados.nome ficam fora — limpeza por dependência
+    da whitelist, não por código fuzzy.
     """
-    # SQL bruto: precisa do JOIN com staging.cup_clientes que SQLAlchemy
-    # não mapeia (tabela externa, sem model). Mantém o filtro de acesso
-    # (admin vê tudo; não-admin só seus clientes vinculados).
-    base_sql = """
-        SELECT DISTINCT c.gestor
-        FROM clientes c
-        JOIN staging.cup_clientes cc ON cc.task_id = c.cup_task_id
+    exists_clause = """
+        EXISTS (
+            SELECT 1
+            FROM clientes c
+            JOIN staging.cup_clientes cc ON cc.task_id = c.cup_task_id
+            {extra_join}
+            WHERE c.gestor = gc.nome
+              AND c.ativo = true
+              AND LOWER(COALESCE(cc.status, '')) = 'ativo'
+              {extra_where}
+        )
     """
-    where = """
-        WHERE c.gestor IS NOT NULL
-          AND c.ativo = true
-          AND LOWER(COALESCE(cc.status, '')) = 'ativo'
-    """
+
     if user.is_admin:
-        sql = base_sql + where + " ORDER BY c.gestor"
+        sql = (
+            "SELECT gc.nome FROM gestores_cadastrados gc WHERE "
+            + exists_clause.format(extra_join="", extra_where="")
+            + " ORDER BY gc.nome"
+        )
         params: dict = {}
     else:
         sql = (
-            base_sql
-            + " JOIN usuario_clientes uc ON uc.cliente_id = c.id"
-            + where
-            + " AND uc.usuario_id = :uid ORDER BY c.gestor"
+            "SELECT gc.nome FROM gestores_cadastrados gc WHERE "
+            + exists_clause.format(
+                extra_join="JOIN usuario_clientes uc ON uc.cliente_id = c.id",
+                extra_where="AND uc.usuario_id = :uid",
+            )
+            + " ORDER BY gc.nome"
         )
         params = {"uid": str(user.id)}
 
