@@ -8,6 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from sqlalchemy import text  # noqa: E402
+
 from db import SessionLocal  # noqa: E402
 from models import Categoria, Cliente, Snapshot  # noqa: E402
 from models.snapshot import Frequencia  # noqa: E402
@@ -194,8 +196,38 @@ def main() -> None:
 
             for snap in _snapshots_para(cliente, data):
                 session.add(snap)
+
+        # Vincula cada cliente a uma row em staging.cup_clientes com CNPJ
+        # determinístico — usado pela área do cliente (/cliente/login).
+        session.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
+        session.execute(text("""
+            CREATE TABLE IF NOT EXISTS staging.cup_clientes (
+                task_id text PRIMARY KEY,
+                nome text,
+                cnpj text
+            )
+        """))
+        for idx, data in enumerate(CLIENTES_DATA, start=1):
+            slug = data[0]
+            nome = data[1]
+            task_id = f"task-mock-{slug}"
+            cnpj = f"{idx:014d}"  # 00000000000001, 00000000000002, ...
+            session.execute(text("""
+                INSERT INTO staging.cup_clientes (task_id, nome, cnpj)
+                VALUES (:t, :n, :c)
+                ON CONFLICT (task_id) DO UPDATE
+                SET nome = EXCLUDED.nome, cnpj = EXCLUDED.cnpj
+            """), {"t": task_id, "n": nome, "c": cnpj})
+            session.execute(
+                text("UPDATE clientes SET cup_task_id = :t WHERE slug = :s"),
+                {"t": task_id, "s": slug},
+            )
+
         session.commit()
-        print(f"Seeded {len(CLIENTES_DATA)} clientes com {len(CLIENTES_DATA) * MESES} snapshots")
+        print(
+            f"Seeded {len(CLIENTES_DATA)} clientes com "
+            f"{len(CLIENTES_DATA) * MESES} snapshots + cup_clientes/CNPJ"
+        )
 
 
 if __name__ == "__main__":
