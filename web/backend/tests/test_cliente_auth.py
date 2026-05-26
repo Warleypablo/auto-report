@@ -140,3 +140,16 @@ def test_login_broken_link(app_with_db):
     client = TestClient(app)
     r = client.post("/cliente/auth/login", json={"cnpj": "33333333000133"})
     assert r.status_code == 401
+
+
+def test_logout_returns_204(app_with_db):
+    """Logout é stateless: backend só sinaliza ok; frontend limpa cookie."""
+    app, TS = app_with_db
+    _seed_cliente(TS, nome="Cliente Y", cnpj="44444444000144")
+
+    client = TestClient(app)
+    login = client.post("/cliente/auth/login", json={"cnpj": "44444444000144"})
+    token = login.json()["token"]
+
+    r = client.post("/cliente/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 204

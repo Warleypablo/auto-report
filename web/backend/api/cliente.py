@@ -140,6 +140,11 @@ def login(
     )
 
 
+@router.post("/auth/logout", status_code=204)
+def logout(_cliente: Cliente = Depends(require_cliente)) -> None:
+    return None
+
+
 @router.get("/me", response_model=ClientePublic)
 def me(cliente: Cliente = Depends(require_cliente)) -> ClientePublic:
     return ClientePublic(
