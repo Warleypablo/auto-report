@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import {
@@ -54,6 +54,8 @@ function ClienteDashboardInner() {
   const search = useSearchParams();
   const wantIntro = search.get("intro") === "1";
 
+  const fetchedRef = useRef(false);
+
   const [cliente, setCliente] = useState<ClientePublic | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
@@ -67,6 +69,9 @@ function ClienteDashboardInner() {
   const [drawerGoogle, setDrawerGoogle] = useState(false);
 
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+
     Promise.all([
       clienteApi.me(),
       clienteApi.timeline(12),
