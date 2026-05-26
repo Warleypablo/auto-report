@@ -1346,15 +1346,8 @@ def get_metricas_timeline(
         if not acesso:
             raise HTTPException(403, "Acesso negado")
 
-    snapshots = session.execute(
-        select(Snapshot)
-        .where(Snapshot.cliente_id == cliente.id, Snapshot.frequencia == "MENSAL")
-        .order_by(Snapshot.periodo_fim.desc())
-        .limit(meses)
-    ).scalars().all()
-
-    # Inverte pra ordem cronológica (do mais antigo pro mais recente)
-    snapshots = list(reversed(snapshots))
+    from services.metricas import build_timeline
+    items = build_timeline(cliente.id, meses, session)
 
     return {
         "cliente": {
@@ -1363,22 +1356,7 @@ def get_metricas_timeline(
             "categoria": cliente.categoria.value,
             "gestor": cliente.gestor,
         },
-        "items": [
-            {
-                "mes": s.periodo_fim.strftime("%Y-%m"),
-                "periodo_inicio": str(s.periodo_inicio),
-                "periodo_fim": str(s.periodo_fim),
-                "faturamento": float(s.faturamento) if s.faturamento is not None else None,
-                "investimento": float(s.investimento) if s.investimento is not None else None,
-                "roas": float(s.roas) if s.roas is not None else None,
-                "cpa": float(s.cpa) if s.cpa is not None else None,
-                "leads": s.leads,
-                "vendas": s.vendas,
-                "faturamento_var_pct": float(s.faturamento_var_pct) if s.faturamento_var_pct is not None else None,
-                "roas_var_pct": float(s.roas_var_pct) if s.roas_var_pct is not None else None,
-            }
-            for s in snapshots
-        ],
+        "items": items,
     }
 
 
