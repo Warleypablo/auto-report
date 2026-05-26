@@ -153,12 +153,75 @@ def test_login_broken_link(app_with_db):
     with TS() as s:
         s.execute(text(
             "INSERT INTO staging.cup_clientes (task_id, nome, cnpj) "
-            "VALUES ('orfao', 'X', '33333333000133')"
+            "VALUES ('orfao', 'NomeSemMatch_xyz_123', '33333333000133')"
         ))
         s.commit()
 
     client = TestClient(app)
     r = client.post("/cliente/auth/login", json={"cnpj": "33333333000133", "senha": "Warley20192020"})
+    assert r.status_code == 401
+
+
+def test_login_self_heals_cup_task_id_when_name_matches(app_with_db):
+    """Cliente existe com cup_task_id=NULL mas nome bate com cup_clientes.nome.
+    Login deve achar via match de nome, popular cup_task_id e logar com sucesso."""
+    app, TS = app_with_db
+    with TS() as s:
+        c = Cliente(
+            slug="acme-corp",
+            nome="ACME Ltda",
+            categoria=Categoria.LEAD_COM_SITE,
+            cup_task_id=None,
+            ativo=True,
+        )
+        s.add(c)
+        s.commit()
+        s.refresh(c)
+        cid = c.id
+        s.execute(
+            text("INSERT INTO staging.cup_clientes (task_id, nome, cnpj) VALUES (:t, :n, :c)"),
+            {"t": "task-acme-real", "n": "Acme", "c": "12121212000112"},
+        )
+        s.commit()
+
+    client = TestClient(app)
+    r = client.post(
+        "/cliente/auth/login",
+        json={"cnpj": "12121212000112", "senha": "Warley20192020"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["cliente"]["id"] == str(cid)
+
+    # Side-effect: cup_task_id foi populado no DB
+    with TS() as s:
+        cliente = s.get(Cliente, cid)
+        assert cliente.cup_task_id == "task-acme-real"
+
+
+def test_login_does_not_self_heal_when_name_ambiguous(app_with_db):
+    """Match por nome só aplica se candidato é único."""
+    app, TS = app_with_db
+    with TS() as s:
+        s.add(Cliente(
+            slug="ambiguo-1", nome="Mesma Empresa", categoria=Categoria.LEAD_COM_SITE,
+            cup_task_id=None, ativo=True,
+        ))
+        s.add(Cliente(
+            slug="ambiguo-2", nome="MESMA EMPRESA", categoria=Categoria.LEAD_COM_SITE,
+            cup_task_id=None, ativo=True,
+        ))
+        s.commit()
+        s.execute(
+            text("INSERT INTO staging.cup_clientes (task_id, nome, cnpj) VALUES (:t, :n, :c)"),
+            {"t": "task-ambig", "n": "Mesma Empresa", "c": "13131313000113"},
+        )
+        s.commit()
+
+    client = TestClient(app)
+    r = client.post(
+        "/cliente/auth/login",
+        json={"cnpj": "13131313000113", "senha": "Warley20192020"},
+    )
     assert r.status_code == 401
 
 

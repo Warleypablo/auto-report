@@ -3,12 +3,13 @@ from __future__ import annotations
 import logging
 import re
 import secrets
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from jose import JWTError, jwt
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
 from app_settings import Settings, get_settings
@@ -24,6 +25,28 @@ _log = logging.getLogger(__name__)
 def normalize_cnpj(raw: str) -> str:
     """Remove tudo que não for dígito."""
     return re.sub(r"\D", "", raw or "")
+
+
+_SUFIXOS_JURIDICOS_RE = re.compile(
+    r"\s+(ltda|me|mei|epp|eireli|s\.?a\.?|sa|inc\.?|corp\.?)\s*\.?\s*$",
+    re.IGNORECASE,
+)
+
+
+def normalize_nome(s: str | None) -> str:
+    """Match tolerante: sem acentos, lower, sem sufixos jurídicos, sem pontuação.
+
+    Mesma normalização usada pelo automatch do admin (api/gestor.py).
+    Duplicada aqui pra evitar import circular; alinhar se um lado mudar.
+    """
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    s = s.lower().strip()
+    s = _SUFIXOS_JURIDICOS_RE.sub("", s)
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
 def mask_cnpj(cnpj_digits: str) -> str:
@@ -87,7 +110,7 @@ def login(
 
     rows = session.execute(
         text("""
-            SELECT cc.task_id
+            SELECT cc.task_id, cc.nome
             FROM staging.cup_clientes cc
             WHERE regexp_replace(COALESCE(cc.cnpj, ''), '[^0-9]', '', 'g') = :cnpj
         """),
@@ -109,13 +132,37 @@ def login(
             detail="Múltiplas contas encontradas para este CNPJ. Fale com seu gestor.",
         )
 
-    task_id = rows[0][0]
+    task_id, cup_nome = rows[0]
     cliente = session.execute(
         select(Cliente).where(Cliente.cup_task_id == task_id)
     ).scalar_one_or_none()
 
+    # Self-healing: vínculo cup_task_id pode estar NULL (migration original
+    # rodou antes do pipeline popular staging.cup_clientes). Tenta match único
+    # por nome normalizado e popula cup_task_id no DB.
+    if cliente is None and cup_nome:
+        nome_norm = normalize_nome(cup_nome)
+        if nome_norm:
+            candidatos = session.execute(
+                select(Cliente).where(
+                    Cliente.ativo == True,  # noqa: E712
+                    Cliente.cup_task_id.is_(None),
+                )
+            ).scalars().all()
+            matches = [c for c in candidatos if normalize_nome(c.nome) == nome_norm]
+            if len(matches) == 1:
+                cliente = matches[0]
+                session.execute(
+                    update(Cliente).where(Cliente.id == cliente.id).values(cup_task_id=task_id)
+                )
+                session.commit()
+                _log.info(
+                    f"cliente_login cnpj_mask={masked} result=auto_linked "
+                    f"cliente_id={cliente.id} task_id={task_id}"
+                )
+
     if cliente is None:
-        _log.info(f"cliente_login cnpj_mask={masked} result=broken_link")
+        _log.info(f"cliente_login cnpj_mask={masked} result=broken_link cup_nome={cup_nome!r}")
         raise HTTPException(
             status_code=401,
             detail="Conta não disponível no momento. Fale com seu gestor.",
