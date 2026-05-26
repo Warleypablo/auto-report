@@ -7,12 +7,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from jose import JWTError, jwt
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app_settings import Settings, get_settings
 from db import get_session
 from models import Cliente
-from schemas import ClientePublic
+from schemas import ClienteLoginRequest, ClienteLoginResponse, ClientePublic
 
 router = APIRouter()
 _log = logging.getLogger(__name__)
@@ -64,6 +65,79 @@ def require_cliente(
     if cliente is None or not cliente.ativo:
         raise HTTPException(status_code=401, detail="Conta inativa ou inexistente")
     return cliente
+
+
+@router.post("/auth/login", response_model=ClienteLoginResponse)
+def login(
+    body: ClienteLoginRequest,
+    settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_session),
+) -> ClienteLoginResponse:
+    cnpj_digits = normalize_cnpj(body.cnpj)
+    if len(cnpj_digits) < 11:
+        _log.info("cliente_login cnpj_mask=*** result=invalid_format")
+        raise HTTPException(status_code=401, detail="CNPJ inválido")
+
+    rows = session.execute(
+        text("""
+            SELECT cc.task_id
+            FROM staging.cup_clientes cc
+            WHERE regexp_replace(COALESCE(cc.cnpj, ''), '[^0-9]', '', 'g') = :cnpj
+        """),
+        {"cnpj": cnpj_digits},
+    ).all()
+
+    masked = mask_cnpj(cnpj_digits)
+
+    if not rows:
+        _log.info(f"cliente_login cnpj_mask={masked} result=not_found")
+        raise HTTPException(
+            status_code=401,
+            detail="CNPJ não encontrado. Verifique o número ou entre em contato com seu gestor.",
+        )
+    if len(rows) > 1:
+        _log.info(f"cliente_login cnpj_mask={masked} result=multiple")
+        raise HTTPException(
+            status_code=401,
+            detail="Múltiplas contas encontradas para este CNPJ. Fale com seu gestor.",
+        )
+
+    task_id = rows[0][0]
+    cliente = session.execute(
+        select(Cliente).where(Cliente.cup_task_id == task_id)
+    ).scalar_one_or_none()
+
+    if cliente is None:
+        _log.info(f"cliente_login cnpj_mask={masked} result=broken_link")
+        raise HTTPException(
+            status_code=401,
+            detail="Conta não disponível no momento. Fale com seu gestor.",
+        )
+
+    if not cliente.ativo:
+        _log.info(f"cliente_login cnpj_mask={masked} result=inactive")
+        raise HTTPException(status_code=401, detail="Conta inativa. Fale com seu gestor.")
+
+    token = create_cliente_token(
+        cliente.id,
+        secret=settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+        expiry_hours=settings.jwt_expiry_hours,
+    )
+
+    _log.info(f"cliente_login cnpj_mask={masked} result=ok cliente_id={cliente.id}")
+
+    return ClienteLoginResponse(
+        token=token,
+        cliente=ClientePublic(
+            id=cliente.id,
+            slug=cliente.slug,
+            nome=cliente.nome,
+            categoria=cliente.categoria,
+            logo_url=cliente.logo_url,
+            setor=cliente.setor,
+        ),
+    )
 
 
 @router.get("/me", response_model=ClientePublic)
