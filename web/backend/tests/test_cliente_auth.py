@@ -153,3 +153,30 @@ def test_logout_returns_204(app_with_db):
 
     r = client.post("/cliente/auth/logout", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 204
+
+
+def test_cliente_deactivated_after_token_emission(app_with_db):
+    """Token foi emitido com cliente ativo; cliente vira ativo=False; chamadas
+    a rotas protegidas passam a falhar com 401 (require_cliente revalida no DB)."""
+    app, TS = app_with_db
+    cid = _seed_cliente(TS, nome="Será desativada", cnpj="55555555000155")
+
+    client = TestClient(app)
+    login = client.post("/cliente/auth/login", json={"cnpj": "55555555000155"})
+    assert login.status_code == 200
+    token = login.json()["token"]
+
+    # Acesso normal funciona
+    r_ok = client.get("/cliente/me", headers={"Authorization": f"Bearer {token}"})
+    assert r_ok.status_code == 200
+
+    # Desativa o cliente diretamente no DB
+    with TS() as s:
+        from sqlalchemy import update
+        from models import Cliente
+
+        s.execute(update(Cliente).where(Cliente.id == cid).values(ativo=False))
+        s.commit()
+
+    r_after = client.get("/cliente/me", headers={"Authorization": f"Bearer {token}"})
+    assert r_after.status_code == 401
