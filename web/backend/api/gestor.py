@@ -621,25 +621,38 @@ def list_gestores(
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> GestoresResponse:
-    from sqlalchemy import distinct
+    """Lista gestores distintos com pelo menos 1 cliente ATIVO no ClickUp.
+
+    Filtro reduz lista de ~30 (todos os gestores históricos) para os que
+    têm conta ativa hoje. Requer cup_task_id populado em clientes.
+    """
+    # SQL bruto: precisa do JOIN com staging.cup_clientes que SQLAlchemy
+    # não mapeia (tabela externa, sem model). Mantém o filtro de acesso
+    # (admin vê tudo; não-admin só seus clientes vinculados).
+    base_sql = """
+        SELECT DISTINCT c.gestor
+        FROM clientes c
+        JOIN staging.cup_clientes cc ON cc.task_id = c.cup_task_id
+    """
+    where = """
+        WHERE c.gestor IS NOT NULL
+          AND c.ativo = true
+          AND LOWER(COALESCE(cc.status, '')) = 'ativo'
+    """
     if user.is_admin:
-        stmt = (
-            select(distinct(Cliente.gestor))
-            .where(Cliente.gestor.isnot(None), Cliente.ativo == True)
-            .order_by(Cliente.gestor)
-        )
+        sql = base_sql + where + " ORDER BY c.gestor"
+        params: dict = {}
     else:
-        stmt = (
-            select(distinct(Cliente.gestor))
-            .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
-            .where(
-                UsuarioCliente.usuario_id == user.id,
-                Cliente.gestor.isnot(None),
-                Cliente.ativo == True,
-            )
-            .order_by(Cliente.gestor)
+        sql = (
+            base_sql
+            + " JOIN usuario_clientes uc ON uc.cliente_id = c.id"
+            + where
+            + " AND uc.usuario_id = :uid ORDER BY c.gestor"
         )
-    gestores = [row[0] for row in session.execute(stmt).all()]
+        params = {"uid": str(user.id)}
+
+    rows = session.execute(text(sql), params).all()
+    gestores = [r[0] for r in rows]
     return GestoresResponse(items=gestores)
 
 
