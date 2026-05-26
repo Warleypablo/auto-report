@@ -158,3 +158,51 @@ body {
   background: var(--forest);
   color: var(--paper);
 }
+
+/* === Cinematic enhancements === */
+
+@keyframes mesh-drift {
+  0%   { transform: translate3d(0,0,0) scale(1); }
+  50%  { transform: translate3d(2%, -1.5%, 0) scale(1.05); }
+  100% { transform: translate3d(0,0,0) scale(1); }
+}
+
+.mesh-bg {
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  background:
+    radial-gradient(700px 500px at 20% 30%, rgba(31, 77, 60, 0.18), transparent 60%),
+    radial-gradient(600px 400px at 80% 70%, rgba(181, 122, 31, 0.12), transparent 55%);
+  filter: blur(60px);
+  animation: mesh-drift 30s ease-in-out infinite;
+  will-change: transform;
+}
+
+.dark .mesh-bg {
+  background:
+    radial-gradient(700px 500px at 20% 30%, rgba(111, 181, 151, 0.18), transparent 60%),
+    radial-gradient(600px 400px at 80% 70%, rgba(217, 162, 75, 0.12), transparent 55%);
+}
+
+@keyframes stroke-draw {
+  from { stroke-dashoffset: var(--len, 1000); }
+  to   { stroke-dashoffset: 0; }
+}
+
+.stroke-reveal {
+  stroke-dasharray: var(--len, 1000);
+  stroke-dashoffset: var(--len, 1000);
+  animation: stroke-draw 1.5s cubic-bezier(.2,.7,.2,1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mesh-bg,
+  .reveal,
+  .stroke-reveal {
+    animation: none !important;
+    transition: none !important;
+  }
+  .stroke-reveal { stroke-dashoffset: 0 !important; }
+  .reveal { opacity: 1 !important; transform: none !important; }
+}
