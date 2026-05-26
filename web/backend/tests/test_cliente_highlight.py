@@ -68,3 +68,23 @@ def test_returns_none_when_nothing_remarkable():
     tl = [_row(f"2025-{m:02d}", fat=2000.0, roas=4.0) for m in range(6, 13)] + \
          [_row(f"2026-{m:02d}", fat=2000.0, roas=4.0) for m in range(1, 6)]
     assert compute_highlight(tl) is None
+
+
+def test_rejects_roas_best_when_less_than_6_valid_roas_values():
+    # 12 entries, but only 5 with non-None ROAS — last is max of those 5,
+    # but the guard `len(roas_values) >= 6` must prevent returning best_roas_window.
+    tl = [_row(f"2025-{m:02d}", roas=None) for m in range(6, 13)] + \
+         [_row(f"2026-{m:02d}", roas=2.0) for m in range(1, 5)] + \
+         [_row("2026-05", roas=3.0)]
+    # 7 None + 4 of 2.0 + 1 of 3.0 = 5 non-None values total → should reject
+    assert compute_highlight(tl) is None
+
+
+def test_rejects_revenue_best_when_less_than_6_valid_revenue_values():
+    # Same pattern for faturamento — 5 non-None values, last is max
+    tl = [_row(f"2025-{m:02d}", fat=None, roas=4.0) for m in range(6, 13)] + \
+         [_row(f"2026-{m:02d}", fat=1000.0, roas=4.0) for m in range(1, 5)] + \
+         [_row("2026-05", fat=2000.0, roas=4.0)]
+    # 5 non-None faturamento values → should reject best_revenue_window
+    # and falls through (no fat_var) → None
+    assert compute_highlight(tl) is None
