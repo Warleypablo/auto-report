@@ -127,6 +127,25 @@ export type MetricasBreakdown = {
   google_ads: GoogleAd[];
 };
 
+export type TimelineItem = {
+  mes: string;
+  periodo_inicio: string;
+  periodo_fim: string;
+  faturamento: number | null;
+  investimento: number | null;
+  roas: number | null;
+  cpa: number | null;
+  leads: number | null;
+  vendas: number | null;
+  faturamento_var_pct: number | null;
+  roas_var_pct: number | null;
+};
+
+export type MetricasTimeline = {
+  cliente: { slug: string; nome: string; categoria: string; gestor: string | null };
+  items: TimelineItem[];
+};
+
 export type MetricasDashboard = {
   items: ClienteMetricas[];
   total_faturamento: number;
@@ -272,8 +291,13 @@ export const gestorApi = {
   metricasMesesDisponiveis: () =>
     apiCall<{ meses: string[] }>("metricas/meses-disponiveis"),
 
-  metricasBreakdown: (slug: string) =>
-    apiCall<MetricasBreakdown>(`metricas/${slug}/breakdown`),
+  metricasBreakdown: (slug: string, mes?: string) =>
+    apiCall<MetricasBreakdown>(
+      `metricas/${slug}/breakdown${mes ? `?mes=${encodeURIComponent(mes)}` : ""}`,
+    ),
+
+  metricasTimeline: (slug: string, meses?: number) =>
+    apiCall<MetricasTimeline>(`metricas/${slug}/timeline${meses ? `?meses=${meses}` : ""}`),
 
   // Admin
   listUsuarios: () =>

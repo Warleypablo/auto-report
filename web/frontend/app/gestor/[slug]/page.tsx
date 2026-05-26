@@ -1,27 +1,56 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { gestorApi, JobInfo, ClienteGestor } from "@/lib/api-gestor";
+import {
+  gestorApi,
+  JobInfo,
+  ClienteGestor,
+  MetricasBreakdown,
+  MetricasTimeline,
+  TimelineItem,
+} from "@/lib/api-gestor";
 import { mesUltimoFechado, deslocarMes } from "@/lib/mes-utils";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from "recharts";
 
 function mesLabel(mes: string): string {
   const [ano, m] = mes.split("-");
   const nomes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
   return `${nomes[parseInt(m) - 1]} ${ano}`;
 }
+function fmtBRL(v: number | null | undefined) {
+  if (v == null) return "—";
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
+function fmtNum(v: number | null | undefined, decimals = 2) {
+  if (v == null) return "—";
+  return v.toLocaleString("pt-BR", { maximumFractionDigits: decimals });
+}
+function fmtPct(v: number | null | undefined) {
+  if (v == null) return "—";
+  const s = v > 0 ? "+" : "";
+  return `${s}${v.toFixed(1)}%`;
+}
 
 export default function ClienteReportPage({ params }: { params: { slug: string } }) {
   const { slug } = params;
   const [cliente, setCliente] = useState<ClienteGestor | null>(null);
   const [mes, setMes] = useState(mesUltimoFechado());
+  const [timeline, setTimeline] = useState<MetricasTimeline | null>(null);
+  const [breakdown, setBreakdown] = useState<MetricasBreakdown | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(true);
   const [activeJob, setActiveJob] = useState<JobInfo | null>(null);
   const [history, setHistory] = useState<JobInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [verTodosMeta, setVerTodosMeta] = useState(false);
+  const [verTodosGoogle, setVerTodosGoogle] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Carga inicial: cliente + jobs + timeline (12 meses)
   useEffect(() => {
     Promise.all([gestorApi.clientes(), gestorApi.listJobs(slug)])
       .then(([{ items }, jobs]) => {
@@ -35,9 +64,28 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false));
 
+    gestorApi.metricasTimeline(slug, 12)
+      .then((tl) => {
+        setTimeline(tl);
+        // Se houver dados, ajusta o mês selecionado pro mais recente que tem snapshot
+        if (tl.items.length > 0) {
+          setMes(tl.items[tl.items.length - 1].mes);
+        }
+      })
+      .catch(console.error);
+
     return () => stopPolling();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
+
+  // Carrega breakdown do mês selecionado
+  useEffect(() => {
+    setLoadingDetail(true);
+    gestorApi.metricasBreakdown(slug, mes)
+      .then(setBreakdown)
+      .catch(() => setBreakdown(null))
+      .finally(() => setLoadingDetail(false));
+  }, [slug, mes]);
 
   function startPolling(jobId: string) {
     stopPolling();
@@ -97,12 +145,35 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
     }
   }
 
-  const isRunning =
-    activeJob?.status === "running" || activeJob?.status === "pending";
+  const isRunning = activeJob?.status === "running" || activeJob?.status === "pending";
 
-  const mesesDisponiveis = Array.from({ length: 12 }, (_, i) =>
-    deslocarMes(mesUltimoFechado(), -i),
-  );
+  // Snapshot do mês selecionado (pra cards KPI)
+  const snapMes: TimelineItem | null = useMemo(() => {
+    if (!timeline) return null;
+    return timeline.items.find((i) => i.mes === mes) ?? null;
+  }, [timeline, mes]);
+
+  // Opções do seletor: meses com snapshots + fallback de 12 meses retroativos
+  const mesOpcoes = useMemo(() => {
+    const fromSnaps = (timeline?.items ?? []).map((i) => i.mes);
+    const fallback = Array.from({ length: 12 }, (_, i) => deslocarMes(mesUltimoFechado(), -i));
+    const merged = Array.from(new Set([...fromSnaps, ...fallback])).sort().reverse();
+    return merged;
+  }, [timeline]);
+
+  // Dados pro gráfico de evolução
+  const chartData = useMemo(() => {
+    if (!timeline) return [];
+    return timeline.items.map((i) => ({
+      mes: mesLabel(i.mes),
+      Faturamento: i.faturamento ?? 0,
+      Investimento: i.investimento ?? 0,
+      ROAS: i.roas ?? 0,
+    }));
+  }, [timeline]);
+
+  const metaAds = breakdown?.meta_ads ?? [];
+  const googleAds = breakdown?.google_ads ?? [];
 
   if (loading) {
     return (
@@ -113,87 +184,247 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
   }
 
   return (
-    <main className="mx-auto max-w-xl px-6 py-16">
-      <Link
-        href="/gestor"
-        className="mb-8 block text-xs text-[var(--muted)] hover:text-[var(--ink)] transition"
-      >
+    <main className="mx-auto max-w-6xl px-6 py-12">
+      <Link href="/gestor" className="mb-6 block text-xs text-[var(--muted)] hover:text-[var(--ink)] transition">
         ← Seus clientes
       </Link>
 
-      <h1 className="font-display mb-8 text-3xl font-medium leading-tight tracking-tight text-[var(--ink)]">
-        {cliente?.nome ?? slug}
-      </h1>
-
-      {/* Month selector */}
-      <div className="mb-4">
-        <p className="eyebrow mb-2 text-xs text-[var(--muted)]">Mês de referência</p>
-        <select
-          value={mes}
-          onChange={(e) => setMes(e.target.value)}
-          disabled={isRunning}
-          className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-3 py-2 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
-        >
-          {mesesDisponiveis.map((m) => (
-            <option key={m} value={m}>
-              {mesLabel(m)}
-            </option>
-          ))}
-        </select>
+      <div className="mb-8 flex items-baseline justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-medium leading-tight tracking-tight text-[var(--ink)]">
+            {cliente?.nome ?? slug}
+          </h1>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            {cliente?.categoria}
+            {cliente?.gestor && <> · gestor: {cliente.gestor}</>}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="mes-ref" className="text-xs text-[var(--muted)]">Mês:</label>
+          <select
+            id="mes-ref"
+            value={mes}
+            onChange={(e) => setMes(e.target.value)}
+            disabled={isRunning}
+            className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-1.5 text-xs text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+          >
+            {mesOpcoes.map((m) => (
+              <option key={m} value={m}>{mesLabel(m)}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Trigger button */}
-      <button
-        onClick={handleTrigger}
-        disabled={isRunning || triggering}
-        className={[
-          "mb-6 w-full rounded-md border py-3 text-xs uppercase tracking-[0.18em] transition",
-          isRunning || triggering
-            ? "cursor-wait border-[var(--rule-soft)] text-[var(--muted)]"
-            : "border-[var(--forest)] text-[var(--forest)] hover:bg-[var(--forest)] hover:text-[var(--paper)]",
-        ].join(" ")}
-      >
-        {triggering ? "Disparando…" : isRunning ? "Gerando slides…" : "▶ Gerar report"}
-      </button>
-
-      {/* Active job status */}
-      {activeJob && (
-        <div className="mb-8 rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
-          {activeJob.status === "running" || activeJob.status === "pending" ? (
-            <div className="flex items-center gap-3">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--rule-soft)] border-t-[var(--forest)]" />
-              <div>
-                <p className="text-sm text-[var(--ink)]">Gerando slides…</p>
-                <p className="text-xs text-[var(--muted)]">Pode levar 1–2 minutos</p>
-              </div>
-            </div>
-          ) : activeJob.status === "done" ? (
-            <div>
-              <p className="mb-2 text-sm font-medium text-[var(--forest)]">Report gerado!</p>
-              <a
-                href={activeJob.slides_url ?? "#"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-[var(--forest)] underline underline-offset-2"
-              >
-                → Abrir slides
-              </a>
-            </div>
-          ) : (
-            <p className="text-sm text-[var(--crimson)]">
-              Erro: {activeJob.erro ?? "Falha desconhecida"}
-            </p>
-          )}
+      {/* Seção: Gerar report */}
+      <section className="mb-8 rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-[var(--ink)]">Gerar report do mês selecionado</p>
+            <p className="text-xs text-[var(--muted)]">Cria slides no Google Drive — 1 a 2 minutos</p>
+          </div>
+          <button
+            onClick={handleTrigger}
+            disabled={isRunning || triggering}
+            className={[
+              "rounded-full border px-5 py-2 text-xs uppercase tracking-[0.18em] transition",
+              isRunning || triggering
+                ? "cursor-wait border-[var(--rule-soft)] text-[var(--muted)]"
+                : "border-[var(--forest)] text-[var(--forest)] hover:bg-[var(--forest)] hover:text-[var(--paper)]",
+            ].join(" ")}
+          >
+            {triggering ? "Disparando…" : isRunning ? "Gerando…" : "▶ Gerar report"}
+          </button>
         </div>
+
+        {activeJob && (
+          <div className="mt-3 rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] p-3">
+            {isRunning ? (
+              <div className="flex items-center gap-3">
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--rule-soft)] border-t-[var(--forest)]" />
+                <p className="text-xs text-[var(--ink-soft)]">Gerando slides…</p>
+              </div>
+            ) : activeJob.status === "done" ? (
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-[var(--forest)]">Report gerado!</p>
+                <a href={activeJob.slides_url ?? "#"} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--forest)] underline underline-offset-2">
+                  → Abrir slides
+                </a>
+              </div>
+            ) : (
+              <p className="text-xs text-[var(--crimson)]">Erro: {activeJob.erro ?? "Falha desconhecida"}</p>
+            )}
+          </div>
+        )}
+        {erro && <p className="mt-3 text-xs text-[var(--crimson)]">{erro}</p>}
+      </section>
+
+      {/* KPIs do mês */}
+      <section className="mb-8">
+        <p className="eyebrow mb-3 text-xs text-[var(--muted)]">KPIs · {mesLabel(mes)}</p>
+        {!snapMes ? (
+          <p className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-6 text-center text-xs text-[var(--muted)]">
+            Sem snapshot para este mês. Gere o report ou aguarde o ETL.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              { label: "Faturamento", value: fmtBRL(snapMes.faturamento), var: snapMes.faturamento_var_pct },
+              { label: "Investimento", value: fmtBRL(snapMes.investimento), var: null },
+              { label: "ROAS", value: snapMes.roas != null ? `${fmtNum(snapMes.roas)}×` : "—", var: snapMes.roas_var_pct },
+              { label: "CPA", value: fmtBRL(snapMes.cpa), var: null },
+              { label: "Leads", value: snapMes.leads != null ? snapMes.leads.toLocaleString("pt-BR") : "—", var: null },
+              { label: "Vendas", value: snapMes.vendas != null ? snapMes.vendas.toLocaleString("pt-BR") : "—", var: null },
+            ].map((kpi) => (
+              <div key={kpi.label} className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-3">
+                <p className="eyebrow mb-1 text-[10px] text-[var(--muted)]">{kpi.label}</p>
+                <p className="font-mono-num text-lg font-medium text-[var(--ink)]">{kpi.value}</p>
+                {kpi.var != null && (
+                  <p className={`font-mono-num text-[10px] ${kpi.var >= 0 ? "text-[var(--forest)]" : "text-[var(--crimson)]"}`}>
+                    {fmtPct(kpi.var)} vs mês anterior
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Evolução histórica */}
+      {chartData.length > 1 && (
+        <section className="mb-8">
+          <p className="eyebrow mb-3 text-xs text-[var(--muted)]">Evolução · últimos {chartData.length} meses</p>
+          <div className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={chartData}>
+                <CartesianGrid stroke="var(--rule-soft)" strokeDasharray="3 3" />
+                <XAxis dataKey="mes" tick={{ fill: "var(--muted)", fontSize: 11 }} />
+                <YAxis yAxisId="left" tick={{ fill: "var(--muted)", fontSize: 11 }} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fill: "var(--muted)", fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{ background: "var(--paper)", border: "1px solid var(--rule-soft)", fontSize: 12 }}
+                  formatter={(value, name) => {
+                    const v = typeof value === "number" ? value : 0;
+                    if (name === "ROAS") return [`${v.toFixed(2)}×`, name as string];
+                    return [fmtBRL(v), name as string];
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line yAxisId="left" type="monotone" dataKey="Faturamento" stroke="var(--forest)" strokeWidth={2} dot={{ r: 3 }} />
+                <Line yAxisId="left" type="monotone" dataKey="Investimento" stroke="var(--amber)" strokeWidth={2} dot={{ r: 3 }} />
+                <Line yAxisId="right" type="monotone" dataKey="ROAS" stroke="var(--crimson)" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
       )}
 
-      {erro && <p className="mb-6 text-sm text-[var(--crimson)]">{erro}</p>}
+      {/* Breakdown de campanhas */}
+      <section className="mb-8">
+        <p className="eyebrow mb-3 text-xs text-[var(--muted)]">Campanhas · {mesLabel(mes)}</p>
+        {loadingDetail ? (
+          <p className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-6 text-center text-xs text-[var(--muted)]">Carregando…</p>
+        ) : !breakdown || (metaAds.length === 0 && googleAds.length === 0) ? (
+          <p className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-6 text-center text-xs text-[var(--muted)]">
+            Sem dados granulares para este mês.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-5">
+            {metaAds.length > 0 && (
+              <div className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+                <p className="eyebrow mb-2 text-[10px] font-medium text-[var(--muted)]">Meta Ads — top anúncios</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[var(--rule-soft)]">
+                        <th className="pb-1 pr-3 text-left font-medium text-[var(--muted)]">Criativo</th>
+                        <th className="pb-1 pr-3 text-left font-medium text-[var(--muted)]">Anúncio</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Invest.</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Leads</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Conv.</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Fat.</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">CPL/CPA</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">ROAS</th>
+                        <th className="pb-1 text-right font-medium text-[var(--muted)]">Impressões</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(verTodosMeta ? metaAds : metaAds.slice(0, 5)).map((ad, i) => (
+                        <tr key={i} className="border-b border-[var(--rule-soft)]/40">
+                          <td className="py-2 pr-3">
+                            {ad.imagem_url ? (
+                              <img src={ad.imagem_url} alt={ad.nome} className="h-10 w-10 rounded object-cover" />
+                            ) : (
+                              <div className="h-10 w-10 rounded bg-[var(--paper)]" />
+                            )}
+                          </td>
+                          <td className="py-2 pr-3 font-medium text-[var(--ink)]">{ad.nome}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.investimento)}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.leads ?? "—"}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.conversoes ?? "—"}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.faturamento)}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.cpl ?? ad.cpa)}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.roas != null ? `${fmtNum(ad.roas)}×` : "—"}</td>
+                          <td className="py-2 text-right font-mono-num text-[var(--ink)]">{ad.impressoes != null ? ad.impressoes.toLocaleString("pt-BR") : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {metaAds.length > 5 && (
+                  <button onClick={() => setVerTodosMeta((v) => !v)} className="mt-2 text-[10px] text-[var(--forest)] hover:underline">
+                    {verTodosMeta ? "Mostrar só top 5" : `Ver todos os ${metaAds.length}`}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {googleAds.length > 0 && (
+              <div className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+                <p className="eyebrow mb-2 text-[10px] font-medium text-[var(--muted)]">Google Ads — top campanhas</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[var(--rule-soft)]">
+                        <th className="pb-1 pr-3 text-left font-medium text-[var(--muted)]">Campanha</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Invest.</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Conv.</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Fat.</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">CPA</th>
+                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">ROAS</th>
+                        <th className="pb-1 text-right font-medium text-[var(--muted)]">Impressões</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(verTodosGoogle ? googleAds : googleAds.slice(0, 5)).map((ad, i) => (
+                        <tr key={i} className="border-b border-[var(--rule-soft)]/40">
+                          <td className="py-2 pr-3 font-medium text-[var(--ink)]">{ad.nome}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.investimento)}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.conversoes ?? "—"}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.faturamento)}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.cpa)}</td>
+                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.roas != null ? `${fmtNum(ad.roas)}×` : "—"}</td>
+                          <td className="py-2 text-right font-mono-num text-[var(--ink)]">{ad.impressoes != null ? ad.impressoes.toLocaleString("pt-BR") : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {googleAds.length > 5 && (
+                  <button onClick={() => setVerTodosGoogle((v) => !v)} className="mt-2 text-[10px] text-[var(--forest)] hover:underline">
+                    {verTodosGoogle ? "Mostrar só top 5" : `Ver todas as ${googleAds.length}`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* ClickUp info */}
       {cliente?.cup && (
-        <div className="mb-8 rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+        <section className="mb-8 rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
           <p className="eyebrow mb-3 text-xs text-[var(--muted)]">ClickUp</p>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
             {[
               ["Status", cliente.cup.status],
               ["Status conta", cliente.cup.status_conta],
@@ -208,9 +439,7 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
                 ? `R$ ${cliente.cup.contrato_valor_recorrente.toLocaleString("pt-BR")}`
                 : null],
               ["Status contrato", cliente.cup.contrato_status],
-              cliente.cup.motivo_cancelamento
-                ? ["Motivo cancel.", cliente.cup.motivo_cancelamento]
-                : null,
+              cliente.cup.motivo_cancelamento ? ["Motivo cancel.", cliente.cup.motivo_cancelamento] : null,
             ]
               .filter((r): r is [string, string | null] => r !== null && r[1] != null && r[1] !== "")
               .map(([label, value]) => (
@@ -220,29 +449,21 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
                 </div>
               ))}
           </dl>
-        </div>
+        </section>
       )}
 
-      {/* History */}
+      {/* Histórico de reports */}
       {history.filter((j) => j.status === "done" || j.status === "error").length > 0 && (
-        <div>
+        <section>
           <p className="eyebrow mb-3 text-xs text-[var(--muted)]">Reports anteriores</p>
           <ul className="flex flex-col gap-px border-t border-[var(--rule-soft)]">
             {history
               .filter((j) => j.status === "done" || j.status === "error")
               .map((j) => (
-                <li
-                  key={j.id}
-                  className="flex items-center justify-between border-b border-[var(--rule-soft)] py-3"
-                >
+                <li key={j.id} className="flex items-center justify-between border-b border-[var(--rule-soft)] py-2">
                   <span className="text-xs text-[var(--ink-soft)]">{mesLabel(j.mes)}</span>
                   {j.status === "done" && j.slides_url ? (
-                    <a
-                      href={j.slides_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-[var(--forest)] underline underline-offset-2"
-                    >
+                    <a href={j.slides_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--forest)] underline underline-offset-2">
                       → Abrir slides
                     </a>
                   ) : (
@@ -251,7 +472,7 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
                 </li>
               ))}
           </ul>
-        </div>
+        </section>
       )}
     </main>
   );

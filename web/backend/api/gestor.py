@@ -1316,12 +1316,80 @@ def _parse_int_br(v: str | None) -> int | None:
         return None
 
 
-@router.get("/metricas/{slug}/breakdown")
-def get_metricas_breakdown(
+# ── GET /gestor/metricas/{slug}/timeline ──────────────────────────────────
+# Retorna lista de snapshots MENSAL do cliente nos últimos N meses (default 12),
+# ordenados do mais antigo pro mais recente. Usado pra gráfico de evolução
+# e KPIs com variação na página de detalhe do cliente.
+
+@router.get("/metricas/{slug}/timeline", status_code=200)
+def get_metricas_timeline(
     slug: str,
+    meses: int = Query(12, ge=1, le=36),
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> dict:
+    from models.snapshot import Snapshot
+
+    cliente = session.execute(
+        select(Cliente).where(Cliente.slug == slug, Cliente.ativo == True)
+    ).scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(404, "Cliente não encontrado")
+
+    if not user.is_admin:
+        acesso = session.execute(
+            select(UsuarioCliente).where(
+                UsuarioCliente.usuario_id == user.id,
+                UsuarioCliente.cliente_id == cliente.id,
+            )
+        ).scalar_one_or_none()
+        if not acesso:
+            raise HTTPException(403, "Acesso negado")
+
+    snapshots = session.execute(
+        select(Snapshot)
+        .where(Snapshot.cliente_id == cliente.id, Snapshot.frequencia == "MENSAL")
+        .order_by(Snapshot.periodo_fim.desc())
+        .limit(meses)
+    ).scalars().all()
+
+    # Inverte pra ordem cronológica (do mais antigo pro mais recente)
+    snapshots = list(reversed(snapshots))
+
+    return {
+        "cliente": {
+            "slug": cliente.slug,
+            "nome": cliente.nome,
+            "categoria": cliente.categoria.value,
+            "gestor": cliente.gestor,
+        },
+        "items": [
+            {
+                "mes": s.periodo_fim.strftime("%Y-%m"),
+                "periodo_inicio": str(s.periodo_inicio),
+                "periodo_fim": str(s.periodo_fim),
+                "faturamento": float(s.faturamento) if s.faturamento is not None else None,
+                "investimento": float(s.investimento) if s.investimento is not None else None,
+                "roas": float(s.roas) if s.roas is not None else None,
+                "cpa": float(s.cpa) if s.cpa is not None else None,
+                "leads": s.leads,
+                "vendas": s.vendas,
+                "faturamento_var_pct": float(s.faturamento_var_pct) if s.faturamento_var_pct is not None else None,
+                "roas_var_pct": float(s.roas_var_pct) if s.roas_var_pct is not None else None,
+            }
+            for s in snapshots
+        ],
+    }
+
+
+@router.get("/metricas/{slug}/breakdown")
+def get_metricas_breakdown(
+    slug: str,
+    mes: str | None = Query(None, pattern=r"^\d{4}-\d{2}$", description="Filtro YYYY-MM"),
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> dict:
+    from datetime import date, timedelta
     from models.snapshot import Snapshot
 
     # Verify access
@@ -1341,9 +1409,20 @@ def get_metricas_breakdown(
         if not acesso:
             raise HTTPException(403, "Acesso negado")
 
+    snap_filter = [Snapshot.cliente_id == cliente.id, Snapshot.frequencia == "MENSAL"]
+    if mes:
+        ano, mes_num = int(mes[:4]), int(mes[5:7])
+        primeiro = date(ano, mes_num, 1)
+        if mes_num == 12:
+            ultimo = date(ano + 1, 1, 1) - timedelta(days=1)
+        else:
+            ultimo = date(ano, mes_num + 1, 1) - timedelta(days=1)
+        snap_filter.append(Snapshot.periodo_fim >= primeiro)
+        snap_filter.append(Snapshot.periodo_fim <= ultimo)
+
     snap = session.execute(
         select(Snapshot)
-        .where(Snapshot.cliente_id == cliente.id, Snapshot.frequencia == "MENSAL")
+        .where(*snap_filter)
         .order_by(Snapshot.periodo_fim.desc())
     ).scalars().first()
 
