@@ -5,7 +5,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from jose import JWTError, jwt
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ from app_settings import Settings, get_settings
 from db import get_session
 from models import Cliente
 from schemas import ClienteLoginRequest, ClienteLoginResponse, ClientePublic
+from services.metricas import build_breakdown, build_timeline, meses_disponiveis_for_cliente
 
 router = APIRouter()
 _log = logging.getLogger(__name__)
@@ -155,3 +156,29 @@ def me(cliente: Cliente = Depends(require_cliente)) -> ClientePublic:
         logo_url=cliente.logo_url,
         setor=cliente.setor,
     )
+
+
+@router.get("/metricas/timeline")
+def metricas_timeline(
+    meses: int = Query(12, ge=1, le=36),
+    cliente: Cliente = Depends(require_cliente),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"items": build_timeline(cliente.id, meses, session)}
+
+
+@router.get("/metricas/breakdown")
+def metricas_breakdown(
+    mes: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    cliente: Cliente = Depends(require_cliente),
+    session: Session = Depends(get_session),
+) -> dict:
+    return build_breakdown(cliente.id, mes, session)
+
+
+@router.get("/metricas/meses-disponiveis")
+def metricas_meses_disponiveis(
+    cliente: Cliente = Depends(require_cliente),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"meses": meses_disponiveis_for_cliente(cliente.id, session)}
