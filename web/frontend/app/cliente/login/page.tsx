@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { ApiError, clienteApi } from "@/lib/api-cliente";
@@ -14,7 +14,7 @@ function maskCNPJ(v: string): string {
   return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
   const [cnpj, setCnpj] = useState("");
@@ -88,5 +88,19 @@ export default function LoginPage() {
         </button>
       </form>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center">
+          <p className="text-sm text-[var(--muted)]">Carregando…</p>
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }
