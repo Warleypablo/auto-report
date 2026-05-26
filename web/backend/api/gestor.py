@@ -776,6 +776,79 @@ def create_gestor_cadastrado(
     return GestorCadastradoItem.model_validate(g)
 
 
+# ── POST /gestor/admin/cleanup-gestores ──────────────────────────────────────
+# Roteiro automatizado para sanear a lista do dropdown:
+#   1. Normaliza capitalização em clientes.gestor (alexandre → Alexandre)
+#   2. Cadastra em gestores_cadastrados todos os nomes distintos que sobram
+#      em clientes.gestor (apenas dos clientes com cliente ativo + cup status
+#      ativo) — ON CONFLICT DO NOTHING, então é idempotente.
+#   3. Retorna relatório do que foi alterado.
+#
+# Não tenta desambiguar variantes (Alexander vs Alexandre Costa) — isso é
+# trabalho de revisão manual via PATCH /gestor/gestores.
+
+@router.post("/admin/cleanup-gestores", status_code=200)
+def cleanup_gestores(
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    # ── 1. Normaliza capitalização em clientes.gestor ────────────────────
+    nomes_brutos = session.execute(
+        select(distinct(Cliente.gestor)).where(
+            Cliente.gestor.isnot(None), Cliente.ativo == True  # noqa: E712
+        )
+    ).scalars().all()
+
+    normalizacoes: list[dict] = []
+    for nome in nomes_brutos:
+        normalizado = normalize_gestor_name(nome)
+        if normalizado == nome:
+            continue
+        r = session.execute(
+            update(Cliente)
+            .where(Cliente.gestor == nome, Cliente.ativo == True)  # noqa: E712
+            .values(gestor=normalizado)
+        )
+        normalizacoes.append({"de": nome, "para": normalizado, "atualizados": r.rowcount})
+    if normalizacoes:
+        session.commit()
+
+    # ── 2. Cadastra em gestores_cadastrados os nomes restantes que têm
+    #       cliente ativo + cup_clientes.status='ativo' ────────────────────
+    rows = session.execute(
+        text("""
+            SELECT DISTINCT c.gestor
+            FROM clientes c
+            JOIN staging.cup_clientes cc ON cc.task_id = c.cup_task_id
+            WHERE c.gestor IS NOT NULL
+              AND c.ativo = true
+              AND LOWER(COALESCE(cc.status, '')) = 'ativo'
+            ORDER BY c.gestor
+        """)
+    ).all()
+    nomes_ativos = [r[0] for r in rows]
+
+    ja_cadastrados = set(
+        session.execute(select(GestorCadastrado.nome)).scalars().all()
+    )
+
+    cadastrados_agora: list[str] = []
+    for nome in nomes_ativos:
+        if nome in ja_cadastrados:
+            continue
+        session.add(GestorCadastrado(nome=nome))
+        cadastrados_agora.append(nome)
+    if cadastrados_agora:
+        session.commit()
+
+    return {
+        "normalizacoes": normalizacoes,
+        "cadastrados": cadastrados_agora,
+        "ja_cadastrados": sorted(ja_cadastrados & set(nomes_ativos)),
+        "total_no_dropdown": len(set(nomes_ativos) | ja_cadastrados),
+    }
+
+
 # ── DELETE /gestor/gestores-cadastrados/{id} ──────────────────────────────────
 
 @router.delete("/gestores-cadastrados/{gestor_id}", status_code=204)

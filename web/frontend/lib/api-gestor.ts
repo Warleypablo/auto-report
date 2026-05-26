@@ -213,6 +213,14 @@ export const gestorApi = {
       `gestores/normalizar`, "POST"
     ),
 
+  cleanupGestores: () =>
+    apiCall<{
+      normalizacoes: { de: string; para: string; atualizados: number }[];
+      cadastrados: string[];
+      ja_cadastrados: string[];
+      total_no_dropdown: number;
+    }>(`admin/cleanup-gestores`, "POST"),
+
   createCliente: (data: ClienteCreateData) =>
     apiCall<ClienteGestor>(`clientes`, "POST", data),
 

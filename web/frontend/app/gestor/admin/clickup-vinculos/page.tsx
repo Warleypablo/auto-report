@@ -59,6 +59,35 @@ export default function ClickupVinculosPage() {
   } | null>(null);
   const [syncErro, setSyncErro] = useState<string | null>(null);
 
+  // Estado do cleanup de gestores (normaliza + popular whitelist)
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<{
+    normalizacoes: { de: string; para: string; atualizados: number }[];
+    cadastrados: string[];
+    ja_cadastrados: string[];
+    total_no_dropdown: number;
+  } | null>(null);
+  const [cleanupErro, setCleanupErro] = useState<string | null>(null);
+
+  async function cleanupGestores() {
+    if (!confirm(
+      "Vai normalizar capitalização em clientes.gestor e cadastrar em " +
+      "gestores_cadastrados todos os nomes distintos que têm cliente ativo. " +
+      "Idempotente — pode rodar várias vezes.\n\nContinuar?"
+    )) return;
+    setCleaningUp(true);
+    setCleanupResult(null);
+    setCleanupErro(null);
+    try {
+      const r = await gestorApi.cleanupGestores();
+      setCleanupResult(r);
+    } catch (e) {
+      setCleanupErro(e instanceof Error ? e.message : "Erro ao limpar");
+    } finally {
+      setCleaningUp(false);
+    }
+  }
+
   async function syncGestores() {
     if (!confirm("Atribuir gestores do ClickUp aos clientes do sistema?\n\nMatch por nome (normalizado) com staging.cup_clientes → expande subtask_ids → JOIN com cup_contratos → filtra servico contendo 'Performance' → grava responsavel em clientes.gestor.")) return;
     setSyncing(true);
@@ -246,6 +275,47 @@ export default function ClickupVinculosPage() {
           </p>
         )}
         {syncErro && <p className="mt-3 text-xs text-[var(--crimson)]">{syncErro}</p>}
+      </section>
+
+      {/* Limpar lista de gestores */}
+      <section className="mb-6 rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-[var(--ink)]">Limpar lista de gestores</p>
+            <p className="text-xs text-[var(--muted)]">
+              Normaliza capitalização em clientes.gestor (&ldquo;alexandre&rdquo; → &ldquo;Alexandre&rdquo;) e
+              popula gestores_cadastrados com os nomes distintos que têm cliente ativo. Idempotente.
+            </p>
+          </div>
+          <button
+            onClick={cleanupGestores}
+            disabled={cleaningUp}
+            className="rounded-full border border-[var(--forest)] px-4 py-1.5 text-xs uppercase tracking-[0.18em] text-[var(--forest)] transition hover:bg-[var(--forest)] hover:text-[var(--paper)] disabled:opacity-50"
+          >
+            {cleaningUp ? "Limpando…" : "Limpar"}
+          </button>
+        </div>
+        {cleanupResult && (
+          <div className="mt-3 text-xs text-[var(--ink-soft)]">
+            <p>
+              <span className="text-[var(--forest)]">
+                {cleanupResult.normalizacoes.length} nome{cleanupResult.normalizacoes.length !== 1 ? "s" : ""} normalizado{cleanupResult.normalizacoes.length !== 1 ? "s" : ""}
+              </span>
+              {" · "}
+              <span className="text-[var(--forest)]">
+                {cleanupResult.cadastrados.length} novo{cleanupResult.cadastrados.length !== 1 ? "s" : ""} cadastrado{cleanupResult.cadastrados.length !== 1 ? "s" : ""}
+              </span>
+              {" · "}
+              dropdown agora tem {cleanupResult.total_no_dropdown} gestor{cleanupResult.total_no_dropdown !== 1 ? "es" : ""}
+            </p>
+            {cleanupResult.cadastrados.length > 0 && (
+              <p className="mt-2 text-[var(--muted)]">
+                Cadastrados: {cleanupResult.cadastrados.join(", ")}
+              </p>
+            )}
+          </div>
+        )}
+        {cleanupErro && <p className="mt-3 text-xs text-[var(--crimson)]">{cleanupErro}</p>}
       </section>
 
       {/* Modal de preview do automatch */}
