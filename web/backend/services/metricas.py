@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 
@@ -125,3 +125,17 @@ def build_breakdown(cliente_id: uuid.UUID, mes: str | None, session: Session) ->
         })
 
     return {"meta_ads": meta_ads, "google_ads": google_ads}
+
+
+def meses_disponiveis_for_cliente(cliente_id: uuid.UUID, session: Session) -> list[str]:
+    """Meses (YYYY-MM, DESC) que têm snapshot MENSAL para o cliente."""
+    rows = session.execute(
+        text("""
+            SELECT DISTINCT TO_CHAR(periodo_fim, 'YYYY-MM') AS mes
+            FROM snapshots
+            WHERE frequencia = 'MENSAL' AND cliente_id = :cid
+            ORDER BY mes DESC
+        """),
+        {"cid": cliente_id},
+    ).all()
+    return [r[0] for r in rows]

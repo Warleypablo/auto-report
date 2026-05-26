@@ -24,3 +24,9 @@ def test_parse_br_handles_pt_format():
     assert _parse_br(None) is None
     assert _parse_int_br("1.234") == 1234
     assert _parse_int_br("-") is None
+
+
+def test_meses_disponiveis_imports():
+    from services.metricas import meses_disponiveis_for_cliente
+
+    assert callable(meses_disponiveis_for_cliente)
