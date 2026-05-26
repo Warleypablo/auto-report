@@ -10,17 +10,27 @@ test.describe("Cliente login", () => {
   test("CNPJ inválido mostra mensagem de erro", async ({ page }) => {
     await page.goto("/cliente/login");
     await page.getByLabel("CNPJ").fill("99999999000199");
+    await page.getByLabel("Senha").fill("Warley20192020");
     await page.getByRole("button", { name: /entrar/i }).click();
     // Filtra pelo paragraph role=alert do form (evita conflito com
     // __next-route-announcer__ que também usa role=alert)
     await expect(page.locator("p[role=alert]")).toContainText(
-      /não encontrado|não disponível|inativa|múltiplas/i,
+      /não encontrado|não disponível|inativa|múltiplas|cnpj ou senha/i,
     );
   });
 
-  test("CNPJ válido redireciona para /cliente/dashboard", async ({ page }) => {
+  test("Senha errada mostra mensagem de erro", async ({ page }) => {
     await page.goto("/cliente/login");
     await page.getByLabel("CNPJ").fill("00000000000001");
+    await page.getByLabel("Senha").fill("senha-errada");
+    await page.getByRole("button", { name: /entrar/i }).click();
+    await expect(page.locator("p[role=alert]")).toContainText(/cnpj ou senha/i);
+  });
+
+  test("CNPJ + senha válidos redirecionam para /cliente/dashboard", async ({ page }) => {
+    await page.goto("/cliente/login");
+    await page.getByLabel("CNPJ").fill("00000000000001");
+    await page.getByLabel("Senha").fill("Warley20192020");
     await page.getByRole("button", { name: /entrar/i }).click();
     await page.waitForURL("**/cliente/dashboard", { timeout: 5000 });
   });

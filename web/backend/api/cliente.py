@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -78,6 +79,11 @@ def login(
     if len(cnpj_digits) < 11:
         _log.info("cliente_login cnpj_mask=*** result=invalid_format")
         raise HTTPException(status_code=401, detail="CNPJ inválido")
+
+    # Senha global — comparação constant-time para não vazar por timing.
+    if not secrets.compare_digest(body.senha or "", settings.cliente_password):
+        _log.info(f"cliente_login cnpj_mask={mask_cnpj(cnpj_digits)} result=wrong_password")
+        raise HTTPException(status_code=401, detail="CNPJ ou senha inválidos.")
 
     rows = session.execute(
         text("""

@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="dev-jwt-secret-change-me-in-production")
     jwt_algorithm: str = Field(default="HS256")
     jwt_expiry_hours: int = Field(default=8)
+    # Senha global da área do cliente. Mesma para todos os CNPJs — atua como
+    # secret compartilhado divulgado offline. Trocar via env CLIENTE_PASSWORD.
+    cliente_password: str = Field(default="Warley20192020")
 
 
 @lru_cache

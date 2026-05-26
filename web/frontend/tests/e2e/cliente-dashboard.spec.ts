@@ -5,6 +5,7 @@ const CNPJ_SEED = "00000000000001"; // do seed_dev.py — corresponde a loja-fas
 async function login(page: Page) {
   await page.goto("/cliente/login");
   await page.getByLabel("CNPJ").fill(CNPJ_SEED);
+  await page.getByLabel("Senha").fill("Warley20192020");
   await page.getByRole("button", { name: /entrar/i }).click();
   await page.waitForURL("**/cliente/dashboard");
 }

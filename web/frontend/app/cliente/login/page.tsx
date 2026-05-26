@@ -18,6 +18,7 @@ export default function LoginPage() {
   const router = useRouter();
   const search = useSearchParams();
   const [cnpj, setCnpj] = useState("");
+  const [senha, setSenha] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(
     search.get("expired") ? "Sua sessão expirou. Entre novamente." : null,
@@ -28,7 +29,7 @@ export default function LoginPage() {
     setLoading(true);
     setErr(null);
     try {
-      await clienteApi.login(cnpj);
+      await clienteApi.login(cnpj, senha);
       router.push("/cliente/dashboard");
     } catch (e) {
       setErr(e instanceof ApiError ? e.detail : "Erro ao entrar.");
@@ -60,6 +61,18 @@ export default function LoginPage() {
           />
         </label>
 
+        <label htmlFor="senha" className="flex flex-col gap-1">
+          <span className="text-xs text-[var(--muted)]">Senha</span>
+          <input
+            id="senha"
+            type="password"
+            autoComplete="current-password"
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+          />
+        </label>
+
         {err && (
           <p role="alert" className="text-xs text-[var(--crimson)]">
             {err}
@@ -68,7 +81,7 @@ export default function LoginPage() {
 
         <button
           type="submit"
-          disabled={loading || cnpj.replace(/\D/g, "").length < 11}
+          disabled={loading || cnpj.replace(/\D/g, "").length < 11 || senha.length === 0}
           className="rounded-full border border-[var(--forest)] px-5 py-2 text-xs uppercase tracking-[0.18em] text-[var(--forest)] transition hover:bg-[var(--forest)] hover:text-[var(--paper)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? "Entrando…" : "Entrar"}

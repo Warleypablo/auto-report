@@ -87,7 +87,9 @@ def _seed_cliente_with_snaps(TS, *, nome, cnpj, task_id, snaps=None):
 
 
 def _login(client, cnpj):
-    return client.post("/cliente/auth/login", json={"cnpj": cnpj}).json()["token"]
+    return client.post(
+        "/cliente/auth/login", json={"cnpj": cnpj, "senha": "Warley20192020"}
+    ).json()["token"]
 
 
 def test_timeline_returns_own_snapshots(app_with_db):

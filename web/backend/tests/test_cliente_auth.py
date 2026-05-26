@@ -76,7 +76,7 @@ def test_login_with_formatted_cnpj_returns_token(app_with_db):
     cid = _seed_cliente(TS, nome="Cliente A", cnpj="12345678000190")
 
     client = TestClient(app)
-    r = client.post("/cliente/auth/login", json={"cnpj": "12.345.678/0001-90"})
+    r = client.post("/cliente/auth/login", json={"cnpj": "12.345.678/0001-90", "senha": "Warley20192020"})
     assert r.status_code == 200, r.text
     data = r.json()
     assert "token" in data
@@ -86,12 +86,32 @@ def test_login_with_formatted_cnpj_returns_token(app_with_db):
     assert "cup_task_id" not in data["cliente"]
 
 
+def test_login_wrong_password(app_with_db):
+    """Senha errada → 401, antes mesmo de bater no DB."""
+    app, TS = app_with_db
+    _seed_cliente(TS, nome="Cliente A", cnpj="12345678000190")
+
+    client = TestClient(app)
+    r = client.post("/cliente/auth/login", json={"cnpj": "12345678000190", "senha": "errada"})
+    assert r.status_code == 401
+    # Mensagem genérica — não revela se foi senha ou CNPJ que errou
+    assert "cnpj ou senha" in r.json()["detail"].lower()
+
+
+def test_login_missing_password_returns_422(app_with_db):
+    """Pydantic rejeita request sem senha como 422 (validation)."""
+    app, _ = app_with_db
+    client = TestClient(app)
+    r = client.post("/cliente/auth/login", json={"cnpj": "12345678000190"})
+    assert r.status_code == 422
+
+
 def test_login_with_digits_only(app_with_db):
     app, TS = app_with_db
     _seed_cliente(TS, nome="Cliente A", cnpj="12345678000190")
 
     client = TestClient(app)
-    r = client.post("/cliente/auth/login", json={"cnpj": "12345678000190"})
+    r = client.post("/cliente/auth/login", json={"cnpj": "12345678000190", "senha": "Warley20192020"})
     assert r.status_code == 200
 
 
@@ -100,7 +120,7 @@ def test_login_cnpj_not_found(app_with_db):
     _seed_cliente(TS, nome="Cliente A", cnpj="12345678000190")
 
     client = TestClient(app)
-    r = client.post("/cliente/auth/login", json={"cnpj": "99999999999999"})
+    r = client.post("/cliente/auth/login", json={"cnpj": "99999999999999", "senha": "Warley20192020"})
     assert r.status_code == 401
     assert "não encontrado" in r.json()["detail"].lower()
 
@@ -110,7 +130,7 @@ def test_login_inactive_cliente(app_with_db):
     _seed_cliente(TS, nome="Inativa", cnpj="11111111000111", ativo=False)
 
     client = TestClient(app)
-    r = client.post("/cliente/auth/login", json={"cnpj": "11111111000111"})
+    r = client.post("/cliente/auth/login", json={"cnpj": "11111111000111", "senha": "Warley20192020"})
     assert r.status_code == 401
     assert "inativa" in r.json()["detail"].lower()
 
@@ -121,7 +141,7 @@ def test_login_multiple_cnpjs(app_with_db):
     _seed_cliente(TS, nome="B", cnpj="22222222000122", task_id="t2")
 
     client = TestClient(app)
-    r = client.post("/cliente/auth/login", json={"cnpj": "22222222000122"})
+    r = client.post("/cliente/auth/login", json={"cnpj": "22222222000122", "senha": "Warley20192020"})
     assert r.status_code == 401
     detail = r.json()["detail"].lower()
     assert "múltiplas" in detail or "multiplas" in detail
@@ -138,7 +158,7 @@ def test_login_broken_link(app_with_db):
         s.commit()
 
     client = TestClient(app)
-    r = client.post("/cliente/auth/login", json={"cnpj": "33333333000133"})
+    r = client.post("/cliente/auth/login", json={"cnpj": "33333333000133", "senha": "Warley20192020"})
     assert r.status_code == 401
 
 
@@ -148,7 +168,7 @@ def test_logout_returns_204(app_with_db):
     _seed_cliente(TS, nome="Cliente Y", cnpj="44444444000144")
 
     client = TestClient(app)
-    login = client.post("/cliente/auth/login", json={"cnpj": "44444444000144"})
+    login = client.post("/cliente/auth/login", json={"cnpj": "44444444000144", "senha": "Warley20192020"})
     token = login.json()["token"]
 
     r = client.post("/cliente/auth/logout", headers={"Authorization": f"Bearer {token}"})
@@ -162,7 +182,7 @@ def test_cliente_deactivated_after_token_emission(app_with_db):
     cid = _seed_cliente(TS, nome="Será desativada", cnpj="55555555000155")
 
     client = TestClient(app)
-    login = client.post("/cliente/auth/login", json={"cnpj": "55555555000155"})
+    login = client.post("/cliente/auth/login", json={"cnpj": "55555555000155", "senha": "Warley20192020"})
     assert login.status_code == 200
     token = login.json()["token"]
 

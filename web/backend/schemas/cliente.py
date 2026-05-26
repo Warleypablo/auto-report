@@ -9,6 +9,7 @@ from models.cliente import Categoria
 
 class ClienteLoginRequest(BaseModel):
     cnpj: str = Field(..., min_length=11, max_length=20, description="CNPJ formatado ou só dígitos")
+    senha: str = Field(..., min_length=1, description="Senha global da área do cliente")
 
 
 class ClientePublic(BaseModel):

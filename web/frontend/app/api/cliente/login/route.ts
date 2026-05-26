@@ -5,11 +5,11 @@ const COOKIE_NAME = "cliente_token";
 const EXPIRY_HOURS = 8;
 
 export async function POST(req: NextRequest) {
-  const { cnpj } = await req.json();
+  const { cnpj, senha } = await req.json();
   const r = await fetch(`${API_URL}/cliente/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cnpj }),
+    body: JSON.stringify({ cnpj, senha }),
   });
 
   if (!r.ok) {

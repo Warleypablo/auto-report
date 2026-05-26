@@ -71,10 +71,10 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const clienteApi = {
-  login: (cnpj: string) =>
+  login: (cnpj: string, senha: string) =>
     call<{ ok: true; cliente: ClientePublic }>("/login", {
       method: "POST",
-      body: JSON.stringify({ cnpj }),
+      body: JSON.stringify({ cnpj, senha }),
     }),
   logout: () => call<void>("/logout", { method: "POST" }),
   me: () => call<ClientePublic>("/me"),
