@@ -23,6 +23,10 @@ services:
         value: "8"
       - key: ETL_THREADS
         value: "5"
+      # Senha global da área do cliente (/cliente/login). Trocar via dashboard
+      # antes do primeiro deploy. Mesma senha para todos os CNPJs.
+      - key: CLIENTE_PASSWORD
+        sync: false
       # Credenciais Google — base64 dos arquivos locais (ver scripts/encode-credentials.sh)
       - key: GOOGLE_SERVICE_ACCOUNT_JSON_B64
         sync: false
