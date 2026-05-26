@@ -1738,6 +1738,7 @@ export default function GestorDashboard() {
   // Filtro de mês: default = "" até descobrirmos qual é o último mês com dados
   const [mesFiltro, setMesFiltro] = useState<string>("");
   const [mesesDisponiveis, setMesesDisponiveis] = useState<string[]>([]);
+  const [gestoresAPI, setGestoresAPI] = useState<string[]>([]);
 
   useEffect(() => {
     Promise.all([gestorApi.me(), gestorApi.clientes()])
@@ -1746,6 +1747,11 @@ export default function GestorDashboard() {
       .finally(() => setLoading(false));
 
     gestorApi.listJobs().then(setJobs).catch(console.error).finally(() => setLoadingJobs(false));
+
+    // Dropdown de gestores: whitelist filtrada (cup status ativo + escopo do user).
+    gestorApi.gestores()
+      .then(({ items }) => setGestoresAPI(items))
+      .catch(console.error);
 
     // Carrega meses com snapshots e usa o mais recente como default
     gestorApi.metricasMesesDisponiveis()
@@ -1768,10 +1774,14 @@ export default function GestorDashboard() {
     gestorApi.metricas(mesFiltro).then(setMetricas).catch(console.error).finally(() => setLoadingMetricas(false));
   }, [mesFiltro]);
 
-  // Unique gestor names from the loaded clients list
-  const gestores: string[] = Array.from(
-    new Set(clientes.map((c) => c.gestor).filter((g): g is string => !!g))
-  ).sort();
+  // Dropdown de gestores: usa /gestor/gestores (whitelist gestores_cadastrados
+  // filtrada por cliente ativo + cup status). Fallback: DISTINCT em
+  // clientes.gestor enquanto a chamada não respondeu (UI inicial).
+  const gestores: string[] = gestoresAPI.length > 0
+    ? gestoresAPI
+    : Array.from(
+        new Set(clientes.map((c) => c.gestor).filter((g): g is string => !!g))
+      ).sort();
 
   // Filtered client list and slug set for dashboard
   const clientesFiltrados = gestorFiltro
