@@ -1293,29 +1293,6 @@ def get_metricas_dashboard(
     )
 
 
-# ── GET /gestor/metricas/{slug}/breakdown ─────────────────────────────────────
-
-def _parse_br(v: str | None) -> float | None:
-    """Parse PT-BR formatted number like 'R$ 1.026,12' or '17,15'."""
-    if not v or v.strip() in ("-", ""):
-        return None
-    try:
-        cleaned = v.replace("R$", "").replace("\xa0", "").strip()
-        cleaned = cleaned.replace(".", "").replace(",", ".")
-        return float(cleaned)
-    except (ValueError, AttributeError):
-        return None
-
-
-def _parse_int_br(v: str | None) -> int | None:
-    if not v or v.strip() in ("-", ""):
-        return None
-    try:
-        return int(v.replace(".", "").replace(",", "").strip())
-    except (ValueError, AttributeError):
-        return None
-
-
 # ── GET /gestor/metricas/{slug}/timeline ──────────────────────────────────
 # Retorna lista de snapshots MENSAL do cliente nos últimos N meses (default 12),
 # ordenados do mais antigo pro mais recente. Usado pra gráfico de evolução
@@ -1367,10 +1344,6 @@ def get_metricas_breakdown(
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> dict:
-    from datetime import date, timedelta
-    from models.snapshot import Snapshot
-
-    # Verify access
     cliente = session.execute(
         select(Cliente).where(Cliente.slug == slug, Cliente.ativo == True)
     ).scalar_one_or_none()
@@ -1387,63 +1360,5 @@ def get_metricas_breakdown(
         if not acesso:
             raise HTTPException(403, "Acesso negado")
 
-    snap_filter = [Snapshot.cliente_id == cliente.id, Snapshot.frequencia == "MENSAL"]
-    if mes:
-        ano, mes_num = int(mes[:4]), int(mes[5:7])
-        primeiro = date(ano, mes_num, 1)
-        if mes_num == 12:
-            ultimo = date(ano + 1, 1, 1) - timedelta(days=1)
-        else:
-            ultimo = date(ano, mes_num + 1, 1) - timedelta(days=1)
-        snap_filter.append(Snapshot.periodo_fim >= primeiro)
-        snap_filter.append(Snapshot.periodo_fim <= ultimo)
-
-    snap = session.execute(
-        select(Snapshot)
-        .where(*snap_filter)
-        .order_by(Snapshot.periodo_fim.desc())
-    ).scalars().first()
-
-    if not snap or not snap.raw_dados:
-        return {"meta_ads": [], "google_ads": []}
-
-    rd = snap.raw_dados
-
-    meta_ads = []
-    for i in range(1, 21):
-        nome = rd.get(f"{{{{nome_adf{i}}}}}", "")
-        if not nome or nome == "-":
-            continue
-        img = rd.get(f"{{{{img_adf{i}}}}}", "") or ""
-        meta_ads.append({
-            "nome": nome,
-            "investimento": _parse_br(rd.get(f"{{{{inv_adf{i}}}}}")),
-            # lead clients
-            "leads": _parse_int_br(rd.get(f"{{{{lead_adf{i}}}}}")),
-            "cpl": _parse_br(rd.get(f"{{{{cpl_adf{i}}}}}")),
-            # ecommerce clients
-            "conversoes": _parse_int_br(rd.get(f"{{{{conv_adf{i}}}}}")),
-            "faturamento": _parse_br(rd.get(f"{{{{fat_adf{i}}}}}")),
-            "roas": _parse_br(rd.get(f"{{{{roas_adf{i}}}}}")),
-            # shared
-            "cpa": _parse_br(rd.get(f"{{{{cpa_adf{i}}}}}")),
-            "impressoes": _parse_int_br(rd.get(f"{{{{imp_adf{i}}}}}")),
-            "imagem_url": img if img not in ("__NO_IMAGE__", "-", "") else None,
-        })
-
-    google_ads = []
-    for i in range(1, 21):
-        nome = rd.get(f"{{{{nome_adg{i}}}}}", "")
-        if not nome or nome == "-":
-            continue
-        google_ads.append({
-            "nome": nome,
-            "investimento": _parse_br(rd.get(f"{{{{inv_adg{i}}}}}")),
-            "faturamento": _parse_br(rd.get(f"{{{{fat_adg{i}}}}}")),
-            "conversoes": _parse_br(rd.get(f"{{{{conv_adg{i}}}}}")),
-            "cpa": _parse_br(rd.get(f"{{{{cpa_adg{i}}}}}")),
-            "roas": _parse_br(rd.get(f"{{{{roas_adg{i}}}}}")),
-            "impressoes": _parse_int_br(rd.get(f"{{{{imp_adg{i}}}}}")),
-        })
-
-    return {"meta_ads": meta_ads, "google_ads": google_ads}
+    from services.metricas import build_breakdown
+    return build_breakdown(cliente.id, mes, session)
