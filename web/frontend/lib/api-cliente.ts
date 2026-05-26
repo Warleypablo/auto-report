@@ -46,6 +46,14 @@ export type GoogleAd = {
 
 export type Breakdown = { meta_ads: MetaAd[]; google_ads: GoogleAd[] };
 
+export type Highlight = {
+  type: "best_roas_window" | "best_revenue_window" | "growth_vs_prev";
+  metric: "roas" | "faturamento";
+  value: number;
+  period_months: number;
+  message: string;
+};
+
 class ApiError extends Error {
   constructor(public status: number, public detail: string) {
     super(detail);
@@ -82,6 +90,8 @@ export const clienteApi = {
     call<{ items: TimelineItem[] }>(`/metricas/timeline?meses=${meses}`),
   breakdown: (mes: string) => call<Breakdown>(`/metricas/breakdown?mes=${mes}`),
   mesesDisponiveis: () => call<{ meses: string[] }>("/metricas/meses-disponiveis"),
+  highlight: () =>
+    call<{ highlight: Highlight | null }>("/metricas/highlight"),
 };
 
 export { ApiError };
