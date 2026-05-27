@@ -92,3 +92,113 @@ def test_check_acesso_cliente_inexistente_falha():
         from api.turbomax import _check_acesso_cliente
         with pytest.raises(ValueError, match="não encontrado"):
             _check_acesso_cliente("slug-que-nao-existe-xyz", user, s)
+
+
+# ─── Tests for DB tools ──────────────────────────────────────────────────────
+
+from decimal import Decimal
+from datetime import date as _date
+from models.snapshot import Snapshot, Frequencia
+
+
+@pytest.fixture
+def db_snapshot(db_cliente):
+    slug, cid = db_cliente
+    with SessionLocal() as s:
+        snap = Snapshot(
+            cliente_id=cid,
+            periodo_inicio=_date(2026, 5, 1),
+            periodo_fim=_date(2026, 5, 31),
+            frequencia=Frequencia.MENSAL,
+            faturamento=Decimal("85000"),
+            investimento=Decimal("22000"),
+            roas=Decimal("3.86"),
+            metricas_detalhadas={"meta": {"faturamento": 60000, "investimento": 15000, "roas": 4.0}},
+            raw_dados={},
+        )
+        s.add(snap)
+        s.commit()
+        sid = snap.id
+    yield slug, cid, sid
+    with SessionLocal() as s:
+        snap = s.get(Snapshot, sid)
+        if snap:
+            s.delete(snap)
+            s.commit()
+
+
+def test_listar_clientes_admin_ve_todos(db_snapshot):
+    slug, _, _ = db_snapshot
+    admin = MagicMock()
+    admin.is_admin = True
+    with SessionLocal() as s:
+        from api.turbomax import _listar_clientes
+        result = _listar_clientes(admin, s)
+    slugs = [r["slug"] for r in result]
+    assert slug in slugs
+
+
+def test_get_metricas_cliente_retorna_dados(db_snapshot):
+    slug, _, _ = db_snapshot
+    admin = MagicMock()
+    admin.is_admin = True
+    with SessionLocal() as s:
+        from api.turbomax import _get_metricas_cliente
+        result = _get_metricas_cliente(slug, "2026-05", admin, s)
+    assert result["faturamento"] == 85000.0
+    assert result["roas"] == pytest.approx(3.86, rel=1e-3)
+    assert result["meta"]["faturamento"] == 60000
+
+
+def test_get_metricas_cliente_sem_snapshot_retorna_erro(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+    with SessionLocal() as s:
+        from api.turbomax import _get_metricas_cliente
+        result = _get_metricas_cliente(slug, "2020-01", admin, s)
+    assert "erro" in result
+
+
+def test_get_historico_cliente_ordem_cronologica(db_snapshot):
+    slug, cid, _ = db_snapshot
+    with SessionLocal() as s:
+        snap2 = Snapshot(
+            cliente_id=cid,
+            periodo_inicio=_date(2026, 4, 1),
+            periodo_fim=_date(2026, 4, 30),
+            frequencia=Frequencia.MENSAL,
+            faturamento=Decimal("75000"),
+            investimento=Decimal("20000"),
+            roas=Decimal("3.75"),
+            metricas_detalhadas={},
+            raw_dados={},
+        )
+        s.add(snap2)
+        s.commit()
+        sid2 = snap2.id
+    admin = MagicMock()
+    admin.is_admin = True
+    with SessionLocal() as s:
+        from api.turbomax import _get_historico_cliente
+        result = _get_historico_cliente(slug, 6, admin, s)
+    meses = [r["mes"] for r in result]
+    assert meses == sorted(meses)
+    with SessionLocal() as s:
+        snap = s.get(Snapshot, sid2)
+        if snap:
+            s.delete(snap)
+            s.commit()
+
+
+def test_comparar_clientes_ranking_e_media(db_snapshot):
+    admin = MagicMock()
+    admin.is_admin = True
+    slug, _, _ = db_snapshot
+    with SessionLocal() as s:
+        from api.turbomax import _comparar_clientes
+        result = _comparar_clientes(None, "roas", "2026-05", admin, s)
+    assert "ranking" in result
+    assert "media_carteira" in result
+    rank_slugs = [r["slug"] for r in result["ranking"]]
+    assert slug in rank_slugs
