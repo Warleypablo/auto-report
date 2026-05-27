@@ -35,6 +35,7 @@ async function handler(
     method: req.method,
     headers,
     body,
+    cache: "no-store",
   });
 
   const contentType = backendRes.headers.get("content-type") ?? "";
