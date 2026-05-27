@@ -36,6 +36,27 @@ function fmtPct(v: number): string {
 
 const MEDAL = ["🥇", "🥈", "🥉"];
 
+// ── Imagem com fallback ───────────────────────────────────────────────────────
+
+function AdThumbnail({ src, alt, className }: { src: string | null; alt: string; className?: string }) {
+  const [broken, setBroken] = useState(false);
+  if (!src || broken) {
+    return (
+      <div className={`flex items-center justify-center bg-[var(--paper-deep)] ${className ?? ""}`}>
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="opacity-20">
+          <rect x="2" y="4" width="16" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+          <circle cx="7.5" cy="9" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+          <path d="M2 14l4-4 3 3 3-3 6 5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+        </svg>
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={alt} className={className} onError={() => setBroken(true)} />
+  );
+}
+
 const TH = "pb-2 pt-3 text-[10px] font-normal uppercase tracking-widest text-[var(--muted)] whitespace-nowrap";
 
 // ── KPI strip ─────────────────────────────────────────────────────────────────
@@ -74,16 +95,12 @@ function PodiumMeta({ ads, maxRoas, onSelect }: {
             className="group relative overflow-hidden rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] text-left transition hover:border-[var(--forest)] hover:shadow-md"
           >
             {/* Imagem */}
-            <div className="relative h-36 w-full bg-gradient-to-br from-[var(--paper-deep)] to-[var(--paper-soft)]">
-              {ad.imagem_url && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={ad.imagem_url}
-                  alt={ad.nome}
-                  className="h-full w-full object-cover transition group-hover:scale-[1.02]"
-                  onError={(e) => e.currentTarget.remove()}
-                />
-              )}
+            <div className="relative h-36 w-full overflow-hidden">
+              <AdThumbnail
+                src={ad.imagem_url}
+                alt={ad.nome}
+                className="h-full w-full object-cover transition group-hover:scale-[1.02]"
+              />
               {/* Medal badge */}
               <span className="absolute left-2.5 top-2.5 text-xl drop-shadow">{MEDAL[ad.rank]}</span>
               {/* ROAS badge */}
@@ -213,9 +230,8 @@ function MetaDrawer({ ad, allAds, onClose }: { ad: RankedMetaAd; allAds: RankedM
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {ad.imagem_url && (
-            <div className="mb-5 overflow-hidden rounded-xl border border-[var(--rule-soft)]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={ad.imagem_url} alt={ad.nome} className="w-full object-cover" style={{ maxHeight: 220 }} />
+            <div className="mb-5 overflow-hidden rounded-xl border border-[var(--rule-soft)]" style={{ height: 220 }}>
+              <AdThumbnail src={ad.imagem_url} alt={ad.nome} className="h-full w-full object-cover" />
             </div>
           )}
 
@@ -408,11 +424,8 @@ function TabelaMeta({ ads, maxRoas, onSelect }: {
                 </td>
                 <td className="max-w-[200px] px-3 py-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="relative h-9 w-14 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-[var(--paper-deep)] to-[var(--paper-soft)]">
-                      {ad.imagem_url && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={ad.imagem_url} alt="" className="absolute inset-0 h-full w-full object-cover" onError={(e) => e.currentTarget.remove()} />
-                      )}
+                    <div className="h-9 w-14 flex-shrink-0 overflow-hidden rounded-md">
+                      <AdThumbnail src={ad.imagem_url} alt="" className="h-full w-full object-cover" />
                     </div>
                     <span className="block truncate text-xs font-medium text-[var(--ink)]" title={ad.nome}>{ad.nome}</span>
                   </div>
