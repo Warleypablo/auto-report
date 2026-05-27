@@ -586,3 +586,104 @@ def _execute_tool(
             user, session,
         )
     return {"erro": f"Ferramenta '{name}' não reconhecida"}
+
+
+# ─── Agent loop ───────────────────────────────────────────────────────────────
+
+_MAX_ITERATIONS = 8
+
+
+def _run_agent(
+    messages: list[dict],
+    user_context: str,
+    user: Usuario,
+    session: Session,
+    api_key: str,
+) -> str:
+    import anthropic  # noqa: PLC0415
+
+    client = anthropic.Anthropic(api_key=api_key)
+    system = _SYSTEM_PROMPT.format(user_context=user_context)
+    history = list(messages)
+
+    for _ in range(_MAX_ITERATIONS):
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4096,
+            system=system,
+            messages=history,
+            tools=TOOLS,
+        )
+
+        if response.stop_reason == "end_turn":
+            for block in response.content:
+                if hasattr(block, "text"):
+                    return block.text
+            return ""
+
+        if response.stop_reason == "tool_use":
+            history.append({"role": "assistant", "content": response.content})
+
+            tool_results = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    try:
+                        result = _execute_tool(block.name, block.input, user, session)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps(result, default=str, ensure_ascii=False),
+                        })
+                    except Exception as exc:
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "is_error": True,
+                            "content": str(exc),
+                        })
+            history.append({"role": "user", "content": tool_results})
+        else:
+            break
+
+    # Fallback: retorna último texto encontrado no histórico
+    for block in getattr(response, "content", []):
+        if hasattr(block, "text"):
+            return block.text
+    return "Não consegui processar sua solicitação. Por favor, tente novamente."
+
+
+# ─── Endpoint ─────────────────────────────────────────────────────────────────
+
+@router.post("/chat", response_model=ChatResponse)
+def chat(
+    body: ChatRequest,
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        raise HTTPException(503, "Chave Anthropic não configurada")
+    if not body.messages:
+        raise HTTPException(400, "messages não pode ser vazio")
+    if body.messages[-1].role != "user":
+        raise HTTPException(400, "Última mensagem deve ser do usuário")
+
+    # Monta contexto do usuário para o system prompt
+    if user.is_admin:
+        user_ctx = f"USUÁRIO: {user.email} (admin — acessa todos os clientes)"
+    else:
+        n = session.scalar(
+            select(func.count(UsuarioCliente.cliente_id)).where(
+                UsuarioCliente.usuario_id == user.id
+            )
+        ) or 0
+        user_ctx = f"USUÁRIO: {user.email} — {n} cliente(s) atribuído(s)"
+
+    if body.cliente_slug:
+        _check_acesso_cliente(body.cliente_slug, user, session)
+        user_ctx += f"\nCONTEXTO: conversa sobre o cliente '{body.cliente_slug}'"
+
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    reply = _run_agent(messages, user_ctx, user, session, settings.anthropic_api_key)
+
+    return ChatResponse(reply=reply)

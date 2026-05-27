@@ -339,3 +339,114 @@ def test_buscar_campanhas_google_mock_client(db_cliente):
     assert len(result["campanhas"]) == 1
     assert result["campanhas"][0]["nome"] == "Brand Search"
     assert result["campanhas"][0]["spend"] == 2.0
+
+
+# ─── Tests for endpoint /chat ────────────────────────────────────────────────
+
+from fastapi.testclient import TestClient
+from fastapi import FastAPI
+from api.auth import create_access_token
+
+
+def _make_test_app():
+    from api.turbomax import router as turbomax_router
+    app = FastAPI()
+    # The router already has prefix="/turbomax", so we just need the parent /gestor prefix
+    app.include_router(turbomax_router, prefix="/gestor")
+    return app
+
+
+def test_chat_endpoint_sem_api_key(db_gestor, monkeypatch):
+    uid, slug, cid = db_gestor
+
+    # Atribuir cliente ao gestor
+    with SessionLocal() as s:
+        uc = UsuarioCliente(usuario_id=uid, cliente_id=cid)
+        s.add(uc)
+        s.commit()
+
+    from app_settings import get_settings
+    settings = get_settings()
+    token = create_access_token(uid, is_admin=False,
+                                secret=settings.jwt_secret,
+                                algorithm=settings.jwt_algorithm,
+                                expiry_hours=1)
+
+    app = _make_test_app()
+    client = TestClient(app)
+
+    with patch("api.turbomax.get_settings") as mock_settings:
+        mock_settings.return_value.anthropic_api_key = ""
+        mock_settings.return_value.jwt_secret = settings.jwt_secret
+        mock_settings.return_value.jwt_algorithm = settings.jwt_algorithm
+        resp = client.post(
+            "/gestor/turbomax/chat",
+            json={"messages": [{"role": "user", "content": "Olá"}]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 503
+
+    # Cleanup
+    with SessionLocal() as s:
+        from sqlalchemy import select as _sel
+        uc = s.scalar(_sel(UsuarioCliente).where(
+            UsuarioCliente.usuario_id == uid, UsuarioCliente.cliente_id == cid
+        ))
+        if uc:
+            s.delete(uc)
+            s.commit()
+
+
+def test_chat_endpoint_com_mock_claude(db_gestor):
+    uid, slug, cid = db_gestor
+
+    # Atribuir cliente ao gestor
+    with SessionLocal() as s:
+        uc = UsuarioCliente(usuario_id=uid, cliente_id=cid)
+        s.add(uc)
+        s.commit()
+
+    from app_settings import get_settings
+    settings = get_settings()
+    token = create_access_token(uid, is_admin=False,
+                                secret=settings.jwt_secret,
+                                algorithm=settings.jwt_algorithm,
+                                expiry_hours=1)
+
+    fake_block = MagicMock()
+    fake_block.type = "text"
+    fake_block.text = "Olá! Sou o TurboMax."
+    fake_response = MagicMock()
+    fake_response.stop_reason = "end_turn"
+    fake_response.content = [fake_block]
+
+    fake_anthropic_client = MagicMock()
+    fake_anthropic_client.messages.create.return_value = fake_response
+
+    with patch("anthropic.Anthropic", return_value=fake_anthropic_client), \
+         patch("api.turbomax.get_settings") as mock_settings:
+        mock_settings.return_value.anthropic_api_key = "sk-test"
+        mock_settings.return_value.jwt_secret = settings.jwt_secret
+        mock_settings.return_value.jwt_algorithm = settings.jwt_algorithm
+
+        app = _make_test_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/gestor/turbomax/chat",
+            json={"messages": [{"role": "user", "content": "Olá"}]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["reply"] == "Olá! Sou o TurboMax."
+
+    # Cleanup
+    with SessionLocal() as s:
+        from sqlalchemy import select as _sel
+        uc = s.scalar(_sel(UsuarioCliente).where(
+            UsuarioCliente.usuario_id == uid, UsuarioCliente.cliente_id == cid
+        ))
+        if uc:
+            s.delete(uc)
+            s.commit()

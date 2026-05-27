@@ -10,6 +10,7 @@ from api import cases, health, internal, rankings
 from api.auth import router as auth_router
 from api.cliente import router as cliente_router
 from api.gestor import router as gestor_router
+from api.turbomax import router as turbomax_router
 from app_settings import get_settings
 from logging_config import setup_logging
 
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(gestor_router, prefix="/gestor")
     app.include_router(cliente_router, prefix="/cliente")
+    app.include_router(turbomax_router, prefix="/gestor")
     return app
 
 
