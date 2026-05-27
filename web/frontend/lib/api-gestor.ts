@@ -127,6 +127,36 @@ export type MetricasBreakdown = {
   google_ads: GoogleAd[];
 };
 
+export type InteligenciaSinal = {
+  tipo: string;
+  severidade: "critico" | "atencao" | "oportunidade";
+  titulo: string;
+  metrica_principal: string;
+  contexto: Record<string, unknown>;
+};
+
+export type InteligenciaAlerta = {
+  cliente_slug: string;
+  cliente_nome: string;
+  cliente_categoria: string;
+  severidade: "critico" | "atencao" | "oportunidade";
+  sinais: InteligenciaSinal[];
+  narrativa: string | null;
+};
+
+export type InteligenciaResponse = {
+  mes: string;
+  alertas: InteligenciaAlerta[];
+};
+
+export type InteligenciaGenerateResponse = {
+  mes: string;
+  gerados: number;
+  sem_sinais: number;
+  sem_dados: number;
+  erros: number;
+};
+
 export type TimelineItem = {
   mes: string;
   periodo_inicio: string;
@@ -172,6 +202,7 @@ async function apiCall<T>(
   const res = await fetch(`/api/gestor/${path}`, {
     method,
     headers: { "content-type": "application/json" },
+    cache: "no-store",
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   if (res.status === 204) return undefined as unknown as T;
@@ -325,4 +356,15 @@ export const gestorApi = {
 
   removeClienteFromUsuario: (usuario_id: string, cliente_id: string) =>
     apiCall<void>(`admin/usuarios/${usuario_id}/clientes/${cliente_id}`, "DELETE"),
+
+  inteligencia: (mes: string, gestor?: string) =>
+    apiCall<InteligenciaResponse>(
+      `inteligencia?mes=${encodeURIComponent(mes)}${gestor ? `&gestor=${encodeURIComponent(gestor)}` : ""}`,
+    ),
+
+  generateInteligencia: (mes: string) =>
+    apiCall<InteligenciaGenerateResponse>(
+      `inteligencia/generate?mes=${encodeURIComponent(mes)}`,
+      "POST",
+    ),
 };
