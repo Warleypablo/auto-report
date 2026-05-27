@@ -156,8 +156,8 @@ export default function InteligenciaPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {alertas.map((alerta, i) => (
-            <AlertaCard key={`${alerta.cliente_slug}-${i}`} alerta={alerta} />
+          {alertas.map((alerta) => (
+            <AlertaCard key={alerta.cliente_slug} alerta={alerta} />
           ))}
         </div>
       )}
