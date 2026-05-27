@@ -1,9 +1,9 @@
+import pytest
+
+
 def test_insight_model_importavel():
     from models.insight import Insight
     assert Insight.__tablename__ == "insights"
-
-
-import pytest
 
 
 # Fixtures
@@ -17,9 +17,6 @@ def _bd_brand():
         ],
         "meta_ads": [],
     }
-
-def _bd_vazio():
-    return {"google_ads": [], "meta_ads": []}
 
 # detectar_roas_brand_inflado
 def test_roas_brand_inflado_dispara():
@@ -87,6 +84,36 @@ def test_roas_abaixo_limiar_nao_dispara_acima():
     snap = FakeSnap(); snap.roas = Decimal("2.5")
     assert detectar_roas_abaixo_limiar(snap) is None
 
+# detectar_faturamento_queda
+def test_faturamento_queda_dispara():
+    from decimal import Decimal
+    from services.inteligencia import detectar_faturamento_queda
+    class FakeSnap:
+        faturamento = None
+    atual = FakeSnap(); atual.faturamento = Decimal("60000.0")
+    anterior = FakeSnap(); anterior.faturamento = Decimal("100000.0")
+    sinal = detectar_faturamento_queda(atual, anterior)
+    assert sinal is not None
+    assert sinal["tipo"] == "faturamento_queda"
+    assert sinal["severidade"] == "critico"
+
+def test_faturamento_queda_nao_dispara_queda_pequena():
+    from decimal import Decimal
+    from services.inteligencia import detectar_faturamento_queda
+    class FakeSnap:
+        faturamento = None
+    atual = FakeSnap(); atual.faturamento = Decimal("90000.0")
+    anterior = FakeSnap(); anterior.faturamento = Decimal("100000.0")
+    assert detectar_faturamento_queda(atual, anterior) is None
+
+def test_faturamento_queda_nao_dispara_sem_anterior():
+    from decimal import Decimal
+    from services.inteligencia import detectar_faturamento_queda
+    class FakeSnap:
+        faturamento = None
+    atual = FakeSnap(); atual.faturamento = Decimal("60000.0")
+    assert detectar_faturamento_queda(atual, None) is None
+
 # detectar_investimento_parado
 def test_investimento_parado_dispara_sem_snap():
     from services.inteligencia import detectar_investimento_parado
@@ -98,6 +125,37 @@ def test_investimento_parado_nao_dispara_com_investimento():
     class FakeSnap:
         investimento = Decimal("1000.0")
     assert detectar_investimento_parado(FakeSnap()) is None
+
+# detectar_oportunidade_escala
+def test_oportunidade_escala_dispara():
+    from decimal import Decimal
+    from services.inteligencia import detectar_oportunidade_escala
+    class FakeSnap:
+        roas = None
+        investimento = None
+    snap = FakeSnap(); snap.roas = Decimal("8.0"); snap.investimento = Decimal("1000.0")
+    sinal = detectar_oportunidade_escala(snap, 10000.0)
+    assert sinal is not None
+    assert sinal["tipo"] == "oportunidade_escala"
+    assert sinal["severidade"] == "oportunidade"
+
+def test_oportunidade_escala_nao_dispara_roas_baixo():
+    from decimal import Decimal
+    from services.inteligencia import detectar_oportunidade_escala
+    class FakeSnap:
+        roas = None
+        investimento = None
+    snap = FakeSnap(); snap.roas = Decimal("3.0"); snap.investimento = Decimal("1000.0")
+    assert detectar_oportunidade_escala(snap, 10000.0) is None
+
+def test_oportunidade_escala_nao_dispara_investimento_alto():
+    from decimal import Decimal
+    from services.inteligencia import detectar_oportunidade_escala
+    class FakeSnap:
+        roas = None
+        investimento = None
+    snap = FakeSnap(); snap.roas = Decimal("8.0"); snap.investimento = Decimal("8000.0")
+    assert detectar_oportunidade_escala(snap, 10000.0) is None
 
 # rodar_detectores
 def test_rodar_detectores_retorna_lista():
