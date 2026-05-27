@@ -32,6 +32,13 @@ function rankColor(i: number): string {
   return "text-[var(--muted)]";
 }
 
+function fmtK(v: number | null): string {
+  if (v == null || v === 0) return "—";
+  if (v >= 1_000_000) return `R$${(v / 1_000_000).toFixed(1).replace(".", ",")}M`;
+  if (v >= 1_000) return `R$${(v / 1_000).toFixed(1).replace(".", ",")}k`;
+  return `R$${Math.round(v)}`;
+}
+
 export default function RankingsPage() {
   const [mes, setMes] = useState(mesUltimoFechado());
   const [loading, setLoading] = useState(true);
@@ -136,10 +143,10 @@ export default function RankingsPage() {
                     <Link
                       key={`${ad.clienteSlug}-${ad.nome}`}
                       href={`/gestor/${ad.clienteSlug}`}
-                      className="grid grid-cols-[2rem_2rem_1fr_auto] items-center gap-3 px-4 py-3 transition hover:bg-[var(--paper-deep)]"
+                      className="grid grid-cols-[2rem_2rem_1fr_auto] items-start gap-3 px-4 py-3 transition hover:bg-[var(--paper-deep)]"
                     >
-                      <span className={`font-mono-num text-xs ${rankColor(i)}`}>#{i + 1}</span>
-                      <div className="relative h-5 w-7 flex-shrink-0">
+                      <span className={`font-mono-num pt-0.5 text-xs ${rankColor(i)}`}>#{i + 1}</span>
+                      <div className="relative mt-0.5 h-5 w-7 flex-shrink-0">
                         <div className="h-5 w-7 rounded bg-gradient-to-br from-[var(--paper-deep)] to-[var(--paper-soft)]" />
                         {ad.imagem_url && (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -155,7 +162,34 @@ export default function RankingsPage() {
                         <p className="truncate text-sm text-[var(--ink)]" title={ad.nome}>
                           {ad.nome}
                         </p>
-                        <p className="text-[10px] text-[var(--muted)]">{ad.clienteNome}</p>
+                        <p className="mb-1.5 text-[10px] text-[var(--muted)]">{ad.clienteNome}</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                          {ad.faturamento != null && (
+                            <span className="font-mono-num text-[10px] text-[var(--forest)]">
+                              {fmtK(ad.faturamento)} fat
+                            </span>
+                          )}
+                          {ad.conversoes != null && (
+                            <span className="font-mono-num text-[10px] text-[var(--muted)]">
+                              {ad.conversoes} conv
+                            </span>
+                          )}
+                          {ad.leads != null && (
+                            <span className="font-mono-num text-[10px] text-[var(--muted)]">
+                              {ad.leads} leads
+                            </span>
+                          )}
+                          {ad.cpa != null && (
+                            <span className="font-mono-num text-[10px] text-[var(--muted)]">
+                              CPA {fmtK(ad.cpa)}
+                            </span>
+                          )}
+                          {ad.cpl != null && (
+                            <span className="font-mono-num text-[10px] text-[var(--muted)]">
+                              CPL {fmtK(ad.cpl)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right">
                         <p className={`font-mono-num text-base font-semibold ${TIER_TEXT[tier]}`}>
