@@ -2,17 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 import { gestorApi } from "@/lib/api-gestor";
 import type { GoogleAd, MetaAd } from "@/lib/api-gestor";
 import { deslocarMes, mesUltimoFechado } from "@/lib/mes-utils";
 import {
-  fmtBRL,
   fmtRoas,
   roasTier,
   sortByRoas,
-  TIER_BAR,
   TIER_TEXT,
 } from "@/lib/roas-tier";
 
@@ -39,7 +37,11 @@ function fmtK(v: number | null): string {
   return `R$${Math.round(v)}`;
 }
 
+const TH_L = "pb-2.5 pt-3 text-left text-[10px] font-normal uppercase tracking-widest text-[var(--muted)] whitespace-nowrap";
+const TH_R = "pb-2.5 pt-3 text-right text-[10px] font-normal uppercase tracking-widest text-[var(--muted)] whitespace-nowrap";
+
 export default function RankingsPage() {
+  const router = useRouter();
   const [mes, setMes] = useState(mesUltimoFechado());
   const [loading, setLoading] = useState(true);
   const [metaAds, setMetaAds] = useState<RankedMetaAd[]>([]);
@@ -83,13 +85,8 @@ export default function RankingsPage() {
       .finally(() => setLoading(false));
   }, [mes]);
 
-  const maxInvGoogle = useMemo(
-    () => googleAds.reduce((max, c) => Math.max(max, c.investimento ?? 0), 0) || 1,
-    [googleAds],
-  );
-
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
+    <main className="mx-auto max-w-6xl px-6 py-12">
       <Link
         href="/gestor"
         className="mb-6 block text-xs text-[var(--muted)] transition hover:text-[var(--ink)]"
@@ -126,7 +123,8 @@ export default function RankingsPage() {
         </p>
       ) : (
         <div className="flex flex-col gap-12">
-          {/* Meta Ads */}
+
+          {/* ── Meta Ads ── */}
           <section>
             <p className="eyebrow mb-4 text-xs text-[var(--muted)]">
               Top criativos · Meta Ads · carteira
@@ -136,77 +134,86 @@ export default function RankingsPage() {
                 Nenhum dado disponível para este mês.
               </p>
             ) : (
-              <div className="flex flex-col divide-y divide-[var(--rule-soft)] rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)]">
-                {metaAds.map((ad, i) => {
-                  const tier = roasTier(ad.roas);
-                  return (
-                    <Link
-                      key={`${ad.clienteSlug}-${ad.nome}`}
-                      href={`/gestor/${ad.clienteSlug}`}
-                      className="grid grid-cols-[2rem_2rem_1fr_auto] items-start gap-3 px-4 py-3 transition hover:bg-[var(--paper-deep)]"
-                    >
-                      <span className={`font-mono-num pt-0.5 text-xs ${rankColor(i)}`}>#{i + 1}</span>
-                      <div className="relative mt-0.5 h-5 w-7 flex-shrink-0">
-                        <div className="h-5 w-7 rounded bg-gradient-to-br from-[var(--paper-deep)] to-[var(--paper-soft)]" />
-                        {ad.imagem_url && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={ad.imagem_url}
-                            alt=""
-                            className="absolute inset-0 h-full w-full rounded object-cover"
-                            onError={(e) => e.currentTarget.remove()}
-                          />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm text-[var(--ink)]" title={ad.nome}>
-                          {ad.nome}
-                        </p>
-                        <p className="mb-1.5 text-[10px] text-[var(--muted)]">{ad.clienteNome}</p>
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                          {ad.faturamento != null && (
-                            <span className="font-mono-num text-[10px] text-[var(--forest)]">
-                              {fmtK(ad.faturamento)} fat
-                            </span>
-                          )}
-                          {ad.conversoes != null && (
-                            <span className="font-mono-num text-[10px] text-[var(--muted)]">
-                              {ad.conversoes} conv
-                            </span>
-                          )}
-                          {ad.leads != null && (
-                            <span className="font-mono-num text-[10px] text-[var(--muted)]">
-                              {ad.leads} leads
-                            </span>
-                          )}
-                          {ad.cpa != null && (
-                            <span className="font-mono-num text-[10px] text-[var(--muted)]">
-                              CPA {fmtK(ad.cpa)}
-                            </span>
-                          )}
-                          {ad.cpl != null && (
-                            <span className="font-mono-num text-[10px] text-[var(--muted)]">
-                              CPL {fmtK(ad.cpl)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-mono-num text-base font-semibold ${TIER_TEXT[tier]}`}>
-                          {fmtRoas(ad.roas)}
-                        </p>
-                        <p className="font-mono-num text-[10px] text-[var(--muted)]">
-                          {fmtBRL(ad.investimento)}
-                        </p>
-                      </div>
-                    </Link>
-                  );
-                })}
+              <div className="overflow-x-auto rounded-lg border border-[var(--rule-soft)]">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[var(--rule-soft)] bg-[var(--paper-soft)]">
+                      <th className={`${TH_L} pl-4 pr-2`}>#</th>
+                      <th className={`${TH_L} px-2`}>Criativo</th>
+                      <th className={`${TH_L} px-2`}>Cliente</th>
+                      <th className={`${TH_R} px-2`}>ROAS</th>
+                      <th className={`${TH_R} px-2`}>Faturamento</th>
+                      <th className={`${TH_R} px-2`}>Investimento</th>
+                      <th className={`${TH_R} px-2`}>Conv.</th>
+                      <th className={`${TH_R} px-2`}>Leads</th>
+                      <th className={`${TH_R} pl-2 pr-4`}>CPA/CPL</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--rule-soft)] bg-[var(--paper-soft)]">
+                    {metaAds.map((ad, i) => {
+                      const tier = roasTier(ad.roas);
+                      return (
+                        <tr
+                          key={`${ad.clienteSlug}-${ad.nome}`}
+                          onClick={() => router.push(`/gestor/${ad.clienteSlug}`)}
+                          className="cursor-pointer transition hover:bg-[var(--paper-deep)]"
+                        >
+                          <td className={`py-2.5 pl-4 pr-2 font-mono-num text-xs ${rankColor(i)}`}>
+                            #{i + 1}
+                          </td>
+                          <td className="max-w-[220px] px-2 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="relative h-5 w-7 flex-shrink-0">
+                                <div className="h-5 w-7 rounded bg-gradient-to-br from-[var(--paper-deep)] to-[var(--paper-soft)]" />
+                                {ad.imagem_url && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={ad.imagem_url}
+                                    alt=""
+                                    className="absolute inset-0 h-full w-full rounded object-cover"
+                                    onError={(e) => e.currentTarget.remove()}
+                                  />
+                                )}
+                              </div>
+                              <span
+                                className="block truncate text-xs text-[var(--ink)]"
+                                title={ad.nome}
+                              >
+                                {ad.nome}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-2.5 text-xs text-[var(--muted)]">
+                            {ad.clienteNome}
+                          </td>
+                          <td className={`px-2 py-2.5 text-right font-mono-num font-semibold ${TIER_TEXT[tier]}`}>
+                            {fmtRoas(ad.roas)}
+                          </td>
+                          <td className="px-2 py-2.5 text-right font-mono-num text-xs text-[var(--forest)]">
+                            {fmtK(ad.faturamento)}
+                          </td>
+                          <td className="px-2 py-2.5 text-right font-mono-num text-xs text-[var(--muted)]">
+                            {fmtK(ad.investimento)}
+                          </td>
+                          <td className="px-2 py-2.5 text-right font-mono-num text-xs text-[var(--muted)]">
+                            {ad.conversoes ?? "—"}
+                          </td>
+                          <td className="px-2 py-2.5 text-right font-mono-num text-xs text-[var(--muted)]">
+                            {ad.leads ?? "—"}
+                          </td>
+                          <td className="pl-2 pr-4 py-2.5 text-right font-mono-num text-xs text-[var(--muted)]">
+                            {ad.cpa != null ? fmtK(ad.cpa) : fmtK(ad.cpl)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </section>
 
-          {/* Google Ads */}
+          {/* ── Google Ads ── */}
           <section>
             <p className="eyebrow mb-4 text-xs text-[var(--muted)]">
               Top campanhas · Google Ads · carteira
@@ -216,44 +223,67 @@ export default function RankingsPage() {
                 Nenhum dado disponível para este mês.
               </p>
             ) : (
-              <div className="flex flex-col divide-y divide-[var(--rule-soft)] rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)]">
-                {googleAds.map((c, i) => {
-                  const tier = roasTier(c.roas);
-                  const pct = (c.investimento ?? 0) / maxInvGoogle;
-                  return (
-                    <Link
-                      key={`${c.clienteSlug}-${c.nome}`}
-                      href={`/gestor/${c.clienteSlug}`}
-                      className="grid grid-cols-[2rem_1fr_auto] items-center gap-4 px-4 py-3 transition hover:bg-[var(--paper-deep)]"
-                    >
-                      <span className={`font-mono-num text-xs ${rankColor(i)}`}>#{i + 1}</span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm text-[var(--ink)]" title={c.nome}>
-                          {c.nome}
-                        </p>
-                        <p className="text-[10px] text-[var(--muted)]">{c.clienteNome}</p>
-                        <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-[var(--paper-deep)]">
-                          <motion.div
-                            className={`h-full origin-left ${TIER_BAR[tier]}`}
-                            initial={{ scaleX: 0 }}
-                            whileInView={{ scaleX: pct }}
-                            viewport={{ once: true, margin: "-15%" }}
-                            transition={{ duration: 0.8, delay: i * 0.04, ease: "easeOut" }}
-                          />
-                        </div>
-                        <p className="font-mono-num mt-1 text-[10px] text-[var(--muted)]">
-                          Invest: {fmtBRL(c.investimento)}
-                        </p>
-                      </div>
-                      <p className={`font-mono-num text-base font-semibold ${TIER_TEXT[tier]}`}>
-                        {fmtRoas(c.roas)}
-                      </p>
-                    </Link>
-                  );
-                })}
+              <div className="overflow-x-auto rounded-lg border border-[var(--rule-soft)]">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[var(--rule-soft)] bg-[var(--paper-soft)]">
+                      <th className={`${TH_L} pl-4 pr-2`}>#</th>
+                      <th className={`${TH_L} px-2`}>Campanha</th>
+                      <th className={`${TH_L} px-2`}>Cliente</th>
+                      <th className={`${TH_R} px-2`}>ROAS</th>
+                      <th className={`${TH_R} px-2`}>Faturamento</th>
+                      <th className={`${TH_R} px-2`}>Investimento</th>
+                      <th className={`${TH_R} px-2`}>Conv.</th>
+                      <th className={`${TH_R} pl-2 pr-4`}>CPA</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--rule-soft)] bg-[var(--paper-soft)]">
+                    {googleAds.map((c, i) => {
+                      const tier = roasTier(c.roas);
+                      return (
+                        <tr
+                          key={`${c.clienteSlug}-${c.nome}`}
+                          onClick={() => router.push(`/gestor/${c.clienteSlug}`)}
+                          className="cursor-pointer transition hover:bg-[var(--paper-deep)]"
+                        >
+                          <td className={`py-2.5 pl-4 pr-2 font-mono-num text-xs ${rankColor(i)}`}>
+                            #{i + 1}
+                          </td>
+                          <td className="max-w-[260px] px-2 py-2.5">
+                            <span
+                              className="block truncate text-xs text-[var(--ink)]"
+                              title={c.nome}
+                            >
+                              {c.nome}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-2.5 text-xs text-[var(--muted)]">
+                            {c.clienteNome}
+                          </td>
+                          <td className={`px-2 py-2.5 text-right font-mono-num font-semibold ${TIER_TEXT[tier]}`}>
+                            {fmtRoas(c.roas)}
+                          </td>
+                          <td className="px-2 py-2.5 text-right font-mono-num text-xs text-[var(--forest)]">
+                            {fmtK(c.faturamento)}
+                          </td>
+                          <td className="px-2 py-2.5 text-right font-mono-num text-xs text-[var(--muted)]">
+                            {fmtK(c.investimento)}
+                          </td>
+                          <td className="px-2 py-2.5 text-right font-mono-num text-xs text-[var(--muted)]">
+                            {c.conversoes ?? "—"}
+                          </td>
+                          <td className="pl-2 pr-4 py-2.5 text-right font-mono-num text-xs text-[var(--muted)]">
+                            {fmtK(c.cpa)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </section>
+
         </div>
       )}
     </main>
