@@ -174,7 +174,7 @@ function Sidebar({
             </Link>
             <button
               onClick={onGerarInsights}
-              disabled={gerandoInsights}
+              disabled={gerandoInsights || !mesFiltro}
               className="mb-1 block text-xs text-[var(--forest)] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {gerandoInsights ? "Gerando…" : `Gerar insights · ${mesFiltro}`}
@@ -1802,6 +1802,7 @@ export default function GestorDashboard() {
   useEffect(() => {
     if (!mesFiltro) return;
     setLoadingMetricas(true);
+    setResultadoInsights(null);
     gestorApi.metricas(mesFiltro).then(setMetricas).catch(console.error).finally(() => setLoadingMetricas(false));
   }, [mesFiltro]);
 
