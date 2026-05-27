@@ -14,6 +14,7 @@ import { mesUltimoFechado, deslocarMes } from "@/lib/mes-utils";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
+import PerformanceLeaderboard from "@/components/PerformanceLeaderboard";
 
 function mesLabel(mes: string): string {
   const [ano, m] = mes.split("-");
@@ -46,8 +47,6 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [verTodosMeta, setVerTodosMeta] = useState(false);
-  const [verTodosGoogle, setVerTodosGoogle] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Carga inicial: cliente + jobs + timeline (12 meses)
@@ -321,103 +320,11 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
       {/* Breakdown de campanhas */}
       <section className="mb-8">
         <p className="eyebrow mb-3 text-xs text-[var(--muted)]">Campanhas · {mesLabel(mes)}</p>
-        {loadingDetail ? (
-          <p className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-6 text-center text-xs text-[var(--muted)]">Carregando…</p>
-        ) : !breakdown || (metaAds.length === 0 && googleAds.length === 0) ? (
-          <p className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-6 text-center text-xs text-[var(--muted)]">
-            Sem dados granulares para este mês.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-5">
-            {metaAds.length > 0 && (
-              <div className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
-                <p className="eyebrow mb-2 text-[10px] font-medium text-[var(--muted)]">Meta Ads — top anúncios</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-[var(--rule-soft)]">
-                        <th className="pb-1 pr-3 text-left font-medium text-[var(--muted)]">Criativo</th>
-                        <th className="pb-1 pr-3 text-left font-medium text-[var(--muted)]">Anúncio</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Invest.</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Leads</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Conv.</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Fat.</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">CPL/CPA</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">ROAS</th>
-                        <th className="pb-1 text-right font-medium text-[var(--muted)]">Impressões</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(verTodosMeta ? metaAds : metaAds.slice(0, 5)).map((ad, i) => (
-                        <tr key={i} className="border-b border-[var(--rule-soft)]/40">
-                          <td className="py-2 pr-3">
-                            {ad.imagem_url ? (
-                              <img src={ad.imagem_url} alt={ad.nome} className="h-10 w-10 rounded object-cover" />
-                            ) : (
-                              <div className="h-10 w-10 rounded bg-[var(--paper)]" />
-                            )}
-                          </td>
-                          <td className="py-2 pr-3 font-medium text-[var(--ink)]">{ad.nome}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.investimento)}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.leads ?? "—"}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.conversoes ?? "—"}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.faturamento)}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.cpl ?? ad.cpa)}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.roas != null ? `${fmtNum(ad.roas)}×` : "—"}</td>
-                          <td className="py-2 text-right font-mono-num text-[var(--ink)]">{ad.impressoes != null ? ad.impressoes.toLocaleString("pt-BR") : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {metaAds.length > 5 && (
-                  <button onClick={() => setVerTodosMeta((v) => !v)} className="mt-2 text-[10px] text-[var(--forest)] hover:underline">
-                    {verTodosMeta ? "Mostrar só top 5" : `Ver todos os ${metaAds.length}`}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {googleAds.length > 0 && (
-              <div className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
-                <p className="eyebrow mb-2 text-[10px] font-medium text-[var(--muted)]">Google Ads — top campanhas</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-[var(--rule-soft)]">
-                        <th className="pb-1 pr-3 text-left font-medium text-[var(--muted)]">Campanha</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Invest.</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Conv.</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">Fat.</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">CPA</th>
-                        <th className="pb-1 pr-3 text-right font-medium text-[var(--muted)]">ROAS</th>
-                        <th className="pb-1 text-right font-medium text-[var(--muted)]">Impressões</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(verTodosGoogle ? googleAds : googleAds.slice(0, 5)).map((ad, i) => (
-                        <tr key={i} className="border-b border-[var(--rule-soft)]/40">
-                          <td className="py-2 pr-3 font-medium text-[var(--ink)]">{ad.nome}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.investimento)}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.conversoes ?? "—"}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.faturamento)}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.cpa)}</td>
-                          <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{ad.roas != null ? `${fmtNum(ad.roas)}×` : "—"}</td>
-                          <td className="py-2 text-right font-mono-num text-[var(--ink)]">{ad.impressoes != null ? ad.impressoes.toLocaleString("pt-BR") : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {googleAds.length > 5 && (
-                  <button onClick={() => setVerTodosGoogle((v) => !v)} className="mt-2 text-[10px] text-[var(--forest)] hover:underline">
-                    {verTodosGoogle ? "Mostrar só top 5" : `Ver todas as ${googleAds.length}`}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        <PerformanceLeaderboard
+          metaAds={metaAds}
+          googleAds={googleAds}
+          loading={loadingDetail}
+        />
       </section>
 
       {/* ClickUp info */}
