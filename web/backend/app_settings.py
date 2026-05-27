@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # Senha global da área do cliente. Mesma para todos os CNPJs — atua como
     # secret compartilhado divulgado offline. Trocar via env CLIENTE_PASSWORD.
     cliente_password: str = Field(default="Warley20192020")
+    anthropic_api_key: str = Field(default="")
 
 
 @lru_cache
