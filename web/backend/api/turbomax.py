@@ -570,7 +570,8 @@ def _buscar_anuncios_meta(
 
         actions = {x["action_type"]: float(x["value"]) for x in a.get("actions") or []}
         action_values = {x["action_type"]: float(x["value"]) for x in a.get("action_values") or []}
-        video_3s = sum(float(x["value"]) for x in a.get("video_p3_watched_actions") or [])
+        video_p3 = {x["action_type"]: float(x["value"]) for x in a.get("video_p3_watched_actions") or []}
+        video_3s = video_p3.get("video_view", 0.0)
 
         purchases = actions.get("purchase", actions.get("offsite_conversion.fb_pixel_purchase", 0))
         purchase_value = action_values.get(
@@ -705,10 +706,8 @@ def _execute_tool(
             user, session,
         )
     if name == "buscar_anuncios_google":
-        return _buscar_anuncios_google(
-            tool_input["slug"], tool_input["date_start"], tool_input["date_end"],
-            user, session,
-        )
+        # implemented in Task 2
+        return {"erro": "Ferramenta buscar_anuncios_google ainda não disponível"}
     return {"erro": f"Ferramenta '{name}' não reconhecida"}
 
 
