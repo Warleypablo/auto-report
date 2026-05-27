@@ -4,7 +4,7 @@ import logging
 import os
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -15,10 +15,17 @@ from api.auth import require_admin, require_auth
 from db import get_session
 from app_settings import Settings, get_settings
 from models import Cliente, GestorCadastrado, Insight, ReportJob, Usuario, UsuarioCliente
+from models.snapshot import Snapshot
+from models.snapshot import Frequencia as SnapFrequencia
 from models.cliente import Categoria as CatEnum
 from models.report_job import JobStatus
 from etl.cliente_publico import slugify
 from schemas import (
+    BackfillJobStatusResponse,
+    BackfillRequest,
+    BackfillResponse,
+    CoberturaClienteItem,
+    CoberturaResponse,
     AssignClientesRequest,
     ClienteCreateRequest,
     CupClienteInfo,
@@ -55,6 +62,10 @@ _log = logging.getLogger(__name__)
 # com muitos clientes disparados de uma vez. Ajustável via env MAX_CONCURRENT_REPORT_JOBS.
 _MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_REPORT_JOBS", "1"))
 _JOB_SEMAPHORE = threading.BoundedSemaphore(_MAX_CONCURRENT_JOBS)
+
+# Estado em memória para jobs de backfill histórico.
+# Suficiente para uso esporádico por admins — não persiste entre reinicializações.
+_backfill_jobs: dict[str, dict] = {}
 
 _MES_RE = __import__("re").compile(r"^\d{4}-\d{2}$")
 
@@ -1657,3 +1668,119 @@ def get_inteligencia(
     alertas.sort(key=lambda a: _SEV_ORDER.get(a.severidade, 99))
 
     return InteligenciaResponse(mes=mes, alertas=alertas)
+
+
+# ── Base histórica / Backfill ETL ────────────────────────────────────────────
+
+@router.post("/admin/etl/backfill", status_code=202, response_model=BackfillResponse)
+def trigger_backfill(
+    body: BackfillRequest,
+    user: Usuario = Depends(require_admin),
+):
+    """Dispara backfill ETL para um intervalo de meses em background."""
+    if not _MES_RE.match(body.mes_inicio) or not _MES_RE.match(body.mes_fim):
+        raise HTTPException(400, "mes_inicio e mes_fim devem estar no formato YYYY-MM")
+    if body.mes_inicio > body.mes_fim:
+        raise HTTPException(400, "mes_inicio deve ser <= mes_fim")
+
+    ano_i, mes_i = int(body.mes_inicio[:4]), int(body.mes_inicio[5:])
+    ano_f, mes_f = int(body.mes_fim[:4]), int(body.mes_fim[5:])
+    meses_total = (ano_f - ano_i) * 12 + (mes_f - mes_i) + 1
+    if meses_total > 36:
+        raise HTTPException(400, "Intervalo máximo de 36 meses")
+
+    with SessionLocal() as session:
+        if body.slug:
+            n_clientes = 1
+        else:
+            n_clientes = session.execute(select(func.count(Cliente.id))).scalar_one()
+
+    job_id = str(uuid.uuid4())
+    _backfill_jobs[job_id] = {
+        "status": "running",
+        "meses_total": meses_total,
+        "meses_concluidos": 0,
+        "erros": 0,
+        "pct": 0,
+    }
+
+    def _run() -> None:
+        def _progress(concluidos: int, total: int, erros: int) -> None:
+            _backfill_jobs[job_id]["meses_concluidos"] = concluidos
+            _backfill_jobs[job_id]["erros"] = erros
+            _backfill_jobs[job_id]["pct"] = int(concluidos / total * 100) if total else 0
+
+        try:
+            from etl.collect import backfill_clientes_meses
+            backfill_clientes_meses(
+                mes_inicio=body.mes_inicio,
+                mes_fim=body.mes_fim,
+                slug=body.slug,
+                progress_callback=_progress,
+            )
+            _backfill_jobs[job_id]["status"] = "done"
+            _backfill_jobs[job_id]["pct"] = 100
+        except Exception:
+            _log.exception("[backfill %s] FALHOU", job_id)
+            _backfill_jobs[job_id]["status"] = "error"
+
+    threading.Thread(target=_run, daemon=False).start()
+
+    return BackfillResponse(job_id=job_id, meses=meses_total, clientes=n_clientes)
+
+
+@router.get("/admin/etl/backfill/{job_id}", response_model=BackfillJobStatusResponse)
+def get_backfill_status(
+    job_id: str,
+    user: Usuario = Depends(require_admin),
+):
+    """Retorna o status de um job de backfill em andamento."""
+    job = _backfill_jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job não encontrado")
+    return BackfillJobStatusResponse(job_id=job_id, **job)
+
+
+@router.get("/admin/cobertura", response_model=CoberturaResponse)
+def get_cobertura(
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Retorna matriz de cobertura: para cada cliente, quais meses têm snapshot."""
+    hoje = date.today()
+    ano, mes = hoje.year, hoje.month
+    meses: list[str] = []
+    for _ in range(36):
+        meses.insert(0, f"{ano:04d}-{mes:02d}")
+        mes -= 1
+        if mes == 0:
+            mes = 12
+            ano -= 1
+
+    clientes = session.execute(
+        select(Cliente).order_by(Cliente.nome)
+    ).scalars().all()
+
+    from collections import defaultdict
+    snaps = session.execute(
+        select(Snapshot.cliente_id, Snapshot.periodo_inicio)
+        .where(Snapshot.frequencia == SnapFrequencia.MENSAL)
+    ).all()
+
+    meses_por_cliente: dict[uuid.UUID, set[str]] = defaultdict(set)
+    for s in snaps:
+        meses_por_cliente[s.cliente_id].add(s.periodo_inicio.strftime("%Y-%m"))
+
+    return CoberturaResponse(
+        meses=meses,
+        clientes=[
+            CoberturaClienteItem(
+                id=c.id,
+                slug=c.slug,
+                nome=c.nome,
+                ativo=c.ativo,
+                meses_com_snapshot=sorted(meses_por_cliente.get(c.id, set())),
+            )
+            for c in clientes
+        ],
+    )
