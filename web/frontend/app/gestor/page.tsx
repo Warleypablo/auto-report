@@ -143,11 +143,18 @@ function Sidebar({
         ))}
       </nav>
       <Link
-        href="/gestor/rankings"
+        href="/gestor/inteligencia"
+        className="mx-3 mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]"
+      >
+        <span className="text-[10px] opacity-60">◆</span>
+        Inteligência
+      </Link>
+      <Link
+        href="/gestor/performance"
         className="mx-3 mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]"
       >
         <span className="text-[10px] opacity-60">◈</span>
-        Rankings
+        Performance
       </Link>
       <div className="border-t border-[var(--rule-soft)] px-4 py-4">
         <p className="text-xs font-medium text-[var(--ink-soft)]">{user?.nome ?? "—"}</p>
