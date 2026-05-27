@@ -250,3 +250,39 @@ class InteligenciaGenerateResponse(BaseModel):
     sem_sinais: int
     sem_dados: int
     erros: int
+
+
+class BackfillRequest(BaseModel):
+    mes_inicio: str  # YYYY-MM
+    mes_fim: str     # YYYY-MM
+    slug: str | None = None
+
+
+class BackfillResponse(BaseModel):
+    job_id: str
+    meses: int
+    clientes: int
+
+
+class BackfillJobStatusResponse(BaseModel):
+    job_id: str
+    status: str  # running | done | error
+    meses_total: int
+    meses_concluidos: int
+    erros: int
+    pct: int  # 0-100
+
+
+class CoberturaClienteItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    slug: str
+    nome: str
+    ativo: bool
+    meses_com_snapshot: list[str]
+
+
+class CoberturaResponse(BaseModel):
+    meses: list[str]
+    clientes: list[CoberturaClienteItem]

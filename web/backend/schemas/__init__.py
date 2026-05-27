@@ -8,7 +8,12 @@ from .case import CaseDetail, CaseListItem, PontoEvolucao
 from .cliente import ClienteLoginRequest, ClienteLoginResponse, ClientePublic
 from .gestor import (
     AssignClientesRequest,
+    BackfillJobStatusResponse,
+    BackfillRequest,
+    BackfillResponse,
     ClienteCreateRequest,
+    CoberturaClienteItem,
+    CoberturaResponse,
     CupClienteInfo,
     ClienteDetalheItem,
     ClienteEditRequest,
@@ -39,6 +44,9 @@ from .ranking import RankingItem
 
 __all__ = [
     "AssignClientesRequest",
+    "BackfillJobStatusResponse",
+    "BackfillRequest",
+    "BackfillResponse",
     "CaseDetail",
     "ClienteCreateRequest",
     "CaseListItem",
@@ -52,6 +60,8 @@ __all__ = [
     "ClientePublic",
     "ClientesGestorResponse",
     "ClientesListResponse",
+    "CoberturaClienteItem",
+    "CoberturaResponse",
     "CreateUsuarioRequest",
     "GestorCadastradoCreate",
     "GestorCadastradoItem",
