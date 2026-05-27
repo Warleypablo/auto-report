@@ -437,7 +437,8 @@ def _buscar_campanhas_meta(
 
     from config.settings import ACCESS_TOKEN_META_SYSTEM  # noqa: PLC0415
 
-    acct_path = f"act_{str(ad_account_id).lstrip('act_')}"
+    raw = str(ad_account_id)
+    acct_path = f"act_{raw.removeprefix('act_')}"
     url = f"https://graph.facebook.com/{_META_API_VERSION}/{acct_path}/insights"
     params = {
         "level": "campaign",
@@ -495,9 +496,13 @@ def _buscar_campanhas_google(
     if cliente_core is None:
         return {"erro": f"Cliente '{slug}' não encontrado na Planilha Central"}
 
-    customer_id = str(getattr(cliente_core, "id_google_ads", "") or "")
+    customer_id = str(getattr(cliente_core, "id_google_ads", "") or "").replace("-", "")
     if not customer_id or customer_id == "0":
         return {"erro": f"Cliente '{slug}' não tem ID Google Ads configurado"}
+
+    for d in (date_start, date_end):
+        if len(d) != 10 or d[4] != "-" or d[7] != "-" or not d.replace("-", "").isdigit():
+            return {"erro": f"Formato de data inválido: '{d}'. Use YYYY-MM-DD."}
 
     from core.cred_manager import _build_google_ads_client  # noqa: PLC0415
 

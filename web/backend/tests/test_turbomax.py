@@ -285,3 +285,57 @@ def test_execute_tool_nao_reconhecida():
         from api.turbomax import _execute_tool
         result = _execute_tool("ferramenta_inexistente", {}, admin, s)
     assert "erro" in result
+
+
+def test_buscar_campanhas_meta_api_error(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+
+    fake_core = MagicMock()
+    fake_core.id_meta_ads = "act_12345"
+
+    with SessionLocal() as s:
+        with patch("api.turbomax._get_cliente_core", return_value=fake_core), \
+             patch("api.turbomax.requests.get") as mock_get:
+            import requests as req_lib
+            mock_get.side_effect = req_lib.RequestException("timeout")
+            from api.turbomax import _buscar_campanhas_meta
+            result = _buscar_campanhas_meta(slug, "2026-05-01", "2026-05-31", admin, s)
+
+    assert "erro" in result
+    assert "Falha" in result["erro"]
+
+
+def test_buscar_campanhas_google_mock_client(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+
+    fake_core = MagicMock()
+    fake_core.id_google_ads = "1234567890"
+
+    fake_row = MagicMock()
+    fake_row.campaign.id = 99
+    fake_row.campaign.name = "Brand Search"
+    fake_row.campaign.status.name = "ENABLED"
+    fake_row.metrics.cost_micros = 2_000_000
+    fake_row.metrics.impressions = 10000
+    fake_row.metrics.clicks = 500
+    fake_row.metrics.conversions = 20.0
+    fake_row.metrics.conversions_value = 6000.0
+
+    fake_ga_service = MagicMock()
+    fake_ga_service.search.return_value = [fake_row]
+    fake_client = MagicMock()
+    fake_client.get_service.return_value = fake_ga_service
+
+    with SessionLocal() as s:
+        with patch("api.turbomax._get_cliente_core", return_value=fake_core), \
+             patch("core.cred_manager._build_google_ads_client", return_value=fake_client):
+            from api.turbomax import _buscar_campanhas_google
+            result = _buscar_campanhas_google(slug, "2026-05-01", "2026-05-31", admin, s)
+
+    assert len(result["campanhas"]) == 1
+    assert result["campanhas"][0]["nome"] == "Brand Search"
+    assert result["campanhas"][0]["spend"] == 2.0
