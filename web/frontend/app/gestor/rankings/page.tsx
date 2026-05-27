@@ -77,7 +77,7 @@ export default function RankingsPage() {
   }, [mes]);
 
   const maxInvGoogle = useMemo(
-    () => Math.max(...googleAds.map((c) => c.investimento ?? 0), 1),
+    () => googleAds.reduce((max, c) => Math.max(max, c.investimento ?? 0), 0) || 1,
     [googleAds],
   );
 
