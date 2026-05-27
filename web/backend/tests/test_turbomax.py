@@ -547,7 +547,7 @@ def test_buscar_anuncios_google_mock_client(db_cliente):
     fake_row.metrics.impressions = 8000
     fake_row.metrics.clicks = 400
     fake_row.metrics.conversions = 18.0
-    fake_row.metrics.conversions_value = 5400.0
+    fake_row.metrics.conversions_value = 5.4
 
     fake_ga_service = MagicMock()
     fake_ga_service.search.return_value = [fake_row]
@@ -564,5 +564,5 @@ def test_buscar_anuncios_google_mock_client(db_cliente):
     ad = result["anuncios"][0]
     assert ad["nome"] == "Headline_Produto_V2"
     assert ad["spend"] == 1.5
-    assert ad["roas"] == pytest.approx(3600.0, rel=1e-2)
+    assert ad["roas"] == pytest.approx(3.6, rel=1e-2)  # 5.4/1.5
     assert ad["ctr"] == pytest.approx(5.0, rel=1e-2)
