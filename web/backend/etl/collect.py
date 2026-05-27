@@ -206,6 +206,10 @@ def backfill_clientes_meses(
     ano_i, mes_i = int(mes_inicio[:4]), int(mes_inicio[5:])
     ano_f, mes_f = int(mes_fim[:4]), int(mes_fim[5:])
 
+    # Validar que mes_inicio <= mes_fim
+    if (ano_i, mes_i) > (ano_f, mes_f):
+        raise ValueError(f"mes_inicio ({mes_inicio}) deve ser <= mes_fim ({mes_fim})")
+
     meses: list[tuple[int, int]] = []
     ano, mes = ano_i, mes_i
     while (ano, mes) <= (ano_f, mes_f):
@@ -237,8 +241,13 @@ def backfill_clientes_meses(
                 # Lock ocupado — aguarda e retenta uma vez
                 time.sleep(5)
                 result = run_etl(today=today_ref, slugs=slugs, incluir_privados=True)
-            resultados["ok"] += result.get("ok", 0)
-            resultados["fail"] += result.get("fail", 0)
+            if result.get("skipped"):
+                # Ainda está skipped após retry — registrar como erro
+                log.warning("backfill_mes_lock_persistente", extra={"mes": mes_str})
+                resultados["meses_com_erro"].append(mes_str)
+            else:
+                resultados["ok"] += result.get("ok", 0)
+                resultados["fail"] += result.get("fail", 0)
         except Exception:
             log.exception("backfill_mes_falhou", extra={"mes": mes_str})
             resultados["meses_com_erro"].append(mes_str)
