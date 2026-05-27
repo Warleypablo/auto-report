@@ -412,3 +412,172 @@ def _comparar_clientes(
         "ranking": ranking,
         "media_carteira": media,
     }
+
+
+# ─── External API tools ───────────────────────────────────────────────────────
+
+_META_API_VERSION = "v23.0"
+_META_CAMPAIGN_FIELDS = (
+    "campaign_id,campaign_name,spend,impressions,clicks,actions,action_values"
+)
+
+
+def _buscar_campanhas_meta(
+    slug: str, date_start: str, date_end: str, user: Usuario, session: Session
+) -> dict:
+    _check_acesso_cliente(slug, user, session)
+
+    cliente_core = _get_cliente_core(slug)
+    if cliente_core is None:
+        return {"erro": f"Cliente '{slug}' não encontrado na Planilha Central"}
+
+    ad_account_id = getattr(cliente_core, "id_meta_ads", None)
+    if not ad_account_id:
+        return {"erro": f"Cliente '{slug}' não tem ID Meta Ads configurado"}
+
+    from config.settings import ACCESS_TOKEN_META_SYSTEM  # noqa: PLC0415
+
+    acct_path = f"act_{str(ad_account_id).lstrip('act_')}"
+    url = f"https://graph.facebook.com/{_META_API_VERSION}/{acct_path}/insights"
+    params = {
+        "level": "campaign",
+        "time_range": json.dumps({"since": date_start, "until": date_end}, separators=(",", ":")),
+        "time_increment": "all_days",
+        "fields": _META_CAMPAIGN_FIELDS,
+        "access_token": ACCESS_TOKEN_META_SYSTEM,
+        "limit": 25,
+    }
+
+    try:
+        resp = requests.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        _log.warning("Meta Ads API falhou para %s: %s", slug, exc)
+        return {"erro": f"Falha ao acessar Meta Ads: {exc}"}
+
+    campanhas = []
+    for c in resp.json().get("data", []):
+        spend = float(c.get("spend") or 0)
+        impressions = int(c.get("impressions") or 0)
+        clicks = int(c.get("clicks") or 0)
+        actions = {a["action_type"]: float(a["value"]) for a in c.get("actions") or []}
+        action_values = {a["action_type"]: float(a["value"]) for a in c.get("action_values") or []}
+        purchases = actions.get("purchase", actions.get("offsite_conversion.fb_pixel_purchase", 0))
+        purchase_value = action_values.get(
+            "purchase", action_values.get("offsite_conversion.fb_pixel_purchase", 0)
+        )
+        campanhas.append({
+            "id": c.get("campaign_id"),
+            "nome": c.get("campaign_name"),
+            "spend": spend,
+            "impressions": impressions,
+            "clicks": clicks,
+            "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+            "purchases": int(purchases),
+            "purchase_roas": round(purchase_value / spend, 2) if spend else 0,
+            "cpm": round(spend / impressions * 1000, 2) if impressions else 0,
+        })
+
+    campanhas.sort(key=lambda x: x["spend"], reverse=True)
+    return {
+        "cliente": slug,
+        "periodo": {"inicio": date_start, "fim": date_end},
+        "campanhas": campanhas,
+    }
+
+
+def _buscar_campanhas_google(
+    slug: str, date_start: str, date_end: str, user: Usuario, session: Session
+) -> dict:
+    _check_acesso_cliente(slug, user, session)
+
+    cliente_core = _get_cliente_core(slug)
+    if cliente_core is None:
+        return {"erro": f"Cliente '{slug}' não encontrado na Planilha Central"}
+
+    customer_id = str(getattr(cliente_core, "id_google_ads", "") or "")
+    if not customer_id or customer_id == "0":
+        return {"erro": f"Cliente '{slug}' não tem ID Google Ads configurado"}
+
+    from core.cred_manager import _build_google_ads_client  # noqa: PLC0415
+
+    gaql = (
+        "SELECT campaign.id, campaign.name, campaign.status, "
+        "metrics.cost_micros, metrics.impressions, metrics.clicks, "
+        "metrics.conversions, metrics.conversions_value "
+        "FROM campaign "
+        f"WHERE segments.date BETWEEN '{date_start}' AND '{date_end}' "
+        "AND metrics.cost_micros > 0 "
+        "ORDER BY metrics.cost_micros DESC "
+        "LIMIT 25"
+    )
+
+    try:
+        client = _build_google_ads_client()
+        ga_service = client.get_service("GoogleAdsService")
+        response = ga_service.search(customer_id=customer_id, query=gaql)
+    except Exception as exc:
+        _log.warning("Google Ads API falhou para %s: %s", slug, exc)
+        return {"erro": f"Falha ao acessar Google Ads: {exc}"}
+
+    campanhas = []
+    for row in response:
+        cost = row.metrics.cost_micros / 1_000_000
+        conv = float(row.metrics.conversions or 0)
+        conv_value = float(row.metrics.conversions_value or 0)
+        campanhas.append({
+            "id": str(row.campaign.id),
+            "nome": row.campaign.name,
+            "status": row.campaign.status.name,
+            "spend": round(cost, 2),
+            "impressions": int(row.metrics.impressions or 0),
+            "clicks": int(row.metrics.clicks or 0),
+            "conversions": round(conv, 1),
+            "conv_value": round(conv_value, 2),
+            "roas": round(conv_value / cost, 2) if cost else 0,
+            "cpc": round(cost / row.metrics.clicks, 2) if row.metrics.clicks else 0,
+        })
+
+    return {
+        "cliente": slug,
+        "periodo": {"inicio": date_start, "fim": date_end},
+        "campanhas": campanhas,
+    }
+
+
+# ─── Tool executor ────────────────────────────────────────────────────────────
+
+def _execute_tool(
+    name: str, tool_input: dict, user: Usuario, session: Session
+) -> Any:
+    """Mapeia nome de tool para função Python e executa. Retorna dict serializável."""
+    if name == "listar_clientes":
+        return _listar_clientes(user, session)
+    if name == "get_metricas_cliente":
+        return _get_metricas_cliente(
+            tool_input["slug"], tool_input.get("mes"), user, session
+        )
+    if name == "get_historico_cliente":
+        return _get_historico_cliente(
+            tool_input["slug"], tool_input.get("n_meses", 6), user, session
+        )
+    if name == "get_sinais_cliente":
+        return _get_sinais_cliente(
+            tool_input["slug"], tool_input.get("mes"), user, session
+        )
+    if name == "comparar_clientes":
+        return _comparar_clientes(
+            tool_input.get("slugs"), tool_input["metrica"], tool_input.get("mes"),
+            user, session,
+        )
+    if name == "buscar_campanhas_meta":
+        return _buscar_campanhas_meta(
+            tool_input["slug"], tool_input["date_start"], tool_input["date_end"],
+            user, session,
+        )
+    if name == "buscar_campanhas_google":
+        return _buscar_campanhas_google(
+            tool_input["slug"], tool_input["date_start"], tool_input["date_end"],
+            user, session,
+        )
+    return {"erro": f"Ferramenta '{name}' não reconhecida"}

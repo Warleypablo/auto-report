@@ -202,3 +202,86 @@ def test_comparar_clientes_ranking_e_media(db_snapshot):
     assert "media_carteira" in result
     rank_slugs = [r["slug"] for r in result["ranking"]]
     assert slug in rank_slugs
+
+
+# ─── Tests for external API tools ────────────────────────────────────────────
+
+from unittest.mock import patch
+
+
+def test_buscar_campanhas_meta_sem_id_meta(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+
+    fake_core = MagicMock()
+    fake_core.id_meta_ads = None
+
+    with SessionLocal() as s:
+        with patch("api.turbomax._get_cliente_core", return_value=fake_core):
+            from api.turbomax import _buscar_campanhas_meta
+            result = _buscar_campanhas_meta(slug, "2026-05-01", "2026-05-31", admin, s)
+
+    assert "erro" in result
+    assert "Meta Ads" in result["erro"]
+
+
+def test_buscar_campanhas_meta_retorna_lista(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+
+    fake_core = MagicMock()
+    fake_core.id_meta_ads = "act_12345"
+
+    fake_response = {
+        "data": [
+            {
+                "campaign_id": "111",
+                "campaign_name": "Prospecção",
+                "spend": "5000",
+                "impressions": "200000",
+                "clicks": "4000",
+                "actions": [{"action_type": "purchase", "value": "15"}],
+                "action_values": [{"action_type": "purchase", "value": "20000"}],
+            }
+        ]
+    }
+
+    with SessionLocal() as s:
+        with patch("api.turbomax._get_cliente_core", return_value=fake_core), \
+             patch("api.turbomax.requests.get") as mock_get:
+            mock_get.return_value.json.return_value = fake_response
+            mock_get.return_value.raise_for_status = MagicMock()
+            from api.turbomax import _buscar_campanhas_meta
+            result = _buscar_campanhas_meta(slug, "2026-05-01", "2026-05-31", admin, s)
+
+    assert len(result["campanhas"]) == 1
+    assert result["campanhas"][0]["nome"] == "Prospecção"
+    assert result["campanhas"][0]["purchases"] == 15
+
+
+def test_buscar_campanhas_google_sem_id_google(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+
+    fake_core = MagicMock()
+    fake_core.id_google_ads = None
+
+    with SessionLocal() as s:
+        with patch("api.turbomax._get_cliente_core", return_value=fake_core):
+            from api.turbomax import _buscar_campanhas_google
+            result = _buscar_campanhas_google(slug, "2026-05-01", "2026-05-31", admin, s)
+
+    assert "erro" in result
+    assert "Google Ads" in result["erro"]
+
+
+def test_execute_tool_nao_reconhecida():
+    admin = MagicMock()
+    admin.is_admin = True
+    with SessionLocal() as s:
+        from api.turbomax import _execute_tool
+        result = _execute_tool("ferramenta_inexistente", {}, admin, s)
+    assert "erro" in result
