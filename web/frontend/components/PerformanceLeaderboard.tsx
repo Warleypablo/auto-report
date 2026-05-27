@@ -66,7 +66,7 @@ function MetaLeaderboard({ ads }: { ads: MetaAd[] }) {
           const tier = roasTier(ad.roas);
           return (
             <motion.div
-              key={i}
+              key={ad.nome}
               initial={{ opacity: 0, y: 16, scale: 0.98 }}
               whileInView={{ opacity: 1, y: 0, scale: 1 }}
               viewport={{ once: true, margin: "-10%" }}
@@ -132,7 +132,7 @@ function MetaLeaderboard({ ads }: { ads: MetaAd[] }) {
                   const tier = roasTier(ad.roas);
                   return (
                     <tr
-                      key={i}
+                      key={ad.nome}
                       className="border-b border-[var(--rule-soft)]/40 hover:bg-[var(--paper-soft)]"
                     >
                       <td className="py-2 pr-3 text-[var(--muted)]">{i + 4}</td>
@@ -162,6 +162,7 @@ function MetaLeaderboard({ ads }: { ads: MetaAd[] }) {
           )}
           <button
             type="button"
+            aria-expanded={showAll}
             onClick={() => setShowAll((v) => !v)}
             className="mt-2 text-[10px] uppercase tracking-[0.18em] text-[var(--forest)] hover:underline"
           >
@@ -176,9 +177,6 @@ function MetaLeaderboard({ ads }: { ads: MetaAd[] }) {
 function GoogleLeaderboard({ ads }: { ads: GoogleAd[] }) {
   const [showAll, setShowAll] = useState(false);
   const INITIAL_LIMIT = 5;
-  const sorted = sortByRoas(ads);
-  const visible = showAll ? sorted : sorted.slice(0, INITIAL_LIMIT);
-  const maxInv = Math.max(...sorted.map((c) => c.investimento ?? 0), 1);
 
   if (ads.length === 0) {
     return (
@@ -188,6 +186,10 @@ function GoogleLeaderboard({ ads }: { ads: GoogleAd[] }) {
     );
   }
 
+  const sorted = sortByRoas(ads);
+  const visible = showAll ? sorted : sorted.slice(0, INITIAL_LIMIT);
+  const maxInv = Math.max(...sorted.map((c) => c.investimento ?? 0), 1);
+
   return (
     <div className="flex flex-col divide-y divide-[var(--rule-soft)] rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)]">
       {visible.map((c, i) => {
@@ -195,7 +197,7 @@ function GoogleLeaderboard({ ads }: { ads: GoogleAd[] }) {
         const pct = (c.investimento ?? 0) / maxInv;
         return (
           <div
-            key={i}
+            key={c.nome}
             className="grid grid-cols-[2rem_1fr_auto] items-center gap-4 px-4 py-3"
           >
             <span className="font-mono-num text-xs text-[var(--muted)]">#{i + 1}</span>
@@ -227,6 +229,7 @@ function GoogleLeaderboard({ ads }: { ads: GoogleAd[] }) {
         <div className="px-4 py-2">
           <button
             type="button"
+            aria-expanded={showAll}
             onClick={() => setShowAll((v) => !v)}
             className="text-[10px] uppercase tracking-[0.18em] text-[var(--forest)] hover:underline"
           >
@@ -242,10 +245,9 @@ type Props = {
   metaAds: MetaAd[];
   googleAds: GoogleAd[];
   loading: boolean;
-  mes: string;
 };
 
-export default function PerformanceLeaderboard({ metaAds, googleAds, loading, mes }: Props) {
+export default function PerformanceLeaderboard({ metaAds, googleAds, loading }: Props) {
   if (loading) {
     return (
       <p className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-6 text-center text-xs text-[var(--muted)]">
