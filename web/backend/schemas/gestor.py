@@ -234,7 +234,7 @@ class InteligenciaAlerta(BaseModel):
     cliente_slug: str
     cliente_nome: str
     cliente_categoria: str
-    severidade: str
+    severidade: Literal["critico", "atencao", "oportunidade"]
     sinais: list[dict]
     narrativa: str | None = None
 
