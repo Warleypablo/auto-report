@@ -1467,17 +1467,11 @@ def get_metricas_breakdown(
     return build_breakdown(cliente.id, mes, session)
 
 
-# ── POST /gestor/inteligencia/generate ────────────────────────────────────
+# ── Geração de insights (lógica compartilhada) ────────────────────────────
 
-@router.post("/inteligencia/generate", status_code=200)
-def generate_inteligencia(
-    mes: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
-    user: Usuario = Depends(require_admin),
-    session: Session = Depends(get_session),
-    settings=Depends(get_settings),
-) -> InteligenciaGenerateResponse:
+def _gerar_insights_para_mes(mes: str, session: Session, settings) -> dict:
     from datetime import date, timedelta, datetime, timezone
-
+    import anthropic as _anthropic
     from models.snapshot import Snapshot
     from services.inteligencia import rodar_detectores
     from services.metricas import build_breakdown as _bd
@@ -1493,9 +1487,7 @@ def generate_inteligencia(
         primeiro_ant = date(ano, mes_num - 1, 1)
         ultimo_ant = date(ano, mes_num, 1) - timedelta(days=1)
 
-    clientes = session.execute(
-        select(Cliente).where(Cliente.ativo == True)
-    ).scalars().all()
+    clientes = session.execute(select(Cliente).where(Cliente.ativo == True)).scalars().all()
 
     snaps_atual = {
         s.cliente_id: s
@@ -1519,16 +1511,10 @@ def generate_inteligencia(
         ).scalars().all()
     }
 
-    investimentos = [
-        float(s.investimento)
-        for s in snaps_atual.values()
-        if s.investimento is not None
-    ]
+    investimentos = [float(s.investimento) for s in snaps_atual.values() if s.investimento is not None]
     media_inv = sum(investimentos) / len(investimentos) if investimentos else None
 
     gerados = sem_sinais = sem_dados = erros = 0
-
-    import anthropic as _anthropic
 
     for cliente in clientes:
         try:
@@ -1553,9 +1539,7 @@ def generate_inteligencia(
                     roas_str = f"{float(snap_atual.roas):.2f}×" if snap_atual.roas else "—"
                     fat_str = f"R${float(snap_atual.faturamento):,.0f}" if snap_atual.faturamento else "—"
                     inv_str = f"R${float(snap_atual.investimento):,.0f}" if snap_atual.investimento else "—"
-                    sinais_txt = "\n".join(
-                        f"- {s['titulo']}: {s['metrica_principal']}" for s in sinais
-                    )
+                    sinais_txt = "\n".join(f"- {s['titulo']}: {s['metrica_principal']}" for s in sinais)
                     prompt = (
                         f"Você é um analista de performance de mídia paga. "
                         f"Analise os sinais abaixo para o cliente {cliente.nome} ({cliente.categoria.value}) "
@@ -1577,10 +1561,7 @@ def generate_inteligencia(
                     _log.warning("Claude API falhou para %s: %s", cliente.nome, e)
 
             existing = session.execute(
-                select(Insight).where(
-                    Insight.cliente_id == cliente.id,
-                    Insight.mes == mes,
-                )
+                select(Insight).where(Insight.cliente_id == cliente.id, Insight.mes == mes)
             ).scalar_one_or_none()
 
             if existing:
@@ -1588,12 +1569,7 @@ def generate_inteligencia(
                 existing.narrativa = narrativa
                 existing.gerado_em = datetime.now(timezone.utc)
             else:
-                session.add(Insight(
-                    cliente_id=cliente.id,
-                    mes=mes,
-                    sinais=sinais,
-                    narrativa=narrativa,
-                ))
+                session.add(Insight(cliente_id=cliente.id, mes=mes, sinais=sinais, narrativa=narrativa))
 
             session.commit()
             gerados += 1
@@ -1603,13 +1579,20 @@ def generate_inteligencia(
             session.rollback()
             erros += 1
 
-    return InteligenciaGenerateResponse(
-        mes=mes,
-        gerados=gerados,
-        sem_sinais=sem_sinais,
-        sem_dados=sem_dados,
-        erros=erros,
-    )
+    return {"gerados": gerados, "sem_sinais": sem_sinais, "sem_dados": sem_dados, "erros": erros}
+
+
+# ── POST /gestor/inteligencia/generate ────────────────────────────────────
+
+@router.post("/inteligencia/generate", status_code=200)
+def generate_inteligencia(
+    mes: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+    settings=Depends(get_settings),
+) -> InteligenciaGenerateResponse:
+    counts = _gerar_insights_para_mes(mes, session, settings)
+    return InteligenciaGenerateResponse(mes=mes, **counts)
 
 
 # ── GET /gestor/inteligencia ───────────────────────────────────────────────
@@ -1623,7 +1606,15 @@ def get_inteligencia(
     gestor: str | None = Query(None),
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
+    settings=Depends(get_settings),
 ) -> InteligenciaResponse:
+    # Geração lazy: se não há nenhum insight para o mês, gera agora
+    existe = session.execute(
+        select(Insight.id).where(Insight.mes == mes).limit(1)
+    ).scalar_one_or_none()
+    if existe is None:
+        _gerar_insights_para_mes(mes, session, settings)
+
     cliente_query = select(Cliente).where(Cliente.ativo == True)
 
     if user.is_admin:
