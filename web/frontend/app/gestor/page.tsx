@@ -81,11 +81,16 @@ const NAV_ITEMS: { id: Tab; label: string; icon: string }[] = [
 
 function Sidebar({
   tab, setTab, reportesTab, setReportesTab, configTab, setConfigTab, user, onLogout,
+  mesFiltro, gerandoInsights, resultadoInsights, onGerarInsights,
 }: {
   tab: Tab; setTab: (t: Tab) => void;
   reportesTab: ReportesTab; setReportesTab: (t: ReportesTab) => void;
   configTab: ConfigTab; setConfigTab: (t: ConfigTab) => void;
   user: UsuarioInfo | null; onLogout: () => void;
+  mesFiltro: string;
+  gerandoInsights: boolean;
+  resultadoInsights: string | null;
+  onGerarInsights: () => void;
 }) {
   return (
     <aside className="flex h-screen w-56 flex-shrink-0 flex-col border-r border-[var(--rule-soft)] bg-[var(--paper-soft)]">
@@ -167,6 +172,16 @@ function Sidebar({
             <Link href="/gestor/admin/clickup-vinculos" className="mb-2 block text-xs text-[var(--forest)] hover:underline">
               Vínculos ClickUp →
             </Link>
+            <button
+              onClick={onGerarInsights}
+              disabled={gerandoInsights}
+              className="mb-1 block text-xs text-[var(--forest)] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {gerandoInsights ? "Gerando…" : `Gerar insights · ${mesFiltro}`}
+            </button>
+            {resultadoInsights && (
+              <p className="mb-2 text-[10px] text-[var(--muted)] leading-tight">{resultadoInsights}</p>
+            )}
           </>
         )}
         <button onClick={onLogout} className="text-xs text-[var(--muted)] transition hover:text-[var(--crimson)]">
@@ -1748,6 +1763,8 @@ export default function GestorDashboard() {
 
   // Gestor filter — derived from client list (field comes from the central sheet)
   const [gestorFiltro, setGestorFiltro] = useState<string>("");
+  const [gerandoInsights, setGerandoInsights] = useState(false);
+  const [resultadoInsights, setResultadoInsights] = useState<string | null>(null);
 
   // Filtro de mês: default = "" até descobrirmos qual é o último mês com dados
   const [mesFiltro, setMesFiltro] = useState<string>("");
@@ -1811,6 +1828,20 @@ export default function GestorDashboard() {
     window.location.href = "/gestor/login";
   }
 
+  async function handleGerarInsights() {
+    if (!mesFiltro || gerandoInsights) return;
+    setGerandoInsights(true);
+    setResultadoInsights(null);
+    try {
+      const res = await gestorApi.generateInteligencia(mesFiltro);
+      setResultadoInsights(`✓ ${res.gerados} gerados · ${res.sem_sinais} sem sinais · ${res.sem_dados} sem dados · ${res.erros} erros`);
+    } catch (e: unknown) {
+      setResultadoInsights(`Erro: ${e instanceof Error ? e.message : "desconhecido"}`);
+    } finally {
+      setGerandoInsights(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -1821,7 +1852,16 @@ export default function GestorDashboard() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar tab={tab} setTab={setTab} reportesTab={reportesTab} setReportesTab={setReportesTab} configTab={configTab} setConfigTab={setConfigTab} user={user} onLogout={handleLogout} />
+      <Sidebar
+        tab={tab} setTab={setTab}
+        reportesTab={reportesTab} setReportesTab={setReportesTab}
+        configTab={configTab} setConfigTab={setConfigTab}
+        user={user} onLogout={handleLogout}
+        mesFiltro={mesFiltro}
+        gerandoInsights={gerandoInsights}
+        resultadoInsights={resultadoInsights}
+        onGerarInsights={handleGerarInsights}
+      />
       <main className="flex-1 overflow-y-auto">
         <div className="flex items-center justify-between border-b border-[var(--rule-soft)] bg-[var(--paper-soft)] px-8 py-4">
           <p className="text-xs text-[var(--muted)]">
