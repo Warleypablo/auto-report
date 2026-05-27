@@ -4,46 +4,15 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 
 import type { GoogleAd, MetaAd } from "@/lib/api-gestor";
-
-const fmtBRL = (v: number | null) =>
-  v == null
-    ? "—"
-    : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-
-const fmtRoas = (v: number | null) =>
-  v == null ? "—" : `${v.toFixed(2).replace(".", ",")}×`;
-
-type RoasTier = "high" | "mid" | "low" | "none";
-
-function roasTier(v: number | null): RoasTier {
-  if (v == null) return "none";
-  if (v >= 3) return "high";
-  if (v >= 1.5) return "mid";
-  return "low";
-}
-
-const TIER_TEXT: Record<RoasTier, string> = {
-  high: "text-[var(--forest)]",
-  mid: "text-[#f59e0b]",
-  low: "text-[var(--crimson)]",
-  none: "text-[var(--muted)]",
-};
-
-const TIER_BAR: Record<RoasTier, string> = {
-  high: "bg-[var(--forest)]",
-  mid: "bg-[#f59e0b]",
-  low: "bg-[var(--crimson)]",
-  none: "bg-[var(--muted)]",
-};
-
-function sortByRoas<T extends { roas: number | null }>(items: T[]): T[] {
-  return [...items].sort((a, b) => {
-    if (a.roas == null && b.roas == null) return 0;
-    if (a.roas == null) return 1;
-    if (b.roas == null) return -1;
-    return b.roas - a.roas;
-  });
-}
+import {
+  fmtBRL,
+  fmtRoas,
+  type RoasTier,
+  roasTier,
+  TIER_TEXT,
+  TIER_BAR,
+  sortByRoas,
+} from "@/lib/roas-tier";
 
 function MetaLeaderboard({ ads }: { ads: MetaAd[] }) {
   const [showAll, setShowAll] = useState(false);
