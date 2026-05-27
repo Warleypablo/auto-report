@@ -53,10 +53,12 @@ export default function RankingsPage() {
   );
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     gestorApi
       .clientes()
       .then(({ items }) => {
+        if (cancelled) return null;
         const ativos = items.filter((c) => c.ativo);
         return Promise.all(
           ativos.map((c) =>
@@ -68,6 +70,7 @@ export default function RankingsPage() {
         );
       })
       .then((results) => {
+        if (!results || cancelled) return;
         const allMeta: RankedMetaAd[] = [];
         const allGoogle: RankedGoogleAd[] = [];
         for (const { cliente, bd } of results) {
@@ -82,7 +85,8 @@ export default function RankingsPage() {
         setMetaAds(sortByRoas(allMeta));
         setGoogleAds(sortByRoas(allGoogle));
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [mes]);
 
   return (
