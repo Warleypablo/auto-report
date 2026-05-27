@@ -356,7 +356,7 @@ def _make_test_app():
     return app
 
 
-def test_chat_endpoint_sem_api_key(db_gestor, monkeypatch):
+def test_chat_endpoint_sem_api_key(db_gestor):
     uid, slug, cid = db_gestor
 
     # Atribuir cliente ao gestor

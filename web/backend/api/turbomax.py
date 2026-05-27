@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
@@ -25,7 +25,7 @@ _log = logging.getLogger(__name__)
 # ─── Pydantic models ─────────────────────────────────────────────────────────
 
 class ChatMessageIn(BaseModel):
-    role: str
+    role: Literal["user", "assistant"]
     content: str
 
 
@@ -605,6 +605,7 @@ def _run_agent(
     client = anthropic.Anthropic(api_key=api_key)
     system = _SYSTEM_PROMPT.format(user_context=user_context)
     history = list(messages)
+    response = None
 
     for _ in range(_MAX_ITERATIONS):
         response = client.messages.create(
@@ -646,9 +647,10 @@ def _run_agent(
             break
 
     # Fallback: retorna último texto encontrado no histórico
-    for block in getattr(response, "content", []):
-        if hasattr(block, "text"):
-            return block.text
+    if response is not None:
+        for block in getattr(response, "content", []):
+            if hasattr(block, "text"):
+                return block.text
     return "Não consegui processar sua solicitação. Por favor, tente novamente."
 
 
@@ -680,7 +682,11 @@ def chat(
         user_ctx = f"USUÁRIO: {user.email} — {n} cliente(s) atribuído(s)"
 
     if body.cliente_slug:
-        _check_acesso_cliente(body.cliente_slug, user, session)
+        try:
+            _check_acesso_cliente(body.cliente_slug, user, session)
+        except ValueError as exc:
+            msg = str(exc)
+            raise HTTPException(404 if "não encontrado" in msg else 403, detail=msg)
         user_ctx += f"\nCONTEXTO: conversa sobre o cliente '{body.cliente_slug}'"
 
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
