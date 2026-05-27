@@ -216,6 +216,15 @@ export type BackfillJobStatus = {
   pct: number;
 };
 
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type ChatResponse = {
+  reply: string;
+};
+
 async function apiCall<T>(
   path: string,
   method: string = "GET",
@@ -402,4 +411,10 @@ export const gestorApi = {
 
   cobertura: () =>
     apiCall<CoberturaResponse>("admin/cobertura"),
+
+  chat: (messages: ChatMessage[], clienteSlug?: string) =>
+    apiCall<ChatResponse>("turbomax/chat", "POST", {
+      messages,
+      cliente_slug: clienteSlug ?? "",
+    }),
 };
