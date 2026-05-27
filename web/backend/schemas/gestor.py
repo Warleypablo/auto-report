@@ -226,3 +226,27 @@ class ClienteDetalheItem(BaseModel):
         if hasattr(v, "value"):
             return str(v.value)
         return str(v)
+
+
+# ── Inteligência ──────────────────────────────────────────────────────────
+
+class InteligenciaAlerta(BaseModel):
+    cliente_slug: str
+    cliente_nome: str
+    cliente_categoria: str
+    severidade: str
+    sinais: list[dict]
+    narrativa: str | None = None
+
+
+class InteligenciaResponse(BaseModel):
+    mes: str
+    alertas: list[InteligenciaAlerta]
+
+
+class InteligenciaGenerateResponse(BaseModel):
+    mes: str
+    gerados: int
+    sem_sinais: int
+    sem_dados: int
+    erros: int

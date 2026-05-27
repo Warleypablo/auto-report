@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from api.auth import require_admin, require_auth
 from db import get_session
-from models import Cliente, GestorCadastrado, ReportJob, Usuario, UsuarioCliente
+from app_settings import Settings, get_settings
+from models import Cliente, GestorCadastrado, Insight, ReportJob, Usuario, UsuarioCliente
 from models.cliente import Categoria as CatEnum
 from models.report_job import JobStatus
 from etl.cliente_publico import slugify
@@ -33,6 +34,9 @@ from schemas import (
     GestorRenameRequest,
     GestorRenameResponse,
     GestoresResponse,
+    InteligenciaAlerta,
+    InteligenciaGenerateResponse,
+    InteligenciaResponse,
     JobStatusResponse,
     MetricasDashboardResponse,
     TriggerRequest,
@@ -1461,3 +1465,205 @@ def get_metricas_breakdown(
 
     from services.metricas import build_breakdown
     return build_breakdown(cliente.id, mes, session)
+
+
+# ── POST /gestor/inteligencia/generate ────────────────────────────────────
+
+@router.post("/inteligencia/generate", status_code=200)
+def generate_inteligencia(
+    mes: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+    settings=Depends(get_settings),
+) -> InteligenciaGenerateResponse:
+    from datetime import date, timedelta
+
+    from models.snapshot import Snapshot
+    from services.inteligencia import rodar_detectores
+    from services.metricas import build_breakdown as _bd
+
+    ano, mes_num = int(mes[:4]), int(mes[5:7])
+    primeiro_atual = date(ano, mes_num, 1)
+    ultimo_atual = (date(ano, mes_num + 1, 1) if mes_num < 12 else date(ano + 1, 1, 1)) - timedelta(days=1)
+
+    if mes_num == 1:
+        primeiro_ant = date(ano - 1, 12, 1)
+        ultimo_ant = date(ano, 1, 1) - timedelta(days=1)
+    else:
+        primeiro_ant = date(ano, mes_num - 1, 1)
+        ultimo_ant = date(ano, mes_num, 1) - timedelta(days=1)
+
+    clientes = session.execute(
+        select(Cliente).where(Cliente.ativo == True)
+    ).scalars().all()
+
+    snaps_atual = {
+        s.cliente_id: s
+        for s in session.execute(
+            select(Snapshot).where(
+                Snapshot.frequencia == "MENSAL",
+                Snapshot.periodo_fim >= primeiro_atual,
+                Snapshot.periodo_fim <= ultimo_atual,
+            )
+        ).scalars().all()
+    }
+
+    snaps_ant = {
+        s.cliente_id: s
+        for s in session.execute(
+            select(Snapshot).where(
+                Snapshot.frequencia == "MENSAL",
+                Snapshot.periodo_fim >= primeiro_ant,
+                Snapshot.periodo_fim <= ultimo_ant,
+            )
+        ).scalars().all()
+    }
+
+    investimentos = [
+        float(s.investimento)
+        for s in snaps_atual.values()
+        if s.investimento is not None
+    ]
+    media_inv = sum(investimentos) / len(investimentos) if investimentos else None
+
+    gerados = sem_sinais = sem_dados = erros = 0
+
+    import anthropic as _anthropic
+
+    for cliente in clientes:
+        try:
+            snap_atual = snaps_atual.get(cliente.id)
+            snap_ant = snaps_ant.get(cliente.id)
+
+            if snap_atual is None:
+                sem_dados += 1
+                continue
+
+            breakdown = _bd(cliente.id, mes, session)
+            sinais = rodar_detectores(snap_atual, snap_ant, breakdown, media_inv)
+
+            if not sinais:
+                sem_sinais += 1
+                continue
+
+            narrativa = None
+            if settings.anthropic_api_key:
+                try:
+                    ant_client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
+                    roas_str = f"{float(snap_atual.roas):.2f}×" if snap_atual.roas else "—"
+                    fat_str = f"R${float(snap_atual.faturamento):,.0f}" if snap_atual.faturamento else "—"
+                    inv_str = f"R${float(snap_atual.investimento):,.0f}" if snap_atual.investimento else "—"
+                    sinais_txt = "\n".join(
+                        f"- {s['titulo']}: {s['metrica_principal']}" for s in sinais
+                    )
+                    prompt = (
+                        f"Você é um analista de performance de mídia paga. "
+                        f"Analise os sinais abaixo para o cliente {cliente.nome} ({cliente.categoria.value}) "
+                        f"no mês de {mes} e escreva um parágrafo objetivo de 3 a 4 frases explicando "
+                        f"o que está acontecendo e o que o gestor deve observar. Seja direto, sem jargão excessivo.\n\n"
+                        f"Sinais detectados:\n{sinais_txt}\n\n"
+                        f"Métricas do mês:\n"
+                        f"- Faturamento: {fat_str}\n"
+                        f"- Investimento: {inv_str}\n"
+                        f"- ROAS geral: {roas_str}"
+                    )
+                    msg = ant_client.messages.create(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=300,
+                        messages=[{"role": "user", "content": prompt}],
+                    )
+                    narrativa = msg.content[0].text
+                except Exception as e:
+                    _log.warning("Claude API falhou para %s: %s", cliente.nome, e)
+
+            from datetime import datetime, timezone
+            existing = session.execute(
+                select(Insight).where(
+                    Insight.cliente_id == cliente.id,
+                    Insight.mes == mes,
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                existing.sinais = sinais
+                existing.narrativa = narrativa
+                existing.gerado_em = datetime.now(timezone.utc)
+            else:
+                session.add(Insight(
+                    cliente_id=cliente.id,
+                    mes=mes,
+                    sinais=sinais,
+                    narrativa=narrativa,
+                ))
+
+            session.commit()
+            gerados += 1
+
+        except Exception as e:
+            _log.error("Erro ao gerar insight para cliente %s: %s", cliente.id, e)
+            session.rollback()
+            erros += 1
+
+    return InteligenciaGenerateResponse(
+        mes=mes,
+        gerados=gerados,
+        sem_sinais=sem_sinais,
+        sem_dados=sem_dados,
+        erros=erros,
+    )
+
+
+# ── GET /gestor/inteligencia ───────────────────────────────────────────────
+
+_SEV_ORDER = {"critico": 0, "atencao": 1, "oportunidade": 2}
+
+
+@router.get("/inteligencia", status_code=200)
+def get_inteligencia(
+    mes: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    gestor: str | None = Query(None),
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> InteligenciaResponse:
+    cliente_query = select(Cliente).where(Cliente.ativo == True)
+
+    if user.is_admin:
+        if gestor:
+            cliente_query = cliente_query.where(Cliente.gestor == gestor)
+    else:
+        cliente_query = cliente_query.join(
+            UsuarioCliente,
+            (UsuarioCliente.cliente_id == Cliente.id)
+            & (UsuarioCliente.usuario_id == user.id),
+        )
+
+    clientes = session.execute(cliente_query).scalars().all()
+    cliente_ids = [c.id for c in clientes]
+    cliente_map = {c.id: c for c in clientes}
+
+    if not cliente_ids:
+        return InteligenciaResponse(mes=mes, alertas=[])
+
+    insights = session.execute(
+        select(Insight).where(
+            Insight.cliente_id.in_(cliente_ids),
+            Insight.mes == mes,
+        )
+    ).scalars().all()
+
+    alertas = [
+        InteligenciaAlerta(
+            cliente_slug=cliente_map[i.cliente_id].slug,
+            cliente_nome=cliente_map[i.cliente_id].nome,
+            cliente_categoria=cliente_map[i.cliente_id].categoria.value,
+            severidade=i.sinais[0]["severidade"] if i.sinais else "atencao",
+            sinais=i.sinais,
+            narrativa=i.narrativa,
+        )
+        for i in insights
+        if i.cliente_id in cliente_map
+    ]
+
+    alertas.sort(key=lambda a: _SEV_ORDER.get(a.severidade, 99))
+
+    return InteligenciaResponse(mes=mes, alertas=alertas)
