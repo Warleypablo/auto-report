@@ -1476,7 +1476,7 @@ def generate_inteligencia(
     session: Session = Depends(get_session),
     settings=Depends(get_settings),
 ) -> InteligenciaGenerateResponse:
-    from datetime import date, timedelta
+    from datetime import date, timedelta, datetime, timezone
 
     from models.snapshot import Snapshot
     from services.inteligencia import rodar_detectores
@@ -1576,7 +1576,6 @@ def generate_inteligencia(
                 except Exception as e:
                     _log.warning("Claude API falhou para %s: %s", cliente.nome, e)
 
-            from datetime import datetime, timezone
             existing = session.execute(
                 select(Insight).where(
                     Insight.cliente_id == cliente.id,
@@ -1656,7 +1655,7 @@ def get_inteligencia(
             cliente_slug=cliente_map[i.cliente_id].slug,
             cliente_nome=cliente_map[i.cliente_id].nome,
             cliente_categoria=cliente_map[i.cliente_id].categoria.value,
-            severidade=i.sinais[0]["severidade"] if i.sinais else "atencao",
+            severidade=min(i.sinais, key=lambda s: _SEV_ORDER.get(s["severidade"], 99))["severidade"] if i.sinais else "atencao",
             sinais=i.sinais,
             narrativa=i.narrativa,
         )
