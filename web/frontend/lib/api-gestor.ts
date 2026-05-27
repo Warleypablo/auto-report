@@ -194,6 +194,28 @@ export type UsuarioListItem = {
   n_clientes: number;
 };
 
+export type CoberturaCliente = {
+  id: string;
+  slug: string;
+  nome: string;
+  ativo: boolean;
+  meses_com_snapshot: string[];
+};
+
+export type CoberturaResponse = {
+  meses: string[];
+  clientes: CoberturaCliente[];
+};
+
+export type BackfillJobStatus = {
+  job_id: string;
+  status: "running" | "done" | "error";
+  meses_total: number;
+  meses_concluidos: number;
+  erros: number;
+  pct: number;
+};
+
 async function apiCall<T>(
   path: string,
   method: string = "GET",
@@ -367,4 +389,17 @@ export const gestorApi = {
       `inteligencia/generate?mes=${encodeURIComponent(mes)}`,
       "POST",
     ),
+
+  triggerBackfill: (params: { mes_inicio: string; mes_fim: string; slug?: string }) =>
+    apiCall<{ job_id: string; meses: number; clientes: number }>(
+      "admin/etl/backfill",
+      "POST",
+      params,
+    ),
+
+  getBackfillJob: (job_id: string) =>
+    apiCall<BackfillJobStatus>(`admin/etl/backfill/${job_id}`),
+
+  cobertura: () =>
+    apiCall<CoberturaResponse>("admin/cobertura"),
 };
