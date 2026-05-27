@@ -191,6 +191,41 @@ TOOLS: list[dict] = [
             "required": ["slug", "date_start", "date_end"],
         },
     },
+    {
+        "name": "buscar_anuncios_meta",
+        "description": (
+            "Busca anúncios individuais no Meta Ads para um cliente num período. "
+            "Retorna métricas por criativo: CTR, CPM, hook rate (retenção de 3s), "
+            "frequency, purchases e ROAS por anúncio. Use para identificar quais "
+            "criativos estão performando melhor ou apresentando fadiga."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "slug": {"type": "string", "description": "Slug do cliente"},
+                "date_start": {"type": "string", "description": "Data início YYYY-MM-DD"},
+                "date_end": {"type": "string", "description": "Data fim YYYY-MM-DD"},
+            },
+            "required": ["slug", "date_start", "date_end"],
+        },
+    },
+    {
+        "name": "buscar_anuncios_google",
+        "description": (
+            "Busca anúncios individuais no Google Ads para um cliente num período. "
+            "Retorna métricas por ad: CTR, CPC, conversões, ROAS e ad group. "
+            "Use para identificar quais anúncios de texto/display convertem melhor."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "slug": {"type": "string", "description": "Slug do cliente"},
+                "date_start": {"type": "string", "description": "Data início YYYY-MM-DD"},
+                "date_end": {"type": "string", "description": "Data fim YYYY-MM-DD"},
+            },
+            "required": ["slug", "date_start", "date_end"],
+        },
+    },
 ]
 
 
@@ -420,6 +455,11 @@ _META_API_VERSION = "v23.0"
 _META_CAMPAIGN_FIELDS = (
     "campaign_id,campaign_name,spend,impressions,clicks,actions,action_values"
 )
+_META_AD_FIELDS = (
+    "ad_id,ad_name,adset_name,campaign_name,"
+    "spend,impressions,clicks,reach,frequency,"
+    "actions,action_values,video_p3_watched_actions"
+)
 
 
 def _buscar_campanhas_meta(
@@ -484,6 +524,80 @@ def _buscar_campanhas_meta(
         "cliente": slug,
         "periodo": {"inicio": date_start, "fim": date_end},
         "campanhas": campanhas,
+    }
+
+
+def _buscar_anuncios_meta(
+    slug: str, date_start: str, date_end: str, user: Usuario, session: Session
+) -> dict:
+    _check_acesso_cliente(slug, user, session)
+
+    cliente_core = _get_cliente_core(slug)
+    if cliente_core is None:
+        return {"erro": f"Cliente '{slug}' não encontrado na Planilha Central"}
+
+    ad_account_id = getattr(cliente_core, "id_meta_ads", None)
+    if not ad_account_id:
+        return {"erro": f"Cliente '{slug}' não tem ID Meta Ads configurado"}
+
+    from config.settings import ACCESS_TOKEN_META_SYSTEM  # noqa: PLC0415
+
+    raw = str(ad_account_id)
+    acct_path = f"act_{raw.removeprefix('act_')}"
+    url = f"https://graph.facebook.com/{_META_API_VERSION}/{acct_path}/insights"
+    params = {
+        "level": "ad",
+        "time_range": json.dumps({"since": date_start, "until": date_end}, separators=(",", ":")),
+        "time_increment": "all_days",
+        "fields": _META_AD_FIELDS,
+        "access_token": ACCESS_TOKEN_META_SYSTEM,
+        "limit": 50,
+    }
+
+    try:
+        resp = requests.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        _log.warning("Meta Ads API (ad level) falhou para %s: %s", slug, exc)
+        return {"erro": f"Falha ao acessar Meta Ads: {exc}"}
+
+    anuncios = []
+    for a in resp.json().get("data", []):
+        spend = float(a.get("spend") or 0)
+        impressions = int(a.get("impressions") or 0)
+        clicks = int(a.get("clicks") or 0)
+        frequency = float(a.get("frequency") or 0)
+
+        actions = {x["action_type"]: float(x["value"]) for x in a.get("actions") or []}
+        action_values = {x["action_type"]: float(x["value"]) for x in a.get("action_values") or []}
+        video_3s = sum(float(x["value"]) for x in a.get("video_p3_watched_actions") or [])
+
+        purchases = actions.get("purchase", actions.get("offsite_conversion.fb_pixel_purchase", 0))
+        purchase_value = action_values.get(
+            "purchase", action_values.get("offsite_conversion.fb_pixel_purchase", 0)
+        )
+
+        anuncios.append({
+            "id": a.get("ad_id"),
+            "nome": a.get("ad_name"),
+            "adset": a.get("adset_name"),
+            "campanha": a.get("campaign_name"),
+            "spend": spend,
+            "impressions": impressions,
+            "clicks": clicks,
+            "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+            "cpm": round(spend / impressions * 1000, 2) if impressions else 0,
+            "frequency": round(frequency, 2),
+            "hook_rate": round(video_3s / impressions * 100, 2) if impressions else None,
+            "purchases": int(purchases),
+            "purchase_roas": round(purchase_value / spend, 2) if spend else 0,
+        })
+
+    anuncios.sort(key=lambda x: x["spend"], reverse=True)
+    return {
+        "cliente": slug,
+        "periodo": {"inicio": date_start, "fim": date_end},
+        "anuncios": anuncios,
     }
 
 
@@ -582,6 +696,16 @@ def _execute_tool(
         )
     if name == "buscar_campanhas_google":
         return _buscar_campanhas_google(
+            tool_input["slug"], tool_input["date_start"], tool_input["date_end"],
+            user, session,
+        )
+    if name == "buscar_anuncios_meta":
+        return _buscar_anuncios_meta(
+            tool_input["slug"], tool_input["date_start"], tool_input["date_end"],
+            user, session,
+        )
+    if name == "buscar_anuncios_google":
+        return _buscar_anuncios_google(
             tool_input["slug"], tool_input["date_start"], tool_input["date_end"],
             user, session,
         )

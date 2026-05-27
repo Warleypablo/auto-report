@@ -341,6 +341,66 @@ def test_buscar_campanhas_google_mock_client(db_cliente):
     assert result["campanhas"][0]["spend"] == 2.0
 
 
+def test_buscar_anuncios_meta_sem_id_meta(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+
+    fake_core = MagicMock()
+    fake_core.id_meta_ads = None
+
+    with SessionLocal() as s:
+        with patch("api.turbomax._get_cliente_core", return_value=fake_core):
+            from api.turbomax import _buscar_anuncios_meta
+            result = _buscar_anuncios_meta(slug, "2026-05-01", "2026-05-31", admin, s)
+
+    assert "erro" in result
+    assert "Meta Ads" in result["erro"]
+
+
+def test_buscar_anuncios_meta_retorna_lista(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+
+    fake_core = MagicMock()
+    fake_core.id_meta_ads = "act_12345"
+
+    fake_response = {
+        "data": [
+            {
+                "ad_id": "222",
+                "ad_name": "UGC_Produto_V1",
+                "adset_name": "Prospecção Broad",
+                "campaign_name": "Prospecção_CBO",
+                "spend": "3000",
+                "impressions": "120000",
+                "clicks": "2400",
+                "reach": "100000",
+                "frequency": "1.2",
+                "actions": [{"action_type": "purchase", "value": "12"}],
+                "action_values": [{"action_type": "purchase", "value": "12000"}],
+                "video_p3_watched_actions": [{"action_type": "video_view", "value": "30000"}],
+            }
+        ]
+    }
+
+    with SessionLocal() as s:
+        with patch("api.turbomax._get_cliente_core", return_value=fake_core), \
+             patch("api.turbomax.requests.get") as mock_get:
+            mock_get.return_value.json.return_value = fake_response
+            mock_get.return_value.raise_for_status = MagicMock()
+            from api.turbomax import _buscar_anuncios_meta
+            result = _buscar_anuncios_meta(slug, "2026-05-01", "2026-05-31", admin, s)
+
+    assert len(result["anuncios"]) == 1
+    ad = result["anuncios"][0]
+    assert ad["nome"] == "UGC_Produto_V1"
+    assert ad["purchases"] == 12
+    assert ad["hook_rate"] == pytest.approx(25.0, rel=1e-2)
+    assert ad["purchase_roas"] == pytest.approx(4.0, rel=1e-2)
+
+
 # ─── Tests for endpoint /chat ────────────────────────────────────────────────
 
 from fastapi.testclient import TestClient
