@@ -12,7 +12,7 @@ from sqlalchemy import distinct, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
 from api.auth import require_admin, require_auth
-from db import get_session
+from db import get_session, SessionLocal
 from app_settings import Settings, get_settings
 from models import Cliente, GestorCadastrado, Insight, ReportJob, Usuario, UsuarioCliente
 from models.snapshot import Snapshot
@@ -1691,9 +1691,16 @@ def trigger_backfill(
 
     with SessionLocal() as session:
         if body.slug:
+            cliente_exists = session.execute(
+                select(Cliente.id).where(Cliente.slug == body.slug)
+            ).scalar_one_or_none()
+            if cliente_exists is None:
+                raise HTTPException(404, f"Cliente com slug '{body.slug}' não encontrado")
             n_clientes = 1
         else:
-            n_clientes = session.execute(select(func.count(Cliente.id))).scalar_one()
+            n_clientes = session.execute(
+                select(func.count(Cliente.id)).where(Cliente.ativo == True)
+            ).scalar_one()
 
     job_id = str(uuid.uuid4())
     _backfill_jobs[job_id] = {
@@ -1761,10 +1768,14 @@ def get_cobertura(
         select(Cliente).order_by(Cliente.nome)
     ).scalars().all()
 
-    from collections import defaultdict
+    cutoff_str = meses[0]  # "YYYY-MM"
+    cutoff_ano, cutoff_mes = int(cutoff_str[:4]), int(cutoff_str[5:])
+    cutoff_date = date(cutoff_ano, cutoff_mes, 1)
+
     snaps = session.execute(
         select(Snapshot.cliente_id, Snapshot.periodo_inicio)
         .where(Snapshot.frequencia == SnapFrequencia.MENSAL)
+        .where(Snapshot.periodo_inicio >= cutoff_date)
     ).all()
 
     meses_por_cliente: dict[uuid.UUID, set[str]] = defaultdict(set)
