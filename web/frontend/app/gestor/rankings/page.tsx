@@ -44,6 +44,7 @@ export default function RankingsPage() {
   const router = useRouter();
   const [mes, setMes] = useState(mesUltimoFechado());
   const [loading, setLoading] = useState(true);
+  const [rede, setRede] = useState<"meta" | "google">("meta");
   const [metaAds, setMetaAds] = useState<RankedMetaAd[]>([]);
   const [googleAds, setGoogleAds] = useState<RankedGoogleAd[]>([]);
 
@@ -54,12 +55,14 @@ export default function RankingsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    console.log('[rankings] effect disparado, mes =', mes);
     setLoading(true);
     gestorApi
       .clientes()
       .then(({ items }) => {
-        if (cancelled) return null;
+        if (cancelled) { console.log('[rankings] cancelado após clientes()'); return null; }
         const ativos = items.filter((c) => c.ativo);
+        console.log('[rankings] clientes ativos:', ativos.length, '| buscando breakdown para mes =', mes);
         return Promise.all(
           ativos.map((c) =>
             gestorApi
@@ -70,18 +73,20 @@ export default function RankingsPage() {
         );
       })
       .then((results) => {
-        if (!results || cancelled) return;
+        if (!results || cancelled) { console.log('[rankings] cancelado ou sem resultados'); return; }
         const allMeta: RankedMetaAd[] = [];
         const allGoogle: RankedGoogleAd[] = [];
+        console.log('[rankings] breakdowns recebidos:', results.length, '| primeiro google_ads:', results[0]?.bd?.google_ads);
         for (const { cliente, bd } of results) {
           if (!bd) continue;
-          for (const ad of bd.meta_ads) {
+          for (const ad of bd.meta_ads ?? []) {
             allMeta.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug });
           }
-          for (const ad of bd.google_ads) {
+          for (const ad of bd.google_ads ?? []) {
             allGoogle.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug });
           }
         }
+        console.log('[rankings] setando', allMeta.length, 'meta ads e', allGoogle.length, 'google ads para mes =', mes);
         setMetaAds(sortByRoas(allMeta));
         setGoogleAds(sortByRoas(allGoogle));
       })
@@ -98,7 +103,7 @@ export default function RankingsPage() {
         ← Seus clientes
       </Link>
 
-      <div className="mb-8 flex items-baseline justify-between gap-4">
+      <div className="mb-6 flex items-baseline justify-between gap-4">
         <h1 className="font-display text-3xl font-medium leading-tight tracking-tight text-[var(--ink)]">
           Rankings
         </h1>
@@ -121,15 +126,29 @@ export default function RankingsPage() {
         </div>
       </div>
 
+      {/* Tabs Meta / Google */}
+      <div className="mb-6 flex gap-1 border-b border-[var(--rule-soft)]">
+        {(["meta", "google"] as const).map((r) => (
+          <button
+            key={r}
+            onClick={() => setRede(r)}
+            className={`px-4 py-2 text-sm transition border-b-2 -mb-px ${
+              rede === r
+                ? "border-[var(--forest)] text-[var(--ink)] font-medium"
+                : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]"
+            }`}
+          >
+            {r === "meta" ? "Meta Ads" : "Google Ads"}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <p className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-12 text-center text-sm text-[var(--muted)]">
           Carregando rankings…
         </p>
-      ) : (
-        <div className="flex flex-col gap-12">
-
-          {/* ── Meta Ads ── */}
-          <section>
+      ) : rede === "meta" ? (
+        <section>
             <p className="eyebrow mb-4 text-xs text-[var(--muted)]">
               Top criativos · Meta Ads · carteira
             </p>
@@ -215,10 +234,9 @@ export default function RankingsPage() {
                 </table>
               </div>
             )}
-          </section>
-
-          {/* ── Google Ads ── */}
-          <section>
+        </section>
+      ) : (
+        <section>
             <p className="eyebrow mb-4 text-xs text-[var(--muted)]">
               Top campanhas · Google Ads · carteira
             </p>
@@ -286,9 +304,7 @@ export default function RankingsPage() {
                 </table>
               </div>
             )}
-          </section>
-
-        </div>
+        </section>
       )}
     </main>
   );
