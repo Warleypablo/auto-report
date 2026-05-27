@@ -223,6 +223,19 @@ def backfill_clientes_meses(
         with SessionLocal() as session:
             slugs = set(session.execute(select(Cliente.slug)).scalars().all())
 
+    # Pre-flight: verifica correspondência com a Planilha Central.
+    # Clientes criados só via UI não têm credenciais de API e nunca gerarão snapshots.
+    from .cliente_publico import slugify as _slugify
+    from .sync_planilha import fetch_clientes_tolerante
+    _pubs_planilha = fetch_clientes_tolerante()
+    _slugs_planilha = {_slugify(p.nome) for p in _pubs_planilha}
+    slugs = slugs & _slugs_planilha
+    if not slugs:
+        raise ValueError(
+            "Nenhum cliente encontrado na Planilha Central para os slugs solicitados. "
+            "Verifique se o cliente está configurado na Planilha Central."
+        )
+
     resultados: dict = {
         "meses_processados": 0,
         "meses_com_erro": [],

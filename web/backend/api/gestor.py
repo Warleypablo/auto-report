@@ -1689,6 +1689,9 @@ def trigger_backfill(
     if meses_total > 36:
         raise HTTPException(400, "Intervalo máximo de 36 meses")
 
+    if any(j["status"] == "running" for j in _backfill_jobs.values()):
+        raise HTTPException(409, "Já existe um backfill em andamento. Aguarde a conclusão antes de iniciar outro.")
+
     with SessionLocal() as session:
         if body.slug:
             cliente_exists = session.execute(
