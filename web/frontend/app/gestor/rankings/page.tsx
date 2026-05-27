@@ -139,16 +139,18 @@ export default function RankingsPage() {
                       className="grid grid-cols-[2rem_2rem_1fr_auto] items-center gap-3 px-4 py-3 transition hover:bg-[var(--paper-deep)]"
                     >
                       <span className={`font-mono-num text-xs ${rankColor(i)}`}>#{i + 1}</span>
-                      {ad.imagem_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={ad.imagem_url}
-                          alt={ad.nome}
-                          className="h-5 w-7 rounded object-cover"
-                        />
-                      ) : (
+                      <div className="relative h-5 w-7 flex-shrink-0">
                         <div className="h-5 w-7 rounded bg-gradient-to-br from-[var(--paper-deep)] to-[var(--paper-soft)]" />
-                      )}
+                        {ad.imagem_url && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={ad.imagem_url}
+                            alt=""
+                            className="absolute inset-0 h-full w-full rounded object-cover"
+                            onError={(e) => e.currentTarget.remove()}
+                          />
+                        )}
+                      </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm text-[var(--ink)]" title={ad.nome}>
                           {ad.nome}
