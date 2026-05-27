@@ -21,6 +21,7 @@ function renderContent(text: string) {
   const elements: React.ReactNode[] = [];
 
   let tableBuffer: string[] = [];
+  let listBuffer: React.ReactNode[] = [];
 
   function flushTable() {
     if (tableBuffer.length < 2) {
@@ -59,7 +60,23 @@ function renderContent(text: string) {
     tableBuffer = [];
   }
 
+  function flushList() {
+    if (listBuffer.length === 0) return;
+    elements.push(
+      <ul key={`list-${elements.length}`} className="my-1 space-y-0.5">
+        {listBuffer}
+      </ul>
+    );
+    listBuffer = [];
+  }
+
   lines.forEach((line, i) => {
+    const isListLine = line.startsWith("• ") || line.startsWith("- ");
+
+    if (!isListLine && listBuffer.length > 0) {
+      flushList();
+    }
+
     if (line.includes("|")) {
       tableBuffer.push(line);
       return;
@@ -70,10 +87,10 @@ function renderContent(text: string) {
       elements.push(<div key={i} className="h-2" />);
       return;
     }
-    if (line.startsWith("• ") || line.startsWith("- ")) {
+    if (isListLine) {
       const content = line.slice(2);
-      elements.push(
-        <li key={i} className="text-sm ml-4 list-disc">
+      listBuffer.push(
+        <li key={i} className="text-sm list-disc">
           {renderInline(content)}
         </li>
       );
@@ -82,6 +99,7 @@ function renderContent(text: string) {
     elements.push(<p key={i} className="text-sm leading-relaxed">{renderInline(line)}</p>);
   });
   if (tableBuffer.length) flushTable();
+  if (listBuffer.length) flushList();
 
   return <>{elements}</>;
 }
@@ -109,6 +127,7 @@ export default function TurboMaxPage() {
   const [clientes, setClientes] = useState<ClienteGestor[]>([]);
   const [clienteSlug, setClienteSlug] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const generationRef = useRef(0);
 
   useEffect(() => {
     gestorApi.clientes().then((res) => setClientes(res.items)).catch(() => {});
@@ -129,13 +148,20 @@ export default function TurboMaxPage() {
     setLoading(true);
     setErro(null);
 
+    const gen = generationRef.current;
     try {
       const res = await gestorApi.chat(newMessages, clienteSlug || undefined);
-      setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
+      if (generationRef.current === gen) {
+        setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
+      }
     } catch {
-      setErro("Erro ao conectar com o TurboMax. Tente novamente.");
+      if (generationRef.current === gen) {
+        setErro("Erro ao conectar com o TurboMax. Tente novamente.");
+      }
     } finally {
-      setLoading(false);
+      if (generationRef.current === gen) {
+        setLoading(false);
+      }
     }
   }, [input, loading, messages, clienteSlug]);
 
@@ -147,8 +173,10 @@ export default function TurboMaxPage() {
   }
 
   function novaConversa() {
+    generationRef.current += 1;
     setMessages([WELCOME]);
     setErro(null);
+    setLoading(false);
   }
 
   return (
@@ -255,7 +283,6 @@ export default function TurboMaxPage() {
               Enviar
             </button>
           </div>
-          <p className="mt-1 text-center text-xs text-[var(--muted)]">Ctrl+Enter para enviar</p>
         </div>
       </div>
     </GestorShell>
