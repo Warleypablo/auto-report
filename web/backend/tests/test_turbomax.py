@@ -510,3 +510,59 @@ def test_chat_endpoint_com_mock_claude(db_gestor):
         if uc:
             s.delete(uc)
             s.commit()
+
+
+def test_buscar_anuncios_google_sem_id_google(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+
+    fake_core = MagicMock()
+    fake_core.id_google_ads = None
+
+    with SessionLocal() as s:
+        with patch("api.turbomax._get_cliente_core", return_value=fake_core):
+            from api.turbomax import _buscar_anuncios_google
+            result = _buscar_anuncios_google(slug, "2026-05-01", "2026-05-31", admin, s)
+
+    assert "erro" in result
+    assert "Google Ads" in result["erro"]
+
+
+def test_buscar_anuncios_google_mock_client(db_cliente):
+    slug, _ = db_cliente
+    admin = MagicMock()
+    admin.is_admin = True
+
+    fake_core = MagicMock()
+    fake_core.id_google_ads = "1234567890"
+
+    fake_row = MagicMock()
+    fake_row.ad_group_ad.ad.id = 555
+    fake_row.ad_group_ad.ad.name = "Headline_Produto_V2"
+    fake_row.ad_group_ad.ad.type_.name = "EXPANDED_TEXT_AD"
+    fake_row.ad_group.name = "Produto - Exact"
+    fake_row.campaign.name = "Search_Brand"
+    fake_row.metrics.cost_micros = 1_500_000
+    fake_row.metrics.impressions = 8000
+    fake_row.metrics.clicks = 400
+    fake_row.metrics.conversions = 18.0
+    fake_row.metrics.conversions_value = 5400.0
+
+    fake_ga_service = MagicMock()
+    fake_ga_service.search.return_value = [fake_row]
+    fake_client = MagicMock()
+    fake_client.get_service.return_value = fake_ga_service
+
+    with SessionLocal() as s:
+        with patch("api.turbomax._get_cliente_core", return_value=fake_core), \
+             patch("core.cred_manager._build_google_ads_client", return_value=fake_client):
+            from api.turbomax import _buscar_anuncios_google
+            result = _buscar_anuncios_google(slug, "2026-05-01", "2026-05-31", admin, s)
+
+    assert len(result["anuncios"]) == 1
+    ad = result["anuncios"][0]
+    assert ad["nome"] == "Headline_Produto_V2"
+    assert ad["spend"] == 1.5
+    assert ad["roas"] == pytest.approx(3600.0, rel=1e-2)
+    assert ad["ctr"] == pytest.approx(5.0, rel=1e-2)

@@ -68,6 +68,11 @@ Lead Sem Site (CPL como métrica principal)
 - Métricas disponíveis: faturamento, investimento, ROAS, CPA, leads, vendas (mensais)
 - Sinais: roas_queda (>20%), faturamento_queda (>25%), roas_brand_inflado, \
 oportunidade_escala, cpl_vs_media
+- Dados de criativo disponíveis: hook_rate (% de impressões com 3s de vídeo), \
+frequency por anúncio, CTR por anúncio, ROAS por anúncio, CPM por anúncio
+- Benchmarks criativo Meta: hook_rate > 20% = bom, < 10% = problema no início do vídeo; \
+CTR > 2% = bom; frequency > 3.5 no mesmo anúncio = fadiga; CPM subindo + CTR caindo = saturação
+- Para top criativos Meta use buscar_anuncios_meta; para criativos Google use buscar_anuncios_google
 
 REGRAS:
 - Sempre use ferramentas para buscar dados antes de responder sobre clientes específicos
@@ -665,6 +670,75 @@ def _buscar_campanhas_google(
     }
 
 
+def _buscar_anuncios_google(
+    slug: str, date_start: str, date_end: str, user: Usuario, session: Session
+) -> dict:
+    _check_acesso_cliente(slug, user, session)
+
+    cliente_core = _get_cliente_core(slug)
+    if cliente_core is None:
+        return {"erro": f"Cliente '{slug}' não encontrado na Planilha Central"}
+
+    customer_id = str(getattr(cliente_core, "id_google_ads", "") or "").replace("-", "")
+    if not customer_id or customer_id == "0":
+        return {"erro": f"Cliente '{slug}' não tem ID Google Ads configurado"}
+
+    for d in (date_start, date_end):
+        if len(d) != 10 or d[4] != "-" or d[7] != "-" or not d.replace("-", "").isdigit():
+            return {"erro": f"Formato de data inválido: '{d}'. Use YYYY-MM-DD."}
+
+    from core.cred_manager import _build_google_ads_client  # noqa: PLC0415
+
+    gaql = (
+        "SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, "
+        "ad_group.name, campaign.name, "
+        "metrics.cost_micros, metrics.impressions, metrics.clicks, "
+        "metrics.conversions, metrics.conversions_value "
+        "FROM ad_group_ad "
+        f"WHERE segments.date BETWEEN '{date_start}' AND '{date_end}' "
+        "AND metrics.cost_micros > 0 "
+        "ORDER BY metrics.cost_micros DESC "
+        "LIMIT 50"
+    )
+
+    try:
+        client = _build_google_ads_client()
+        ga_service = client.get_service("GoogleAdsService")
+        response = ga_service.search(customer_id=customer_id, query=gaql)
+    except Exception as exc:
+        _log.warning("Google Ads API (ad level) falhou para %s: %s", slug, exc)
+        return {"erro": f"Falha ao acessar Google Ads: {exc}"}
+
+    anuncios = []
+    for row in response:
+        cost = row.metrics.cost_micros / 1_000_000
+        conv = float(row.metrics.conversions or 0)
+        conv_value = float(row.metrics.conversions_value or 0)
+        impressions = int(row.metrics.impressions or 0)
+        clicks = int(row.metrics.clicks or 0)
+        anuncios.append({
+            "id": str(row.ad_group_ad.ad.id),
+            "nome": row.ad_group_ad.ad.name,
+            "tipo": getattr(row.ad_group_ad.ad.type_, "name", None),
+            "ad_group": row.ad_group.name,
+            "campanha": row.campaign.name,
+            "spend": round(cost, 2),
+            "impressions": impressions,
+            "clicks": clicks,
+            "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+            "cpc": round(cost / clicks, 2) if clicks else 0,
+            "conversions": round(conv, 1),
+            "conv_value": round(conv_value, 2),
+            "roas": round(conv_value / cost, 2) if cost else 0,
+        })
+
+    return {
+        "cliente": slug,
+        "periodo": {"inicio": date_start, "fim": date_end},
+        "anuncios": anuncios,
+    }
+
+
 # ─── Tool executor ────────────────────────────────────────────────────────────
 
 def _execute_tool(
@@ -706,8 +780,10 @@ def _execute_tool(
             user, session,
         )
     if name == "buscar_anuncios_google":
-        # implemented in Task 2
-        return {"erro": "Ferramenta buscar_anuncios_google ainda não disponível"}
+        return _buscar_anuncios_google(
+            tool_input["slug"], tool_input["date_start"], tool_input["date_end"],
+            user, session,
+        )
     return {"erro": f"Ferramenta '{name}' não reconhecida"}
 
 
