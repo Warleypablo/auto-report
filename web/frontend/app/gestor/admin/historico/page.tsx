@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import GestorShell from "../../_shell";
 import { gestorApi } from "@/lib/api-gestor";
 import type { BackfillJobStatus, CoberturaResponse } from "@/lib/api-gestor";
@@ -28,16 +28,17 @@ export default function HistoricoAdminPage() {
   const [erro, setErro] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function load() {
+  const load = useCallback(() => {
     setLoading(true);
+    setErro(null);
     gestorApi
       .cobertura()
       .then(setData)
-      .catch((e) => setErro(e.message))
+      .catch((e: unknown) => setErro(e instanceof Error ? e.message : "Erro ao carregar"))
       .finally(() => setLoading(false));
-  }
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (!jobId) return;
@@ -47,14 +48,16 @@ export default function HistoricoAdminPage() {
         setJobStatus(status);
         if (status.status !== "running") {
           clearInterval(pollRef.current!);
+          pollRef.current = null;
           if (status.status === "done") load();
         }
       } catch {
         clearInterval(pollRef.current!);
+        pollRef.current = null;
       }
     }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [jobId]);
+  }, [jobId, load]);
 
   async function dispararBackfill(slug?: string, nome?: string) {
     const msg = slug
