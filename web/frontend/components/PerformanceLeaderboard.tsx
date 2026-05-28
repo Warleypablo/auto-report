@@ -1,40 +1,27 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { useState } from "react";
 
 import type { GoogleAd, MetaAd } from "@/lib/api-gestor";
-
-const GRAD_PAIRS = [
-  ["#1a3d2e", "#0d2019"],
-  ["#2a1f4a", "#160f28"],
-  ["#1a2f4a", "#0d1a28"],
-  ["#3d2a1a", "#22160d"],
-  ["#1a3d3d", "#0d2222"],
-  ["#2a1a3d", "#160d22"],
-  ["#3d1a2a", "#220d16"],
-];
-
-function nameHash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
-  return h;
-}
 import {
   fmtBRL,
   fmtRoas,
-  type RoasTier,
   roasTier,
   TIER_TEXT,
   TIER_BAR,
   sortByRoas,
 } from "@/lib/roas-tier";
+import AdThumb from "./AdThumb";
+
+const INITIAL_LIMIT = 5;
+
+const TH = "pb-2 pt-3 text-[10px] font-normal uppercase tracking-widest text-[var(--muted)] whitespace-nowrap";
 
 function MetaLeaderboard({ ads }: { ads: MetaAd[] }) {
   const [showAll, setShowAll] = useState(false);
   const sorted = sortByRoas(ads);
-  const top3 = sorted.slice(0, 3);
-  const rest = sorted.slice(3);
+  const visible = showAll ? sorted : sorted.slice(0, INITIAL_LIMIT);
+  const maxRoas = sorted.length > 0 ? Math.max(...sorted.filter(a => a.roas != null).map(a => a.roas ?? 0)) : 0;
 
   if (ads.length === 0) {
     return (
@@ -46,117 +33,62 @@ function MetaLeaderboard({ ads }: { ads: MetaAd[] }) {
 
   return (
     <div>
-      <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 md:grid md:grid-cols-3 md:overflow-visible md:pb-0">
-        {top3.map((ad, i) => {
-          const tier = roasTier(ad.roas);
-          return (
-            <motion.div
-              key={ad.nome}
-              initial={{ opacity: 0, y: 16, scale: 0.98 }}
-              whileInView={{ opacity: 1, y: 0, scale: 1 }}
-              viewport={{ once: true, margin: "-10%" }}
-              transition={{ duration: 0.5, delay: i * 0.08, ease: [0.2, 0.7, 0.2, 1] }}
-              whileHover={{ scale: 1.02 }}
-              className="group relative aspect-video min-w-[85%] snap-start overflow-hidden rounded-lg border border-[var(--rule-soft)] md:min-w-0"
-            style={{ background: `linear-gradient(135deg, ${GRAD_PAIRS[nameHash(ad.nome) % GRAD_PAIRS.length][0]} 0%, ${GRAD_PAIRS[nameHash(ad.nome) % GRAD_PAIRS.length][1]} 100%)` }}
-            >
-              <span className="absolute inset-0 flex items-center justify-center select-none font-bold text-white/[0.07]" style={{ fontSize: "9rem", transform: "rotate(-10deg)" }}>
-                {(ad.nome.trim()[0] ?? "?").toUpperCase()}
-              </span>
-              {ad.imagem_url && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={ad.imagem_url}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                />
-              )}
-
-              <div className="absolute left-3 top-3 rounded-sm bg-black/55 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white font-semibold">
-                #{i + 1}
-              </div>
-
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-4">
-                <p className="line-clamp-1 text-[11px] text-white/90" title={ad.nome}>
-                  {ad.nome}
-                </p>
-                <div className="mt-1 flex items-baseline justify-between">
-                  <span className={`font-mono-num text-lg font-semibold ${TIER_TEXT[tier]}`}>
-                    {fmtRoas(ad.roas)}
-                  </span>
-                  <span className="font-mono-num text-[11px] text-white/60">
-                    {fmtBRL(ad.investimento)}
-                  </span>
-                </div>
-                <p className="font-mono-num mt-0.5 text-[10px] text-white/50">
-                  {ad.leads != null
-                    ? `${ad.leads.toLocaleString("pt-BR")} leads`
-                    : ad.conversoes != null
-                    ? `${ad.conversoes.toLocaleString("pt-BR")} conv.`
-                    : ""}
-                </p>
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
-
-      {rest.length > 0 && (
-        <div className="mt-3">
-          {showAll && (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[var(--rule-soft)]">
-                  <th className="py-1.5 pr-3 text-left font-medium text-[var(--muted)]">#</th>
-                  <th className="py-1.5 pr-3 text-left font-medium text-[var(--muted)]">Anúncio</th>
-                  <th className="py-1.5 pr-3 text-right font-medium text-[var(--muted)]">ROAS</th>
-                  <th className="py-1.5 pr-3 text-right font-medium text-[var(--muted)]">Invest.</th>
-                  <th className="py-1.5 text-right font-medium text-[var(--muted)]">Leads / Conv.</th>
+      <div className="overflow-hidden rounded-lg border border-[var(--rule-soft)]">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-[var(--rule-soft)] bg-[var(--paper-soft)]">
+              <th className={`${TH} pl-4 pr-2 w-8 text-left`}>#</th>
+              <th className={`${TH} px-3 text-left`}>Criativo</th>
+              <th className={`${TH} px-3 text-right`}>ROAS</th>
+              <th className={`${TH} px-3 text-right`}>Faturamento</th>
+              <th className={`${TH} px-3 text-right hidden sm:table-cell`}>Investimento</th>
+              <th className={`${TH} px-3 text-right hidden md:table-cell`}>Leads / Conv.</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--rule-soft)]">
+            {visible.map((ad, i) => {
+              const tier = roasTier(ad.roas);
+              const barPct = maxRoas > 0 && ad.roas ? (ad.roas / maxRoas) * 100 : 0;
+              return (
+                <tr key={ad.nome} className="bg-[var(--paper)] hover:bg-[var(--paper-soft)] transition">
+                  <td className="py-3 pl-0 pr-2">
+                    <div className="flex items-center">
+                      <div className={`mr-3 h-8 w-0.5 rounded-full ${TIER_BAR[tier]}`} />
+                      <span className="font-mono-num text-xs text-[var(--muted)]">{i + 1}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 max-w-[220px]">
+                    <div className="flex items-center gap-2.5">
+                      <AdThumb src={ad.imagem_url} name={ad.nome} className="h-9 w-14 flex-shrink-0 rounded" />
+                      <span className="block truncate text-xs font-medium text-[var(--ink)]" title={ad.nome}>{ad.nome}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <span className={`font-mono-num text-sm font-semibold ${TIER_TEXT[tier]}`}>{fmtRoas(ad.roas)}</span>
+                    <div className="mt-1 h-0.5 w-full rounded-full bg-[var(--paper-deep)]">
+                      <div className={`h-0.5 rounded-full ${TIER_BAR[tier]}`} style={{ width: `${barPct}%` }} />
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-right font-mono-num text-xs text-[var(--forest)]">{fmtBRL(ad.faturamento)}</td>
+                  <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] sm:table-cell">{fmtBRL(ad.investimento)}</td>
+                  <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] md:table-cell">
+                    {ad.leads != null ? `${ad.leads.toLocaleString("pt-BR")} leads` : ad.conversoes != null ? `${ad.conversoes.toLocaleString("pt-BR")} conv.` : "—"}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rest.map((ad, i) => {
-                  const tier = roasTier(ad.roas);
-                  return (
-                    <tr
-                      key={ad.nome}
-                      className="border-b border-[var(--rule-soft)]/40 hover:bg-[var(--paper-soft)]"
-                    >
-                      <td className="py-2 pr-3 text-[var(--muted)]">{i + 4}</td>
-                      <td className="py-2 pr-3 max-w-[200px]" title={ad.nome}>
-                        <span className="block truncate text-[var(--ink)]">{ad.nome}</span>
-                      </td>
-                      <td
-                        className={`py-2 pr-3 text-right font-mono-num font-semibold ${TIER_TEXT[tier]}`}
-                      >
-                        {fmtRoas(ad.roas)}
-                      </td>
-                      <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">
-                        {fmtBRL(ad.investimento)}
-                      </td>
-                      <td className="py-2 text-right font-mono-num text-[var(--ink)]">
-                        {ad.leads != null
-                          ? ad.leads.toLocaleString("pt-BR")
-                          : ad.conversoes != null
-                          ? ad.conversoes.toLocaleString("pt-BR")
-                          : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-          <button
-            type="button"
-            aria-expanded={showAll}
-            onClick={() => setShowAll((v) => !v)}
-            className="mt-2 text-[10px] uppercase tracking-[0.18em] text-[var(--forest)] hover:underline"
-          >
-            {showAll ? "Mostrar só top 3" : `Ver todos os ${ads.length} →`}
-          </button>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {ads.length > INITIAL_LIMIT && (
+        <button
+          type="button"
+          aria-expanded={showAll}
+          onClick={() => setShowAll((v) => !v)}
+          className="mt-2 text-[10px] uppercase tracking-[0.18em] text-[var(--forest)] hover:underline"
+        >
+          {showAll ? "Mostrar só top 5" : `Ver todos os ${ads.length} →`}
+        </button>
       )}
     </div>
   );
@@ -164,7 +96,6 @@ function MetaLeaderboard({ ads }: { ads: MetaAd[] }) {
 
 function GoogleLeaderboard({ ads }: { ads: GoogleAd[] }) {
   const [showAll, setShowAll] = useState(false);
-  const INITIAL_LIMIT = 5;
 
   if (ads.length === 0) {
     return (
@@ -179,51 +110,47 @@ function GoogleLeaderboard({ ads }: { ads: GoogleAd[] }) {
   const maxInv = Math.max(...sorted.map((c) => c.investimento ?? 0), 1);
 
   return (
-    <div className="flex flex-col divide-y divide-[var(--rule-soft)] rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)]">
-      {visible.map((c, i) => {
-        const tier = roasTier(c.roas);
-        const pct = (c.investimento ?? 0) / maxInv;
-        return (
-          <div
-            key={c.nome}
-            className="grid grid-cols-[2rem_1fr_auto] items-center gap-4 px-4 py-3"
-          >
-            <span className="font-mono-num text-xs text-[var(--muted)]">#{i + 1}</span>
-            <div className="min-w-0">
-              <p className="truncate text-sm text-[var(--ink)]" title={c.nome}>
-                {c.nome}
-              </p>
-              <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-[var(--paper-deep)]">
-                <motion.div
-                  className={`h-full origin-left ${TIER_BAR[tier]}`}
-                  initial={{ scaleX: 0 }}
-                  whileInView={{ scaleX: pct }}
-                  viewport={{ once: true, margin: "-15%" }}
-                  transition={{ duration: 0.8, delay: i * 0.06, ease: "easeOut" }}
-                />
+    <div>
+      <div className="flex flex-col divide-y divide-[var(--rule-soft)] overflow-hidden rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)]">
+        {visible.map((c, i) => {
+          const tier = roasTier(c.roas);
+          const pct = (c.investimento ?? 0) / maxInv;
+          return (
+            <div
+              key={c.nome}
+              className="grid grid-cols-[2rem_1fr_auto] items-center gap-4 px-4 py-3"
+            >
+              <span className="font-mono-num text-xs text-[var(--muted)]">#{i + 1}</span>
+              <div className="min-w-0">
+                <p className="truncate text-sm text-[var(--ink)]" title={c.nome}>
+                  {c.nome}
+                </p>
+                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-[var(--paper-deep)]">
+                  <div
+                    className={`h-full origin-left ${TIER_BAR[tier]}`}
+                    style={{ width: `${pct * 100}%`, transition: "width 0.8s ease" }}
+                  />
+                </div>
+                <p className="font-mono-num mt-1 text-[10px] text-[var(--muted)]">
+                  Invest: {fmtBRL(c.investimento)}
+                </p>
               </div>
-              <p className="font-mono-num mt-1 text-[10px] text-[var(--muted)]">
-                Invest: {fmtBRL(c.investimento)}
+              <p className={`font-mono-num text-base font-semibold ${TIER_TEXT[tier]}`}>
+                {fmtRoas(c.roas)}
               </p>
             </div>
-            <p className={`font-mono-num text-base font-semibold ${TIER_TEXT[tier]}`}>
-              {fmtRoas(c.roas)}
-            </p>
-          </div>
-        );
-      })}
-
+          );
+        })}
+      </div>
       {ads.length > INITIAL_LIMIT && (
-        <div className="px-4 py-2">
-          <button
-            type="button"
-            aria-expanded={showAll}
-            onClick={() => setShowAll((v) => !v)}
-            className="text-[10px] uppercase tracking-[0.18em] text-[var(--forest)] hover:underline"
-          >
-            {showAll ? "Mostrar só top 5" : `Ver todas as ${ads.length} →`}
-          </button>
-        </div>
+        <button
+          type="button"
+          aria-expanded={showAll}
+          onClick={() => setShowAll((v) => !v)}
+          className="mt-2 text-[10px] uppercase tracking-[0.18em] text-[var(--forest)] hover:underline"
+        >
+          {showAll ? "Mostrar só top 5" : `Ver todas as ${ads.length} →`}
+        </button>
       )}
     </div>
   );
