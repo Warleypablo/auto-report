@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { motion } from "framer-motion";
 
 import type { MetaAd } from "@/lib/api-cliente";
@@ -35,8 +34,6 @@ function nameHash(s: string): number {
 }
 
 function CreativeCard({ ad, index }: { ad: MetaAd; index: number }) {
-  const [broken, setBroken] = useState(false);
-  const showFallback = !ad.imagem_url || broken;
   const [from, to] = GRAD_PAIRS[nameHash(ad.nome) % GRAD_PAIRS.length];
   const initial = (ad.nome.trim()[0] ?? "?").toUpperCase();
 
@@ -48,23 +45,21 @@ function CreativeCard({ ad, index }: { ad: MetaAd; index: number }) {
       transition={{ duration: 0.5, delay: index * 0.08, ease: [0.2, 0.7, 0.2, 1] }}
       whileHover={{ scale: 1.02 }}
       className="group relative aspect-video min-w-[85%] snap-start overflow-hidden rounded-lg border border-[var(--rule-soft)] md:min-w-0"
+      style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
     >
-      {showFallback ? (
-        <div
-          className="flex h-full w-full items-center justify-center select-none"
-          style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
-        >
-          <span className="font-bold text-white/20" style={{ fontSize: "clamp(2rem, 25%, 5rem)" }}>
-            {initial}
-          </span>
-        </div>
-      ) : (
+      {/* Inicial sempre visível como fallback */}
+      <span className="absolute inset-0 flex items-center justify-center select-none font-bold text-white/15" style={{ fontSize: "clamp(2rem, 20%, 5rem)" }}>
+        {initial}
+      </span>
+
+      {/* Imagem sobre o gradiente — some ao falhar */}
+      {ad.imagem_url && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={ad.imagem_url!}
-          alt={ad.nome}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-          onError={() => setBroken(true)}
+          src={ad.imagem_url}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
         />
       )}
 

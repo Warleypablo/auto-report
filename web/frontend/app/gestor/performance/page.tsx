@@ -56,24 +56,26 @@ function nameHash(s: string): number {
 }
 
 function AdThumbnail({ src, alt, className }: { src: string | null; alt: string; className?: string }) {
-  const [broken, setBroken] = useState(false);
-  if (!src || broken) {
-    const [from, to] = THUMB_GRADIENTS[nameHash(alt) % THUMB_GRADIENTS.length];
-    const initial = (alt.trim()[0] ?? "?").toUpperCase();
-    return (
-      <div
-        className={`flex items-center justify-center select-none ${className ?? ""}`}
-        style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
-      >
-        <span className="font-display font-bold text-white/20" style={{ fontSize: "clamp(1.5rem, 30%, 4rem)" }}>
-          {initial}
-        </span>
-      </div>
-    );
-  }
+  const [from, to] = THUMB_GRADIENTS[nameHash(alt) % THUMB_GRADIENTS.length];
+  const initial = (alt.trim()[0] ?? "?").toUpperCase();
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} className={className} onError={() => setBroken(true)} />
+    <div
+      className={`relative overflow-hidden select-none ${className ?? ""}`}
+      style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
+    >
+      <span className="absolute inset-0 flex items-center justify-center font-display font-bold text-white/20" style={{ fontSize: "clamp(1.5rem, 30%, 4rem)" }}>
+        {initial}
+      </span>
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      )}
+    </div>
   );
 }
 

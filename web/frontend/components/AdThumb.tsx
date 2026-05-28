@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 const GRAD_PAIRS = [
   ["#1a3d2e", "#0d2019"],
   ["#2a1f4a", "#160f28"],
@@ -25,28 +23,26 @@ type Props = {
 };
 
 export default function AdThumb({ src, name, className = "h-10 w-10 rounded" }: Props) {
-  const [broken, setBroken] = useState(false);
-
-  if (!src || broken) {
-    const [from, to] = GRAD_PAIRS[nameHash(name) % GRAD_PAIRS.length];
-    const initial = (name.trim()[0] ?? "?").toUpperCase();
-    return (
-      <div
-        className={`flex items-center justify-center overflow-hidden select-none ${className}`}
-        style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
-      >
-        <span className="font-bold text-white/30" style={{ fontSize: "40%" }}>{initial}</span>
-      </div>
-    );
-  }
+  const [from, to] = GRAD_PAIRS[nameHash(name) % GRAD_PAIRS.length];
+  const initial = (name.trim()[0] ?? "?").toUpperCase();
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt={name}
-      className={`object-cover ${className}`}
-      onError={() => setBroken(true)}
-    />
+    <div
+      className={`relative overflow-hidden select-none ${className}`}
+      style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
+    >
+      <span className="absolute inset-0 flex items-center justify-center font-bold text-white/30" style={{ fontSize: "40%" }}>
+        {initial}
+      </span>
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      )}
+    </div>
   );
 }
