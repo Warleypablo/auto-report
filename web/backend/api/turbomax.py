@@ -80,6 +80,7 @@ REGRAS:
 - Nunca invente números — se não tiver dado, diga que não tem e sugira como obter
 - Se o usuário perguntar sobre "bom" ou "ruim", compare com benchmarks da carteira
 - Gestores veem apenas seus clientes atribuídos
+- FORMATAÇÃO: sem emojis, sem linhas horizontais (---), texto limpo e direto
 
 {user_context}"""
 
@@ -463,7 +464,7 @@ _META_CAMPAIGN_FIELDS = (
 _META_AD_FIELDS = (
     "ad_id,ad_name,adset_name,campaign_name,"
     "spend,impressions,clicks,reach,frequency,"
-    "actions,action_values,video_p3_watched_actions"
+    "actions,action_values"
 )
 
 
@@ -583,8 +584,7 @@ def _buscar_anuncios_meta(
 
         actions = {x["action_type"]: float(x["value"]) for x in a.get("actions") or []}
         action_values = {x["action_type"]: float(x["value"]) for x in a.get("action_values") or []}
-        video_p3 = {x["action_type"]: float(x["value"]) for x in a.get("video_p3_watched_actions") or []}
-        video_3s = video_p3.get("video_view", 0.0)
+        video_3s = actions.get("video_view", 0.0)
 
         purchases = actions.get("purchase", actions.get("offsite_conversion.fb_pixel_purchase", 0))
         purchase_value = action_values.get(

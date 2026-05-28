@@ -378,9 +378,11 @@ def test_buscar_anuncios_meta_retorna_lista(db_cliente):
                 "clicks": "2400",
                 "reach": "100000",
                 "frequency": "1.2",
-                "actions": [{"action_type": "purchase", "value": "12"}],
+                "actions": [
+                    {"action_type": "purchase", "value": "12"},
+                    {"action_type": "video_view", "value": "30000"},
+                ],
                 "action_values": [{"action_type": "purchase", "value": "12000"}],
-                "video_p3_watched_actions": [{"action_type": "video_view", "value": "30000"}],
             }
         ]
     }
