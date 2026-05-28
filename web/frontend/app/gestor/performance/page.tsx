@@ -51,10 +51,6 @@ function fmtK(v: number | null): string {
   return `R$${Math.round(v)}`;
 }
 
-function fmtPct(v: number): string {
-  return `${v.toFixed(1).replace(".", ",")}%`;
-}
-
 const MEDAL = ["🥇", "🥈", "🥉"];
 
 // ── Imagem com fallback ───────────────────────────────────────────────────────
@@ -294,33 +290,6 @@ function PodiumGoogle({ ads, maxRoas, onSelect }: {
           </button>
         );
       })}
-    </div>
-  );
-}
-
-// ── Drawer helpers ────────────────────────────────────────────────────────────
-
-function MetricRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-[var(--rule-soft)] py-2 last:border-0">
-      <span className="text-xs text-[var(--muted)]">{label}</span>
-      <span className={`font-mono-num text-sm ${highlight ? "font-semibold text-[var(--forest)]" : "text-[var(--ink)]"}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function ContextBar({ label, pct }: { label: string; pct: number }) {
-  return (
-    <div className="mb-3">
-      <div className="mb-1 flex justify-between text-[10px] text-[var(--muted)]">
-        <span>{label}</span>
-        <span>{fmtPct(pct)}</span>
-      </div>
-      <div className="h-1.5 w-full rounded-full bg-[var(--paper-deep)]">
-        <div className="h-1.5 rounded-full bg-[var(--forest)] opacity-70" style={{ width: `${Math.min(pct, 100)}%` }} />
-      </div>
     </div>
   );
 }
