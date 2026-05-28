@@ -462,7 +462,7 @@ function EvolucaoTab({
             connectNulls={false}
           />
           <Line
-            yAxisId="ratio"
+            yAxisId="reais"
             type="monotone"
             dataKey="cpm"
             stroke="#f59e0b"
