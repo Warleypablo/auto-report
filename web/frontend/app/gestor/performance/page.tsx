@@ -62,14 +62,15 @@ const TH = "pb-2 pt-3 text-[10px] font-normal uppercase tracking-widest text-[va
 
 // ── KPI strip ─────────────────────────────────────────────────────────────────
 
-function KpiStrip({ items }: { items: { label: string; value: string; sub?: string }[] }) {
+function KpiStrip({ items }: { items: { label: string; value: string; sub?: string; highlight?: boolean }[] }) {
   return (
-    <div className="mb-8 grid grid-cols-3 gap-4">
-      {items.map(({ label, value, sub }) => (
-        <div key={label} className="rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-5 py-4">
-          <p className="mb-1 text-[10px] uppercase tracking-widest text-[var(--muted)]">{label}</p>
-          <p className="font-display text-2xl font-medium text-[var(--ink)]">{value}</p>
-          {sub && <p className="mt-0.5 text-[10px] text-[var(--muted)]">{sub}</p>}
+    <div className="mb-8 grid grid-cols-4 gap-3">
+      {items.map(({ label, value, sub, highlight }) => (
+        <div key={label} className="relative overflow-hidden rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-5 py-5">
+          <div className="absolute left-0 top-3 bottom-3 w-0.5 rounded-full bg-[var(--forest)] opacity-30" />
+          <p className="mb-2 text-[10px] uppercase tracking-widest text-[var(--muted)]">{label}</p>
+          <p className={`font-display text-3xl font-medium leading-none ${highlight ? "text-[var(--forest)]" : "text-[var(--ink)]"}`}>{value}</p>
+          {sub && <p className="mt-1.5 text-[10px] text-[var(--muted)]">{sub}</p>}
         </div>
       ))}
     </div>
@@ -77,6 +78,19 @@ function KpiStrip({ items }: { items: { label: string; value: string; sub?: stri
 }
 
 // ── Pódio top 3 ───────────────────────────────────────────────────────────────
+
+function fmtCpm(inv: number | null, imp: number | null): string {
+  if (!inv || !imp) return "—";
+  const cpm = (inv / imp) * 1000;
+  return `R$${cpm.toFixed(2).replace(".", ",")}`;
+}
+
+function fmtImp(v: number | null): string {
+  if (!v) return "—";
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
+  return String(v);
+}
 
 function PodiumMeta({ ads, maxRoas, onSelect }: {
   ads: RankedMetaAd[];
@@ -96,15 +110,13 @@ function PodiumMeta({ ads, maxRoas, onSelect }: {
             className="group relative overflow-hidden rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] text-left transition hover:border-[var(--forest)] hover:shadow-md"
           >
             {/* Imagem */}
-            <div className="relative h-36 w-full overflow-hidden">
+            <div className="relative h-40 w-full overflow-hidden">
               <AdThumbnail
                 src={ad.imagem_url}
                 alt={ad.nome}
                 className="h-full w-full object-cover transition group-hover:scale-[1.02]"
               />
-              {/* Medal badge */}
               <span className="absolute left-2.5 top-2.5 text-xl drop-shadow">{MEDAL[ad.rank]}</span>
-              {/* ROAS badge */}
               <span className={`absolute right-2.5 top-2.5 rounded-md bg-[var(--paper)] px-2 py-0.5 text-xs font-semibold shadow ${TIER_TEXT[tier]}`}>
                 {fmtRoas(ad.roas)}
               </span>
@@ -114,13 +126,26 @@ function PodiumMeta({ ads, maxRoas, onSelect }: {
             <div className="px-3.5 py-3">
               <p className="mb-0.5 truncate text-xs font-medium text-[var(--ink)]" title={ad.nome}>{ad.nome}</p>
               <p className="mb-3 truncate text-[10px] text-[var(--muted)]">{ad.clienteNome}</p>
-              {/* ROAS bar */}
-              <div className="mb-2 h-1 w-full rounded-full bg-[var(--paper-deep)]">
+              <div className="mb-3 h-1 w-full rounded-full bg-[var(--paper-deep)]">
                 <div className={`h-1 rounded-full ${TIER_BAR[tier]}`} style={{ width: `${barPct}%` }} />
               </div>
-              <div className="flex justify-between text-[10px] text-[var(--muted)]">
-                <span>{fmtK(ad.faturamento)}</span>
-                <span>{fmtK(ad.investimento)}</span>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                <div>
+                  <p className="text-[9px] uppercase tracking-widest text-[var(--muted)]">Faturamento</p>
+                  <p className="font-mono-num text-xs font-medium text-[var(--forest)]">{fmtK(ad.faturamento)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-widest text-[var(--muted)]">Investimento</p>
+                  <p className="font-mono-num text-xs text-[var(--ink)]">{fmtK(ad.investimento)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-widest text-[var(--muted)]">CPM</p>
+                  <p className="font-mono-num text-xs text-[var(--ink)]">{fmtCpm(ad.investimento, ad.impressoes)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-widest text-[var(--muted)]">Impressões</p>
+                  <p className="font-mono-num text-xs text-[var(--ink)]">{fmtImp(ad.impressoes)}</p>
+                </div>
               </div>
             </div>
           </button>
@@ -155,12 +180,26 @@ function PodiumGoogle({ ads, maxRoas, onSelect }: {
             </div>
             <p className="mb-0.5 line-clamp-2 text-xs font-medium leading-snug text-[var(--ink)]" title={ad.nome}>{ad.nome}</p>
             <p className="mb-3 truncate text-[10px] text-[var(--muted)]">{ad.clienteNome}</p>
-            <div className="mb-2 h-1 w-full rounded-full bg-[var(--paper-deep)]">
+            <div className="mb-3 h-1 w-full rounded-full bg-[var(--paper-deep)]">
               <div className={`h-1 rounded-full ${TIER_BAR[tier]}`} style={{ width: `${barPct}%` }} />
             </div>
-            <div className="flex justify-between text-[10px] text-[var(--muted)]">
-              <span>{fmtK(ad.faturamento)}</span>
-              <span>{fmtK(ad.investimento)}</span>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-[var(--muted)]">Faturamento</p>
+                <p className="font-mono-num text-xs font-medium text-[var(--forest)]">{fmtK(ad.faturamento)}</p>
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-[var(--muted)]">Investimento</p>
+                <p className="font-mono-num text-xs text-[var(--ink)]">{fmtK(ad.investimento)}</p>
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-[var(--muted)]">Conv.</p>
+                <p className="font-mono-num text-xs text-[var(--ink)]">{ad.conversoes ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-[var(--muted)]">Impressões</p>
+                <p className="font-mono-num text-xs text-[var(--ink)]">{fmtImp(ad.impressoes)}</p>
+              </div>
             </div>
           </button>
         );
@@ -399,10 +438,12 @@ function TabelaMeta({ ads, maxRoas, onSelect }: {
             <th className={`${TH} px-3 text-left`}>Cliente</th>
             <th className={`${TH} px-3 text-right`}>ROAS</th>
             <th className={`${TH} px-3 text-right`}>Faturamento</th>
-            <th className={`${TH} px-3 text-right`}>Investimento</th>
-            <th className={`${TH} px-3 text-right hidden lg:table-cell`}>Conv.</th>
-            <th className={`${TH} px-3 text-right hidden lg:table-cell`}>Leads</th>
-            <th className={`${TH} pl-3 pr-4 text-right hidden lg:table-cell`}>CPA/CPL</th>
+            <th className={`${TH} px-3 text-right hidden md:table-cell`}>Investimento</th>
+            <th className={`${TH} px-3 text-right hidden lg:table-cell`}>CPM</th>
+            <th className={`${TH} px-3 text-right hidden lg:table-cell`}>Impressões</th>
+            <th className={`${TH} px-3 text-right hidden xl:table-cell`}>Conv.</th>
+            <th className={`${TH} px-3 text-right hidden xl:table-cell`}>Leads</th>
+            <th className={`${TH} pl-3 pr-4 text-right hidden xl:table-cell`}>CPA/CPL</th>
             <th className="w-4 pr-3"></th>
           </tr>
         </thead>
@@ -439,10 +480,12 @@ function TabelaMeta({ ads, maxRoas, onSelect }: {
                   </div>
                 </td>
                 <td className="px-3 py-3 text-right font-mono-num text-xs text-[var(--forest)]">{fmtK(ad.faturamento)}</td>
-                <td className="px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)]">{fmtK(ad.investimento)}</td>
-                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] lg:table-cell">{ad.conversoes ?? "—"}</td>
-                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] lg:table-cell">{ad.leads ?? "—"}</td>
-                <td className="hidden pl-3 pr-4 py-3 text-right font-mono-num text-xs text-[var(--muted)] lg:table-cell">
+                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] md:table-cell">{fmtK(ad.investimento)}</td>
+                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] lg:table-cell">{fmtCpm(ad.investimento, ad.impressoes)}</td>
+                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] lg:table-cell">{fmtImp(ad.impressoes)}</td>
+                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] xl:table-cell">{ad.conversoes ?? "—"}</td>
+                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] xl:table-cell">{ad.leads ?? "—"}</td>
+                <td className="hidden pl-3 pr-4 py-3 text-right font-mono-num text-xs text-[var(--muted)] xl:table-cell">
                   {ad.cpa != null ? fmtK(ad.cpa) : fmtK(ad.cpl)}
                 </td>
                 <td className="pr-3 py-3 text-[var(--muted)] opacity-0 transition group-hover:opacity-60">
@@ -473,9 +516,10 @@ function TabelaGoogle({ ads, maxRoas, onSelect }: {
             <th className={`${TH} px-3 text-left`}>Cliente</th>
             <th className={`${TH} px-3 text-right`}>ROAS</th>
             <th className={`${TH} px-3 text-right`}>Faturamento</th>
-            <th className={`${TH} px-3 text-right`}>Investimento</th>
-            <th className={`${TH} px-3 text-right hidden lg:table-cell`}>Conv.</th>
-            <th className={`${TH} pl-3 pr-4 text-right hidden lg:table-cell`}>CPA</th>
+            <th className={`${TH} px-3 text-right hidden md:table-cell`}>Investimento</th>
+            <th className={`${TH} px-3 text-right hidden lg:table-cell`}>Impressões</th>
+            <th className={`${TH} px-3 text-right hidden xl:table-cell`}>Conv.</th>
+            <th className={`${TH} pl-3 pr-4 text-right hidden xl:table-cell`}>CPA</th>
             <th className="w-4 pr-3"></th>
           </tr>
         </thead>
@@ -506,9 +550,10 @@ function TabelaGoogle({ ads, maxRoas, onSelect }: {
                   </div>
                 </td>
                 <td className="px-3 py-3 text-right font-mono-num text-xs text-[var(--forest)]">{fmtK(c.faturamento)}</td>
-                <td className="px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)]">{fmtK(c.investimento)}</td>
-                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] lg:table-cell">{c.conversoes ?? "—"}</td>
-                <td className="hidden pl-3 pr-4 py-3 text-right font-mono-num text-xs text-[var(--muted)] lg:table-cell">{fmtK(c.cpa)}</td>
+                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] md:table-cell">{fmtK(c.investimento)}</td>
+                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] lg:table-cell">{fmtImp(c.impressoes)}</td>
+                <td className="hidden px-3 py-3 text-right font-mono-num text-xs text-[var(--muted)] xl:table-cell">{c.conversoes ?? "—"}</td>
+                <td className="hidden pl-3 pr-4 py-3 text-right font-mono-num text-xs text-[var(--muted)] xl:table-cell">{fmtK(c.cpa)}</td>
                 <td className="pr-3 py-3 text-[var(--muted)] opacity-0 transition group-hover:opacity-60">
                   <span className="text-xs">›</span>
                 </td>
@@ -602,19 +647,21 @@ export default function RankingsPage() {
     <GestorShell>
     <main className="mx-auto max-w-6xl px-6 py-12">
       {/* Header */}
-      <div className="mb-8 flex items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-medium leading-tight tracking-tight text-[var(--ink)]">
-            Performance
-          </h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">Rankings de criativos e campanhas da carteira</p>
+      <div className="mb-8">
+        <div className="mb-5 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="font-display text-3xl font-medium leading-tight tracking-tight text-[var(--ink)]">
+              Performance
+            </h1>
+            <p className="mt-1 text-sm text-[var(--muted)]">Rankings de criativos e campanhas da carteira</p>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {clientesDisponiveis.length > 0 && (
             <select
               value={clienteFilter}
               onChange={(e) => setClienteFilter(e.target.value)}
-              className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-1.5 text-xs text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+              className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-3 py-2 text-xs text-[var(--ink)] focus:border-[var(--forest)] focus:outline-none"
             >
               <option value="">Todos os clientes</option>
               {clientesDisponiveis.map(([slug, nome]) => (
@@ -622,17 +669,24 @@ export default function RankingsPage() {
               ))}
             </select>
           )}
-          <label htmlFor="mes-ref" className="text-xs text-[var(--muted)]">Mês</label>
           <select
             id="mes-ref"
             value={mes}
             onChange={(e) => setMes(e.target.value)}
-            className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-1.5 text-xs text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+            className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-3 py-2 text-xs text-[var(--ink)] focus:border-[var(--forest)] focus:outline-none"
           >
             {mesOpcoes.map((m) => (
               <option key={m} value={m}>{mesLabel(m)}</option>
             ))}
           </select>
+          {clienteFilter && (
+            <button
+              onClick={() => setClienteFilter("")}
+              className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-3 py-2 text-xs text-[var(--muted)] transition hover:text-[var(--ink)]"
+            >
+              Limpar filtro ×
+            </button>
+          )}
         </div>
       </div>
 
@@ -665,7 +719,8 @@ export default function RankingsPage() {
         <>
           <KpiStrip items={[
             { label: "Criativos", value: String(activeAds.length), sub: rede === "meta" ? "Meta Ads" : "Google Ads" },
-            { label: "Faturamento total", value: fmtK(totalFat), sub: mesLabel(mes) },
+            { label: "Faturamento total", value: fmtK(totalFat), sub: mesLabel(mes), highlight: true },
+            { label: "Investimento total", value: fmtK(totalInv), sub: mesLabel(mes) },
             { label: "ROAS médio", value: roasMedio != null ? fmtRoas(roasMedio) : "—", sub: "ponderado por investimento" },
           ]} />
 
