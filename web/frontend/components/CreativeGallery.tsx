@@ -47,8 +47,7 @@ function CreativeCard({ ad, index }: { ad: MetaAd; index: number }) {
       className="group relative aspect-video min-w-[85%] snap-start overflow-hidden rounded-lg border border-[var(--rule-soft)] md:min-w-0"
       style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
     >
-      {/* Inicial sempre visível como fallback */}
-      <span className="absolute inset-0 flex items-center justify-center select-none font-bold text-white/15" style={{ fontSize: "clamp(2rem, 20%, 5rem)" }}>
+      <span className="absolute inset-0 flex items-center justify-center select-none font-bold text-white/[0.07]" style={{ fontSize: "9rem", transform: "rotate(-10deg)" }}>
         {initial}
       </span>
 

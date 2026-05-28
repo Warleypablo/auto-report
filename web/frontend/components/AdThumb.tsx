@@ -31,7 +31,7 @@ export default function AdThumb({ src, name, className = "h-10 w-10 rounded" }: 
       className={`relative overflow-hidden select-none ${className}`}
       style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
     >
-      <span className="absolute inset-0 flex items-center justify-center font-bold text-white/30" style={{ fontSize: "40%" }}>
+      <span className="absolute inset-0 flex items-center justify-center font-bold text-white/40" style={{ fontSize: "1.1rem" }}>
         {initial}
       </span>
       {src && (

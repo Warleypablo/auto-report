@@ -63,7 +63,7 @@ function AdThumbnail({ src, alt, className }: { src: string | null; alt: string;
       className={`relative overflow-hidden select-none ${className ?? ""}`}
       style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
     >
-      <span className="absolute inset-0 flex items-center justify-center font-display font-bold text-white/20" style={{ fontSize: "clamp(1.5rem, 30%, 4rem)" }}>
+      <span className="absolute inset-0 flex items-center justify-center font-display font-bold text-white/[0.07]" style={{ fontSize: "9rem", transform: "rotate(-10deg)" }}>
         {initial}
       </span>
       {src && (
