@@ -286,3 +286,31 @@ class CoberturaClienteItem(BaseModel):
 class CoberturaResponse(BaseModel):
     meses: list[str]
     clientes: list[CoberturaClienteItem]
+
+
+class MetaAd(BaseModel):
+    nome: str
+    investimento: float | None = None
+    leads: int | None = None
+    cpl: float | None = None
+    conversoes: int | None = None
+    faturamento: float | None = None
+    roas: float | None = None
+    cpa: float | None = None
+    impressoes: int | None = None
+    imagem_url: str | None = None
+    # Funil & fadiga (podem ser None para snapshots antigos ou anúncios estáticos)
+    ctr: float | None = None
+    frequency: float | None = None
+    hook_rate: float | None = None
+
+
+class GoogleAd(BaseModel):
+    nome: str
+    investimento: float | None = None
+    faturamento: float | None = None
+    conversoes: int | None = None
+    cpa: float | None = None
+    roas: float | None = None
+    impressoes: int | None = None
+    ctr: float | None = None
