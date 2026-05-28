@@ -9,6 +9,11 @@ import type { GoogleAd, MetaAd } from "@/lib/api-gestor";
 import { EvolucaoChart } from "@/components/performance/EvolucaoChart";
 import { MetaAdFullscreen } from "@/components/performance/MetaAdFullscreen";
 import { GoogleAdFullscreen } from "@/components/performance/GoogleAdFullscreen";
+import { useAdContext } from "@/components/performance/useAdContext";
+import { KpiHeader } from "@/components/performance/blocks/KpiHeader";
+import { MetricsRows } from "@/components/performance/blocks/MetricsRows";
+import { ContextBlock } from "@/components/performance/blocks/ContextBlock";
+import { CriativoPreview } from "@/components/performance/blocks/CriativoPreview";
 import { deslocarMes, mesUltimoFechado } from "@/lib/mes-utils";
 import {
   fmtRoas,
@@ -322,26 +327,30 @@ function ContextBar({ label, pct }: { label: string; pct: number }) {
 
 // ── Drawers ───────────────────────────────────────────────────────────────────
 
-function MetaDrawer({ ad, allAds, onClose, mes }: { ad: RankedMetaAd; allAds: RankedMetaAd[]; onClose: () => void; mes: string }) {
+function MetaDrawer({
+  ad,
+  allAds,
+  onClose,
+  onExpand,
+  mes,
+}: {
+  ad: RankedMetaAd;
+  allAds: RankedMetaAd[];
+  onClose: () => void;
+  onExpand: () => void;
+  mes: string;
+}) {
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
   const [drawerTab, setDrawerTab] = useState<"metricas" | "evolucao">("metricas");
-
-  const tier = roasTier(ad.roas);
-  const adsComRoas = allAds.filter((a) => a.roas != null && a.roas > 0);
-  const avgRoas = adsComRoas.length > 0 ? adsComRoas.reduce((s, a) => s + (a.roas ?? 0), 0) / adsComRoas.length : null;
-  const roasVsAvg = avgRoas && ad.roas ? ad.roas / avgRoas : null;
-  const maxRoas = adsComRoas.length > 0 ? Math.max(...adsComRoas.map((a) => a.roas ?? 0)) : 0;
-  const barPct = maxRoas > 0 && ad.roas ? (ad.roas / maxRoas) * 100 : 0;
-  const totalInv = allAds.reduce((s, a) => s + (a.investimento ?? 0), 0);
-  const totalFat = allAds.reduce((s, a) => s + (a.faturamento ?? 0), 0);
-  const shareInv = totalInv > 0 && ad.investimento ? (ad.investimento / totalInv) * 100 : null;
-  const shareFat = totalFat > 0 && ad.faturamento ? (ad.faturamento / totalFat) * 100 : null;
-  const cpm = ad.impressoes && ad.investimento && ad.impressoes > 0 ? (ad.investimento / ad.impressoes) * 1000 : null;
+  const ctx = useAdContext(ad, allAds);
+  const adsComRoas = allAds.filter((a) => a.roas != null && a.roas > 0).length;
 
   return (
     <>
@@ -349,15 +358,32 @@ function MetaDrawer({ ad, allAds, onClose, mes }: { ad: RankedMetaAd; allAds: Ra
       <aside className="fixed right-0 top-0 z-50 flex h-full w-[380px] flex-col bg-[var(--paper)] shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--rule-soft)] px-5 py-4">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-[var(--ink)]" title={ad.nome}>{ad.nome}</p>
+            <p className="truncate text-sm font-medium text-[var(--ink)]" title={ad.nome}>
+              {ad.nome}
+            </p>
             <p className="text-xs text-[var(--muted)]">{ad.clienteNome}</p>
           </div>
-          <button onClick={onClose} className="mt-0.5 flex-shrink-0 text-lg leading-none text-[var(--muted)] transition hover:text-[var(--ink)]">×</button>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <button
+              onClick={onExpand}
+              aria-label="Expandir para tela inteira"
+              title="Expandir"
+              className="text-base leading-none text-[var(--muted)] transition hover:text-[var(--ink)]"
+            >
+              ⛶
+            </button>
+            <button
+              onClick={onClose}
+              aria-label="Fechar"
+              className="text-lg leading-none text-[var(--muted)] transition hover:text-[var(--ink)]"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
-        {/* Abas */}
         <div className="flex border-b border-[var(--rule-soft)] px-5">
-          {(["metricas", "evolucao"] as const).map(t => (
+          {(["metricas", "evolucao"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setDrawerTab(t)}
@@ -383,64 +409,22 @@ function MetaDrawer({ ad, allAds, onClose, mes }: { ad: RankedMetaAd; allAds: Ra
             />
           ) : (
             <>
-          {ad.imagem_url && (
-            <div className="mb-5 overflow-hidden rounded-xl border border-[var(--rule-soft)]" style={{ height: 220 }}>
-              <AdThumbnail src={ad.imagem_url} alt={ad.nome} className="h-full w-full object-cover" />
-            </div>
-          )}
-
-          {/* Rank + ROAS */}
-          <div className="mb-5 flex items-center gap-3">
-            {ad.rank < 3 && <span className="text-2xl">{MEDAL[ad.rank]}</span>}
-            {ad.rank >= 3 && <span className="font-mono-num text-sm text-[var(--muted)]">#{ad.rank + 1}</span>}
-            <div className="flex-1 min-w-0">
-              <div className="mb-1 flex items-center justify-between">
-                <span className={`font-mono-num text-lg font-semibold ${TIER_TEXT[tier]}`}>{fmtRoas(ad.roas)}</span>
-                <span className="text-[10px] text-[var(--muted)]">{adsComRoas.length} criativos</span>
-              </div>
-              <div className="h-1.5 w-full rounded-full bg-[var(--paper-deep)]">
-                <div className={`h-1.5 rounded-full ${TIER_BAR[tier]}`} style={{ width: `${barPct}%` }} />
-              </div>
-            </div>
-          </div>
-
-          <p className="mb-2 text-[10px] uppercase tracking-widest text-[var(--muted)]">Métricas</p>
-          <div className="mb-5 rounded-xl border border-[var(--rule-soft)] px-4">
-            <MetricRow label="Faturamento" value={fmtK(ad.faturamento)} highlight />
-            <MetricRow label="Investimento" value={fmtK(ad.investimento)} />
-            <MetricRow label="ROAS" value={fmtRoas(ad.roas)} highlight />
-            {ad.conversoes != null && <MetricRow label="Conversões" value={String(ad.conversoes)} />}
-            {ad.leads != null && <MetricRow label="Leads" value={String(ad.leads)} />}
-            {ad.cpa != null && <MetricRow label="CPA" value={fmtK(ad.cpa)} />}
-            {ad.cpl != null && <MetricRow label="CPL" value={fmtK(ad.cpl)} />}
-            {ad.impressoes != null && <MetricRow label="Impressões" value={ad.impressoes.toLocaleString("pt-BR")} />}
-            {cpm != null && <MetricRow label="CPM" value={fmtK(cpm)} />}
-          </div>
-
-          <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Contexto · carteira</p>
-
-          {roasVsAvg != null && (
-            <div className="mb-4 rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-4 py-3">
-              <p className="text-xs text-[var(--muted)]">ROAS vs. média da carteira</p>
-              <p className={`mt-1 font-mono-num text-2xl font-semibold ${roasVsAvg >= 1 ? "text-[var(--forest)]" : "text-[var(--crimson)]"}`}>
-                {roasVsAvg >= 1 ? "+" : ""}{((roasVsAvg - 1) * 100).toFixed(0)}%
+              <CriativoPreview ad={ad} mode="drawer" />
+              <KpiHeader ad={ad} ctx={ctx} totalAdsComRoas={adsComRoas} mode="drawer" />
+              <p className="mb-2 text-[10px] uppercase tracking-widest text-[var(--muted)]">
+                Métricas
               </p>
-              <p className="mt-0.5 text-[10px] text-[var(--muted)]">Média: {avgRoas ? fmtRoas(avgRoas) : "—"}</p>
-            </div>
-          )}
-
-          {(shareInv != null || shareFat != null) && (
-            <div className="rounded-xl border border-[var(--rule-soft)] px-4 py-3">
-              {shareInv != null && <ContextBar label="Share de investimento" pct={shareInv} />}
-              {shareFat != null && <ContextBar label="Share de faturamento" pct={shareFat} />}
-            </div>
-          )}
+              <MetricsRows ad={ad} cpm={ctx.cpm} mode="drawer" />
+              <ContextBlock ctx={ctx} mode="drawer" />
             </>
           )}
         </div>
 
         <div className="border-t border-[var(--rule-soft)] px-5 py-3">
-          <Link href={`/gestor/${ad.clienteSlug}`} className="block text-center text-xs text-[var(--forest)] transition hover:underline">
+          <Link
+            href={`/gestor/${ad.clienteSlug}`}
+            className="block text-center text-xs text-[var(--forest)] transition hover:underline"
+          >
             Ver dashboard do cliente →
           </Link>
         </div>
@@ -1109,7 +1093,18 @@ export default function RankingsPage() {
         </>
       )}
 
-      {selectedMeta && <MetaDrawer ad={selectedMeta} allAds={metaAds} onClose={() => setSelectedMeta(null)} mes={mes} />}
+      {selectedMeta && (
+        <MetaDrawer
+          ad={selectedMeta}
+          allAds={metaAds}
+          onClose={() => setSelectedMeta(null)}
+          onExpand={() => {
+            setSelectedMetaFullscreen(selectedMeta);
+            setSelectedMeta(null);
+          }}
+          mes={mes}
+        />
+      )}
       {selectedGoogle && <GoogleDrawer ad={selectedGoogle} allAds={googleAds} onClose={() => setSelectedGoogle(null)} mes={mes} />}
       <MetaAdFullscreen
         ad={selectedMetaFullscreen}
