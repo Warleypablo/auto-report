@@ -14,9 +14,21 @@ import {
   TIER_TEXT,
   TIER_BAR,
 } from "@/lib/roas-tier";
+import {
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  ZAxis,
+  Cell,
+  ReferenceLine,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 
-type RankedMetaAd = MetaAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number };
-type RankedGoogleAd = GoogleAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number };
+type RankedMetaAd = MetaAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number; rankDelta: number | null };
+type RankedGoogleAd = GoogleAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number; rankDelta: number | null };
 
 function mesLabel(mes: string): string {
   const [ano, m] = mes.split("-");
@@ -81,6 +93,17 @@ function AdThumbnail({ src, alt, className }: { src: string | null; alt: string;
 
 const TH = "pb-2 pt-3 text-[10px] font-normal uppercase tracking-widest text-[var(--muted)] whitespace-nowrap";
 
+function RankDeltaBadge({ delta }: { delta: number | null }) {
+  if (delta === null) return <span className="text-[9px] text-[var(--muted)] opacity-50">novo</span>;
+  if (delta === 0) return null;
+  const up = delta > 0;
+  return (
+    <span className={`text-[9px] font-semibold ${up ? "text-emerald-400" : "text-red-400"}`}>
+      {up ? `▲${delta}` : `▼${Math.abs(delta)}`}
+    </span>
+  );
+}
+
 // ── KPI strip ─────────────────────────────────────────────────────────────────
 
 function KpiStrip({ items }: { items: { label: string; value: string; sub?: string; highlight?: boolean }[] }) {
@@ -113,6 +136,20 @@ function fmtImp(v: number | null): string {
   return String(v);
 }
 
+function median(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+const TIER_SCATTER_COLORS: Record<string, string> = {
+  high: "#34d399",
+  mid: "#facc15",
+  low: "#f87171",
+  none: "#6b7280",
+};
+
 function PodiumMeta({ ads, maxRoas, onSelect }: {
   ads: RankedMetaAd[];
   maxRoas: number;
@@ -138,6 +175,17 @@ function PodiumMeta({ ads, maxRoas, onSelect }: {
                 className="h-full w-full object-cover transition group-hover:scale-[1.02]"
               />
               <span className="absolute left-2.5 top-2.5 text-xl drop-shadow">{MEDAL[ad.rank]}</span>
+              {(ad.rankDelta !== 0) && (
+                <span className={`absolute left-2 bottom-2 rounded px-1.5 py-0.5 text-[9px] font-semibold backdrop-blur-sm ${
+                  ad.rankDelta === null
+                    ? "bg-black/30 text-white/50"
+                    : ad.rankDelta > 0
+                    ? "bg-emerald-900/60 text-emerald-300"
+                    : "bg-red-900/60 text-red-300"
+                }`}>
+                  {ad.rankDelta === null ? "novo" : ad.rankDelta > 0 ? `▲${ad.rankDelta}` : `▼${Math.abs(ad.rankDelta)}`}
+                </span>
+              )}
               <span className={`absolute right-2.5 top-2.5 rounded-md bg-[var(--paper)] px-2 py-0.5 text-xs font-semibold shadow ${TIER_TEXT[tier]}`}>
                 {fmtRoas(ad.roas)}
               </span>
@@ -194,7 +242,20 @@ function PodiumGoogle({ ads, maxRoas, onSelect }: {
             className="group rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4 text-left transition hover:border-[var(--forest)] hover:shadow-md"
           >
             <div className="mb-3 flex items-start justify-between gap-2">
-              <span className="text-xl">{MEDAL[ad.rank]}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{MEDAL[ad.rank]}</span>
+                {(ad.rankDelta !== 0) && (
+                  <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${
+                    ad.rankDelta === null
+                      ? "bg-[var(--paper-deep)] text-[var(--muted)]"
+                      : ad.rankDelta > 0
+                      ? "bg-emerald-900/40 text-emerald-300"
+                      : "bg-red-900/40 text-red-300"
+                  }`}>
+                    {ad.rankDelta === null ? "novo" : ad.rankDelta > 0 ? `▲${ad.rankDelta}` : `▼${Math.abs(ad.rankDelta)}`}
+                  </span>
+                )}
+              </div>
               <span className={`rounded-md bg-[var(--paper)] px-2 py-0.5 text-xs font-semibold shadow ${TIER_TEXT[tier]}`}>
                 {fmtRoas(ad.roas)}
               </span>
@@ -482,7 +543,10 @@ function TabelaMeta({ ads, maxRoas, onSelect }: {
                 <td className="py-3 pl-0 pr-2">
                   <div className="flex items-center gap-0">
                     <div className={`mr-3 h-8 w-0.5 rounded-full ${TIER_BAR[tier]}`} />
-                    <span className="font-mono-num text-xs text-[var(--muted)]">{ad.rank + 1}</span>
+                    <div className="flex flex-col items-start leading-none gap-0.5">
+                      <span className="font-mono-num text-xs text-[var(--muted)]">{ad.rank + 1}</span>
+                      <RankDeltaBadge delta={ad.rankDelta} />
+                    </div>
                   </div>
                 </td>
                 <td className="max-w-[200px] px-3 py-3">
@@ -557,7 +621,10 @@ function TabelaGoogle({ ads, maxRoas, onSelect }: {
                 <td className="py-3 pl-0 pr-2">
                   <div className="flex items-center">
                     <div className={`mr-3 h-8 w-0.5 rounded-full ${TIER_BAR[tier]}`} />
-                    <span className="font-mono-num text-xs text-[var(--muted)]">{c.rank + 1}</span>
+                    <div className="flex flex-col items-start leading-none gap-0.5">
+                      <span className="font-mono-num text-xs text-[var(--muted)]">{c.rank + 1}</span>
+                      <RankDeltaBadge delta={c.rankDelta} />
+                    </div>
                   </div>
                 </td>
                 <td className="max-w-[280px] px-3 py-3">
@@ -587,12 +654,127 @@ function TabelaGoogle({ ads, maxRoas, onSelect }: {
   );
 }
 
+// ── Scatter view ─────────────────────────────────────────────────────────────
+
+type ScatterDot = {
+  x: number;
+  y: number;
+  z: number;
+  nome: string;
+  clienteNome: string;
+  roas: number | null;
+};
+
+function ScatterTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: ScatterDot }> }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  const tier = roasTier(d.roas);
+  return (
+    <div className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2.5 text-xs shadow-xl">
+      <p className="mb-0.5 max-w-[200px] truncate font-medium text-[var(--ink)]">{d.nome}</p>
+      <p className="mb-2 text-[var(--muted)]">{d.clienteNome}</p>
+      <p className={`font-mono-num font-semibold ${TIER_TEXT[tier]}`}>ROAS {fmtRoas(d.roas)}</p>
+      <p className="font-mono-num text-[var(--forest)]">Fat. {fmtK(d.y)}</p>
+      <p className="font-mono-num text-[var(--muted)]">Inv. {fmtK(d.x)}</p>
+    </div>
+  );
+}
+
+function ScatterView({ ads }: { ads: (RankedMetaAd | RankedGoogleAd)[] }) {
+  const data: ScatterDot[] = ads
+    .filter((a) => a.investimento != null && a.faturamento != null && a.investimento > 0)
+    .map((a) => ({
+      x: a.investimento!,
+      y: a.faturamento!,
+      z: Math.max(a.impressoes ?? 300, 300),
+      nome: a.nome,
+      clienteNome: a.clienteNome,
+      roas: a.roas,
+    }));
+
+  if (data.length === 0) {
+    return (
+      <p className="rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-12 text-center text-sm text-[var(--muted)]">
+        Sem dados suficientes para o scatter.
+      </p>
+    );
+  }
+
+  const medInv = median(data.map((d) => d.x));
+  const medFat = median(data.map((d) => d.y));
+
+  return (
+    <div className="rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-5">
+      <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <p className="text-[10px] uppercase tracking-widest text-[var(--muted)]">Investimento × Faturamento</p>
+        <div className="flex flex-wrap items-center gap-4">
+          {(["high", "mid", "low"] as const).map((tier) => (
+            <span key={tier} className="flex items-center gap-1.5 text-[9px] text-[var(--muted)]">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: TIER_SCATTER_COLORS[tier] }} />
+              {tier === "high" ? "ROAS ≥ 3×" : tier === "mid" ? "1,5× – 3×" : "< 1,5×"}
+            </span>
+          ))}
+          <span className="text-[9px] text-[var(--muted)] opacity-50">tamanho = impressões</span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={440}>
+        <ScatterChart margin={{ top: 10, right: 30, bottom: 44, left: 20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--rule-soft)" opacity={0.4} />
+          <XAxis
+            dataKey="x"
+            type="number"
+            name="Investimento"
+            tickFormatter={(v: number) => fmtK(v)}
+            tick={{ fontSize: 10, fill: "var(--muted)" }}
+            label={{ value: "Investimento", position: "insideBottom", offset: -28, fontSize: 10, fill: "var(--muted)" }}
+          />
+          <YAxis
+            dataKey="y"
+            type="number"
+            name="Faturamento"
+            tickFormatter={(v: number) => fmtK(v)}
+            tick={{ fontSize: 10, fill: "var(--muted)" }}
+            label={{ value: "Faturamento", angle: -90, position: "insideLeft", offset: 20, fontSize: 10, fill: "var(--muted)" }}
+          />
+          <ZAxis dataKey="z" range={[30, 300]} name="Impressões" />
+          <Tooltip cursor={{ strokeDasharray: "3 3" }} content={<ScatterTooltip />} />
+          <ReferenceLine
+            x={medInv}
+            stroke="rgba(255,255,255,0.18)"
+            strokeDasharray="5 4"
+            label={{ value: "med.", position: "insideTopRight", fontSize: 8, fill: "rgba(255,255,255,0.3)" }}
+          />
+          <ReferenceLine
+            y={medFat}
+            stroke="rgba(255,255,255,0.18)"
+            strokeDasharray="5 4"
+            label={{ value: "med.", position: "insideTopRight", fontSize: 8, fill: "rgba(255,255,255,0.3)" }}
+          />
+          <Scatter data={data} isAnimationActive={false}>
+            {data.map((d, i) => (
+              <Cell
+                key={`cell-${i}`}
+                fill={TIER_SCATTER_COLORS[roasTier(d.roas)]}
+                fillOpacity={0.8}
+              />
+            ))}
+          </Scatter>
+        </ScatterChart>
+      </ResponsiveContainer>
+      <p className="mt-2 text-[9px] text-[var(--muted)] opacity-50">
+        Quadrante superior esquerdo = alto faturamento com baixo investimento — criativos mais eficientes da carteira. As linhas marcam a mediana.
+      </p>
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function RankingsPage() {
   const [mes, setMes] = useState(mesUltimoFechado());
   const [loading, setLoading] = useState(true);
   const [rede, setRede] = useState<"meta" | "google">("meta");
+  const [view, setView] = useState<"ranking" | "scatter">("ranking");
   const [metaAds, setMetaAds] = useState<RankedMetaAd[]>([]);
   const [googleAds, setGoogleAds] = useState<RankedGoogleAd[]>([]);
   const [selectedMeta, setSelectedMeta] = useState<RankedMetaAd | null>(null);
@@ -639,6 +821,10 @@ export default function RankingsPage() {
     setLoading(true);
     setSelectedMeta(null);
     setSelectedGoogle(null);
+    const mesPrev = deslocarMes(mes, -1);
+    const sortByRoasAsc = (a: { roas: number | null }, b: { roas: number | null }) =>
+      (b.roas ?? -1) - (a.roas ?? -1);
+
     gestorApi
       .clientes()
       .then(({ items }) => {
@@ -646,25 +832,55 @@ export default function RankingsPage() {
         const ativos = items.filter((c) => c.ativo);
         return Promise.all(
           ativos.map((c) =>
-            gestorApi.metricasBreakdown(c.slug, mes)
-              .then((bd) => ({ cliente: c, bd }))
-              .catch(() => ({ cliente: c, bd: null })),
+            Promise.all([
+              gestorApi.metricasBreakdown(c.slug, mes).catch(() => null),
+              gestorApi.metricasBreakdown(c.slug, mesPrev).catch(() => null),
+            ]).then(([bd, bdPrev]) => ({ cliente: c, bd, bdPrev })),
           ),
         );
       })
       .then((results) => {
         if (!results || cancelled) return;
+
+        // Build prev-month rank maps
+        const prevMetaFlat: Array<{ key: string; roas: number | null }> = [];
+        const prevGoogleFlat: Array<{ key: string; roas: number | null }> = [];
+        for (const { cliente, bdPrev } of results) {
+          if (!bdPrev) continue;
+          for (const ad of bdPrev.meta_ads ?? [])
+            prevMetaFlat.push({ key: `${cliente.slug}:${ad.nome}`, roas: ad.roas });
+          for (const ad of bdPrev.google_ads ?? [])
+            prevGoogleFlat.push({ key: `${cliente.slug}:${ad.nome}`, roas: ad.roas });
+        }
+        const prevMetaMap = new Map<string, number>(
+          [...prevMetaFlat].sort(sortByRoasAsc).map((a, i) => [a.key, i]),
+        );
+        const prevGoogleMap = new Map<string, number>(
+          [...prevGoogleFlat].sort(sortByRoasAsc).map((a, i) => [a.key, i]),
+        );
+
         const allMeta: RankedMetaAd[] = [];
         const allGoogle: RankedGoogleAd[] = [];
         for (const { cliente, bd } of results) {
           if (!bd) continue;
           for (const ad of bd.meta_ads ?? [])
-            allMeta.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug, gestorNome: cliente.gestor, rank: 0 });
+            allMeta.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug, gestorNome: cliente.gestor, rank: 0, rankDelta: null });
           for (const ad of bd.google_ads ?? [])
-            allGoogle.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug, gestorNome: cliente.gestor, rank: 0 });
+            allGoogle.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug, gestorNome: cliente.gestor, rank: 0, rankDelta: null });
         }
-        setMetaAds(sortByRoas(allMeta).map((a, i) => ({ ...a, rank: i })));
-        setGoogleAds(sortByRoas(allGoogle).map((a, i) => ({ ...a, rank: i })));
+
+        setMetaAds(
+          sortByRoas(allMeta).map((a, i) => {
+            const prev = prevMetaMap.get(`${a.clienteSlug}:${a.nome}`);
+            return { ...a, rank: i, rankDelta: prev !== undefined ? prev - i : null };
+          }),
+        );
+        setGoogleAds(
+          sortByRoas(allGoogle).map((a, i) => {
+            const prev = prevGoogleMap.get(`${a.clienteSlug}:${a.nome}`);
+            return { ...a, rank: i, rankDelta: prev !== undefined ? prev - i : null };
+          }),
+        );
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -738,21 +954,39 @@ export default function RankingsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="mb-6 flex gap-1.5">
-        {(["meta", "google"] as const).map((r) => (
-          <button
-            key={r}
-            onClick={() => setRede(r)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-              rede === r
-                ? "bg-[var(--ink)] text-[var(--paper)]"
-                : "bg-[var(--paper-soft)] text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]"
-            }`}
-          >
-            {r === "meta" ? "Meta Ads" : "Google Ads"}
-          </button>
-        ))}
+      {/* Tabs + view toggle */}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="flex gap-1.5">
+          {(["meta", "google"] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => setRede(r)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                rede === r
+                  ? "bg-[var(--ink)] text-[var(--paper)]"
+                  : "bg-[var(--paper-soft)] text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]"
+              }`}
+            >
+              {r === "meta" ? "Meta Ads" : "Google Ads"}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1">
+          {(["ranking", "scatter"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              title={v === "scatter" ? "Scatter: investimento × faturamento" : "Ranking por ROAS"}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                view === v
+                  ? "bg-[var(--paper-deep)] text-[var(--ink)]"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+              }`}
+            >
+              {v === "ranking" ? "Ranking" : "Scatter"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -772,32 +1006,38 @@ export default function RankingsPage() {
             { label: "ROAS médio", value: roasMedio != null ? fmtRoas(roasMedio) : "—", sub: "ponderado por investimento" },
           ]} />
 
-          {/* Pódio top 3 */}
-          {rede === "meta" && filteredMeta.length >= 1 && (
-            <div className="mb-2">
-              <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Top 3 criativos</p>
-              <PodiumMeta ads={filteredMeta} maxRoas={maxRoas} onSelect={setSelectedMeta} />
-            </div>
-          )}
-          {rede === "google" && filteredGoogle.length >= 1 && (
-            <div className="mb-2">
-              <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Top 3 campanhas</p>
-              <PodiumGoogle ads={filteredGoogle} maxRoas={maxRoas} onSelect={setSelectedGoogle} />
-            </div>
-          )}
+          {view === "scatter" ? (
+            <ScatterView ads={rede === "meta" ? filteredMeta : filteredGoogle} />
+          ) : (
+            <>
+              {/* Pódio top 3 */}
+              {rede === "meta" && filteredMeta.length >= 1 && (
+                <div className="mb-2">
+                  <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Top 3 criativos</p>
+                  <PodiumMeta ads={filteredMeta} maxRoas={maxRoas} onSelect={setSelectedMeta} />
+                </div>
+              )}
+              {rede === "google" && filteredGoogle.length >= 1 && (
+                <div className="mb-2">
+                  <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Top 3 campanhas</p>
+                  <PodiumGoogle ads={filteredGoogle} maxRoas={maxRoas} onSelect={setSelectedGoogle} />
+                </div>
+              )}
 
-          {/* Resto da tabela */}
-          {rede === "meta" && restMeta.length > 0 && (
-            <div className="mt-4">
-              <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Demais criativos</p>
-              <TabelaMeta ads={restMeta} maxRoas={maxRoas} onSelect={setSelectedMeta} />
-            </div>
-          )}
-          {rede === "google" && restGoogle.length > 0 && (
-            <div className="mt-4">
-              <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Demais campanhas</p>
-              <TabelaGoogle ads={restGoogle} maxRoas={maxRoas} onSelect={setSelectedGoogle} />
-            </div>
+              {/* Resto da tabela */}
+              {rede === "meta" && restMeta.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Demais criativos</p>
+                  <TabelaMeta ads={restMeta} maxRoas={maxRoas} onSelect={setSelectedMeta} />
+                </div>
+              )}
+              {rede === "google" && restGoogle.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Demais campanhas</p>
+                  <TabelaGoogle ads={restGoogle} maxRoas={maxRoas} onSelect={setSelectedGoogle} />
+                </div>
+              )}
+            </>
           )}
         </>
       )}
