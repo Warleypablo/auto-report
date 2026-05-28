@@ -526,12 +526,14 @@ function ContextBar({ label, pct }: { label: string; pct: number }) {
 
 // ── Drawers ───────────────────────────────────────────────────────────────────
 
-function MetaDrawer({ ad, allAds, onClose }: { ad: RankedMetaAd; allAds: RankedMetaAd[]; onClose: () => void }) {
+function MetaDrawer({ ad, allAds, onClose, mes }: { ad: RankedMetaAd; allAds: RankedMetaAd[]; onClose: () => void; mes: string }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
+
+  const [drawerTab, setDrawerTab] = useState<"metricas" | "evolucao">("metricas");
 
   const tier = roasTier(ad.roas);
   const adsComRoas = allAds.filter((a) => a.roas != null && a.roas > 0);
@@ -557,7 +559,33 @@ function MetaDrawer({ ad, allAds, onClose }: { ad: RankedMetaAd; allAds: RankedM
           <button onClick={onClose} className="mt-0.5 flex-shrink-0 text-lg leading-none text-[var(--muted)] transition hover:text-[var(--ink)]">×</button>
         </div>
 
+        {/* Abas */}
+        <div className="flex border-b border-[var(--rule-soft)] px-5">
+          {(["metricas", "evolucao"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setDrawerTab(t)}
+              className={`mr-5 pb-2 pt-2.5 text-xs transition ${
+                drawerTab === t
+                  ? "border-b-2 border-[var(--forest)] font-medium text-[var(--ink)]"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+              }`}
+            >
+              {t === "metricas" ? "Métricas" : "Evolução"}
+            </button>
+          ))}
+        </div>
+
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {drawerTab === "evolucao" ? (
+            <EvolucaoTab
+              clienteSlug={ad.clienteSlug}
+              adNome={ad.nome}
+              adType="meta"
+              mes={mes}
+            />
+          ) : (
+            <>
           {ad.imagem_url && (
             <div className="mb-5 overflow-hidden rounded-xl border border-[var(--rule-soft)]" style={{ height: 220 }}>
               <AdThumbnail src={ad.imagem_url} alt={ad.nome} className="h-full w-full object-cover" />
@@ -610,6 +638,8 @@ function MetaDrawer({ ad, allAds, onClose }: { ad: RankedMetaAd; allAds: RankedM
               {shareFat != null && <ContextBar label="Share de faturamento" pct={shareFat} />}
             </div>
           )}
+            </>
+          )}
         </div>
 
         <div className="border-t border-[var(--rule-soft)] px-5 py-3">
@@ -622,12 +652,14 @@ function MetaDrawer({ ad, allAds, onClose }: { ad: RankedMetaAd; allAds: RankedM
   );
 }
 
-function GoogleDrawer({ ad, allAds, onClose }: { ad: RankedGoogleAd; allAds: RankedGoogleAd[]; onClose: () => void }) {
+function GoogleDrawer({ ad, allAds, onClose, mes }: { ad: RankedGoogleAd; allAds: RankedGoogleAd[]; onClose: () => void; mes: string }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
+
+  const [drawerTab, setDrawerTab] = useState<"metricas" | "evolucao">("metricas");
 
   const tier = roasTier(ad.roas);
   const adsComRoas = allAds.filter((a) => a.roas != null && a.roas > 0);
@@ -653,7 +685,33 @@ function GoogleDrawer({ ad, allAds, onClose }: { ad: RankedGoogleAd; allAds: Ran
           <button onClick={onClose} className="mt-0.5 flex-shrink-0 text-lg leading-none text-[var(--muted)] transition hover:text-[var(--ink)]">×</button>
         </div>
 
+        {/* Abas */}
+        <div className="flex border-b border-[var(--rule-soft)] px-5">
+          {(["metricas", "evolucao"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setDrawerTab(t)}
+              className={`mr-5 pb-2 pt-2.5 text-xs transition ${
+                drawerTab === t
+                  ? "border-b-2 border-[var(--forest)] font-medium text-[var(--ink)]"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+              }`}
+            >
+              {t === "metricas" ? "Métricas" : "Evolução"}
+            </button>
+          ))}
+        </div>
+
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {drawerTab === "evolucao" ? (
+            <EvolucaoTab
+              clienteSlug={ad.clienteSlug}
+              adNome={ad.nome}
+              adType="google"
+              mes={mes}
+            />
+          ) : (
+            <>
           <div className="mb-5 flex items-center gap-3">
             {ad.rank < 3 && <span className="text-2xl">{MEDAL[ad.rank]}</span>}
             {ad.rank >= 3 && <span className="font-mono-num text-sm text-[var(--muted)]">#{ad.rank + 1}</span>}
@@ -696,6 +754,8 @@ function GoogleDrawer({ ad, allAds, onClose }: { ad: RankedGoogleAd; allAds: Ran
               {shareInv != null && <ContextBar label="Share de investimento" pct={shareInv} />}
               {shareFat != null && <ContextBar label="Share de faturamento" pct={shareFat} />}
             </div>
+          )}
+            </>
           )}
         </div>
 
@@ -1249,8 +1309,8 @@ export default function RankingsPage() {
         </>
       )}
 
-      {selectedMeta && <MetaDrawer ad={selectedMeta} allAds={metaAds} onClose={() => setSelectedMeta(null)} />}
-      {selectedGoogle && <GoogleDrawer ad={selectedGoogle} allAds={googleAds} onClose={() => setSelectedGoogle(null)} />}
+      {selectedMeta && <MetaDrawer ad={selectedMeta} allAds={metaAds} onClose={() => setSelectedMeta(null)} mes={mes} />}
+      {selectedGoogle && <GoogleDrawer ad={selectedGoogle} allAds={googleAds} onClose={() => setSelectedGoogle(null)} mes={mes} />}
     </main>
     </GestorShell>
   );
