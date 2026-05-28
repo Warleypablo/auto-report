@@ -8,7 +8,7 @@ import type { UsuarioInfo } from "@/lib/api-gestor";
 
 const NAV: { href: string; label: string; icon: string }[] = [
   { href: "/gestor",             label: "Dashboard",    icon: "◉" },
-  { href: "/gestor/performance", label: "Performance",  icon: "◈" },
+  { href: "/gestor/performance", label: "Criativos",    icon: "◈" },
   { href: "/gestor/turbomax",    label: "TurboMax",     icon: "⚡" },
 ];
 
