@@ -76,9 +76,8 @@ function StatusBadge({ status }: { status: JobInfo["status"] }) {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 const NAV_ITEMS: { id: Tab; label: string; icon: string }[] = [
-  { id: "dashboard",     label: "Dashboard",    icon: "◉" },
-  { id: "reportes",      label: "Reportes",     icon: "◈" },
-  { id: "configuracoes", label: "Configurações", icon: "◎" },
+  { id: "dashboard", label: "Dashboard", icon: "◉" },
+  { id: "reportes",  label: "Reportes",  icon: "◈" },
 ];
 
 function Sidebar({
@@ -122,25 +121,6 @@ function Sidebar({
                 ))}
               </div>
             )}
-            {id === "configuracoes" && tab === "configuracoes" && (
-              <div className="mb-1 ml-5 flex flex-col">
-                {CONFIG_SUB_TABS.map(({ id: subId, label: subLabel }) => (
-                  <button
-                    key={subId}
-                    onClick={() => setConfigTab(subId)}
-                    className={[
-                      "flex w-full items-center rounded-md px-3 py-1.5 text-left text-xs transition",
-                      configTab === subId
-                        ? "font-medium text-[var(--ink)]"
-                        : "text-[var(--muted)] hover:text-[var(--ink)]",
-                    ].join(" ")}
-                  >
-                    <span className={["mr-2 text-[8px]", configTab === subId ? "opacity-100" : "opacity-0"].join(" ")}>▸</span>
-                    {subLabel}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         ))}
         <Link
@@ -158,6 +138,37 @@ function Sidebar({
           TurboMax
         </Link>
       </nav>
+      <div className="border-t border-[var(--rule-soft)] px-3 pt-3 pb-1">
+        <button
+          onClick={() => setTab("configuracoes")}
+          className={[
+            "mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition",
+            tab === "configuracoes"
+              ? "bg-[var(--paper-deep)] font-medium text-[var(--ink)]"
+              : "text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]",
+          ].join(" ")}
+        >
+          <span className="text-[10px] opacity-60">◎</span>
+          Configurações
+        </button>
+        {tab === "configuracoes" && (
+          <div className="mb-1 ml-5 flex flex-col">
+            {CONFIG_SUB_TABS.map(({ id: subId, label: subLabel }) => (
+              <button
+                key={subId}
+                onClick={() => setConfigTab(subId)}
+                className={[
+                  "flex w-full items-center rounded-md px-3 py-1.5 text-left text-xs transition",
+                  configTab === subId ? "font-medium text-[var(--ink)]" : "text-[var(--muted)] hover:text-[var(--ink)]",
+                ].join(" ")}
+              >
+                <span className={["mr-2 text-[8px]", configTab === subId ? "opacity-100" : "opacity-0"].join(" ")}>▸</span>
+                {subLabel}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="border-t border-[var(--rule-soft)] px-4 py-4">
         <p className="text-xs font-medium text-[var(--ink-soft)]">{user?.nome ?? "—"}</p>
         <p className="mb-3 truncate text-xs text-[var(--muted)]">{user?.email ?? ""}</p>

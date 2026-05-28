@@ -7,11 +7,10 @@ import { gestorApi } from "@/lib/api-gestor";
 import type { UsuarioInfo } from "@/lib/api-gestor";
 
 const NAV: { href: string; label: string; icon: string; tab?: string }[] = [
-  { href: "/gestor",                   label: "Dashboard",    icon: "◉" },
-  { href: "/gestor?tab=reportes",      label: "Reportes",     icon: "◈", tab: "reportes" },
-  { href: "/gestor?tab=configuracoes", label: "Configurações",icon: "◎", tab: "configuracoes" },
-  { href: "/gestor/performance",       label: "Criativos",    icon: "◈" },
-  { href: "/gestor/turbomax",          label: "TurboMax",     icon: "⚡" },
+  { href: "/gestor",              label: "Dashboard", icon: "◉" },
+  { href: "/gestor?tab=reportes", label: "Reportes",  icon: "◈", tab: "reportes" },
+  { href: "/gestor/performance",  label: "Criativos", icon: "◈" },
+  { href: "/gestor/turbomax",     label: "TurboMax",  icon: "⚡" },
 ];
 
 export default function GestorShell({ children }: { children: React.ReactNode }) {
@@ -67,6 +66,20 @@ export default function GestorShell({ children }: { children: React.ReactNode })
           })}
         </nav>
 
+        <div className="border-t border-[var(--rule-soft)] px-3 pt-3 pb-1">
+          <Link
+            href="/gestor?tab=configuracoes"
+            className={[
+              "mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition",
+              currentTab === "configuracoes" && pathname === "/gestor"
+                ? "bg-[var(--paper-deep)] font-medium text-[var(--ink)]"
+                : "text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]",
+            ].join(" ")}
+          >
+            <span className="text-[10px] opacity-60">◎</span>
+            Configurações
+          </Link>
+        </div>
         <div className="border-t border-[var(--rule-soft)] px-4 py-4">
           <p className="text-xs font-medium text-[var(--ink-soft)]">{user?.nome ?? "—"}</p>
           <p className="mb-3 truncate text-xs text-[var(--muted)]">{user?.email ?? ""}</p>
