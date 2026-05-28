@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import type { GoogleAd } from "@/lib/api-gestor";
 
 import { useAdContext } from "./useAdContext";
+import { useFocusTrap } from "./useFocusTrap";
 import { ContextBlock } from "./blocks/ContextBlock";
 import { EvolucaoChart } from "./EvolucaoChart";
 import { FunilFadigaBlock } from "./blocks/FunilFadigaBlock";
@@ -67,9 +68,11 @@ function GoogleAdFullscreenBody({
 }) {
   const ctx = useAdContext(ad, allAds);
   const adsComRoas = allAds.filter((a) => a.roas != null && a.roas > 0).length;
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
 
   return (
     <motion.div
+      ref={trapRef}
       className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-[var(--paper)]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}

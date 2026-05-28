@@ -3,20 +3,28 @@ import type { AdContext } from "../useAdContext";
 
 type Variant = "meta" | "google";
 
-function fmtPct(v: number | null, suffix = "%"): string {
-  return v == null ? "—" : `${v.toFixed(1)}${suffix}`;
+function fmtPct(v: number | null): string {
+  return v == null ? "—" : `${v.toFixed(1)}%`;
 }
 function fmtDecimal(v: number | null): string {
   return v == null ? "—" : v.toFixed(2);
 }
 
-function ComparisonArrow({ value, avg }: { value: number | null; avg: number | null }) {
+function ComparisonArrow({
+  value,
+  avg,
+  unit,
+}: {
+  value: number | null;
+  avg: number | null;
+  unit: string;
+}) {
   if (value == null || avg == null) return null;
   const above = value >= avg;
   return (
     <span className={`text-[10px] ${above ? "text-emerald-400" : "text-red-400"}`}>
       {above ? "↑" : "↓"} média {avg.toFixed(2)}
-      {value < 1 || avg < 1 ? "" : "×"}
+      {unit}
     </span>
   );
 }
@@ -26,12 +34,14 @@ function FunilKpi({
   value,
   avg,
   formatFn,
+  unit,
   unavailableHint,
 }: {
   label: string;
   value: number | null;
   avg: number | null;
   formatFn: (v: number | null) => string;
+  unit: string;
   unavailableHint?: string;
 }) {
   return (
@@ -41,7 +51,7 @@ function FunilKpi({
       {value == null && unavailableHint && (
         <p className="mt-0.5 text-[9px] italic text-[var(--muted)]">{unavailableHint}</p>
       )}
-      {value != null && <ComparisonArrow value={value} avg={avg} />}
+      {value != null && <ComparisonArrow value={value} avg={avg} unit={unit} />}
     </div>
   );
 }
@@ -69,7 +79,8 @@ export function FunilFadigaBlock({ ad, ctx, variant }: FunilFadigaBlockProps) {
           label="CTR"
           value={adAny.ctr ?? null}
           avg={ctx.avgCtr}
-          formatFn={(v) => fmtPct(v)}
+          formatFn={fmtPct}
+          unit="%"
         />
         {variant === "meta" && (
           <>
@@ -77,7 +88,8 @@ export function FunilFadigaBlock({ ad, ctx, variant }: FunilFadigaBlockProps) {
               label="Hook rate"
               value={adAny.hook_rate ?? null}
               avg={ctx.avgHookRate}
-              formatFn={(v) => fmtPct(v)}
+              formatFn={fmtPct}
+              unit="%"
               unavailableHint="Apenas vídeo"
             />
             <FunilKpi
@@ -85,6 +97,7 @@ export function FunilFadigaBlock({ ad, ctx, variant }: FunilFadigaBlockProps) {
               value={adAny.frequency ?? null}
               avg={ctx.avgFrequency}
               formatFn={fmtDecimal}
+              unit=""
             />
           </>
         )}

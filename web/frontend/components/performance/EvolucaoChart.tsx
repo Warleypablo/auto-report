@@ -25,7 +25,6 @@ type HistoryPoint = {
 
 type FadigaDiag =
   | { kind: "fadiga"; label: string }
-  | { kind: "queda"; label: string }
   | { kind: "estavel"; label: string }
   | null;
 
@@ -158,9 +157,7 @@ export function EvolucaoChart({ clienteSlug, adNome, adType, mes, mode = "drawer
           className={`mb-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
             diagnosis.kind === "fadiga"
               ? "bg-amber-900/30 text-amber-300"
-              : diagnosis.kind === "queda"
-                ? "bg-red-900/30 text-red-300"
-                : "bg-emerald-900/30 text-emerald-300"
+              : "bg-emerald-900/30 text-emerald-300"
           }`}
         >
           {diagnosis.label}
