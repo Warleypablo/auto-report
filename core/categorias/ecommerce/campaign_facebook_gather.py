@@ -79,6 +79,42 @@ def _extract_purchase_metrics(actions, action_values):
     fat  = fat_counter.get("omni_purchase")  or fat_counter.get("purchase",  0.0)
     return conv, fat
 
+def _video_3s_views_from_row(row: dict) -> Optional[int]:
+    """Extrai contagem de 3-second video plays do row da Meta Insights API.
+
+    Tenta na ordem: `video_3_sec_watched_actions` (campo dedicado) e
+    `actions[action_type=video_view]` (fallback clássico). Retorna `None`
+    quando nenhuma das chaves está presente — sinal de que o anúncio não
+    é em vídeo (estático/imagem), distinguindo de "zero views".
+    """
+    primary = row.get("video_3_sec_watched_actions")
+    if primary:
+        total = 0
+        for item in primary:
+            if isinstance(item, dict) and "value" in item:
+                try:
+                    total += int(float(item["value"]))
+                except (TypeError, ValueError):
+                    continue
+        return total
+
+    actions = row.get("actions")
+    if actions and isinstance(actions, list):
+        total = 0
+        found = False
+        for item in actions:
+            if not isinstance(item, dict):
+                continue
+            if item.get("action_type") == "video_view":
+                found = True
+                try:
+                    total += int(float(item.get("value", 0)))
+                except (TypeError, ValueError):
+                    continue
+        return total if found else None
+
+    return None
+
 # -----------------------------------------------------------------------------
 # Consulta extra: miniatura dos criativos
 # -----------------------------------------------------------------------------
