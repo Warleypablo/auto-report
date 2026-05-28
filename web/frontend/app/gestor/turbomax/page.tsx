@@ -391,8 +391,40 @@ export default function TurboMaxPage() {
         </div>
 
         {/* ── Messages ── */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
-          <div className="mx-auto max-w-3xl space-y-5">
+        <div
+          className="relative flex-1 overflow-hidden"
+          style={{
+            background: "radial-gradient(ellipse at 50% 38%, rgba(52,211,153,0.045) 0%, transparent 65%), var(--paper)",
+          }}
+        >
+          {/* Turbo Partners watermark — fica fixo enquanto mensagens rolam */}
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center select-none gap-3">
+            <span
+              className="font-display font-black leading-none"
+              style={{
+                fontSize: "clamp(72px, 12vw, 140px)",
+                color: "var(--forest)",
+                opacity: 0.03,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              ⚡
+            </span>
+            <span
+              className="font-display font-bold uppercase tracking-[0.28em]"
+              style={{
+                fontSize: "clamp(11px, 1.4vw, 18px)",
+                color: "var(--ink)",
+                opacity: 0.06,
+              }}
+            >
+              Turbo Partners
+            </span>
+          </div>
+
+          {/* Scrollable messages on top */}
+          <div className="absolute inset-0 overflow-y-auto px-6 py-6">
+          <div className="relative mx-auto max-w-3xl space-y-5">
             {messages.map((msg, i) =>
               msg.role === "user" ? (
                 /* User bubble */
@@ -433,6 +465,7 @@ export default function TurboMaxPage() {
             )}
 
             <div ref={bottomRef} />
+          </div>
           </div>
         </div>
 
