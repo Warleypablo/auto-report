@@ -394,28 +394,30 @@ export default function TurboMaxPage() {
         <div
           className="relative flex-1 overflow-hidden"
           style={{
-            background: "radial-gradient(ellipse at 50% 38%, rgba(52,211,153,0.045) 0%, transparent 65%), var(--paper)",
+            background: "radial-gradient(ellipse at 50% 40%, rgba(52,211,153,0.09) 0%, transparent 60%), var(--paper)",
           }}
         >
           {/* Turbo Partners watermark — fica fixo enquanto mensagens rolam */}
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center select-none gap-3">
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center select-none gap-2">
             <span
               className="font-display font-black leading-none"
               style={{
-                fontSize: "clamp(72px, 12vw, 140px)",
+                fontSize: "clamp(80px, 14vw, 160px)",
                 color: "var(--forest)",
-                opacity: 0.03,
+                opacity: 0.09,
                 letterSpacing: "-0.02em",
+                filter: "drop-shadow(0 0 40px rgba(52,211,153,0.3))",
               }}
             >
               ⚡
             </span>
             <span
-              className="font-display font-bold uppercase tracking-[0.28em]"
+              className="font-display font-bold uppercase tracking-[0.3em]"
               style={{
-                fontSize: "clamp(11px, 1.4vw, 18px)",
-                color: "var(--ink)",
-                opacity: 0.06,
+                fontSize: "clamp(12px, 1.6vw, 20px)",
+                color: "var(--forest)",
+                opacity: 0.15,
+                letterSpacing: "0.35em",
               }}
             >
               Turbo Partners
