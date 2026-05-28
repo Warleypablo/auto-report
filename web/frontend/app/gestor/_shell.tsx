@@ -2,19 +2,23 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { gestorApi } from "@/lib/api-gestor";
 import type { UsuarioInfo } from "@/lib/api-gestor";
 
-const NAV: { href: string; label: string; icon: string }[] = [
-  { href: "/gestor",             label: "Dashboard",    icon: "◉" },
-  { href: "/gestor/performance", label: "Criativos",    icon: "◈" },
-  { href: "/gestor/turbomax",    label: "TurboMax",     icon: "⚡" },
+const NAV: { href: string; label: string; icon: string; tab?: string }[] = [
+  { href: "/gestor",                   label: "Dashboard",    icon: "◉" },
+  { href: "/gestor?tab=reportes",      label: "Reportes",     icon: "◈", tab: "reportes" },
+  { href: "/gestor?tab=configuracoes", label: "Configurações",icon: "◎", tab: "configuracoes" },
+  { href: "/gestor/performance",       label: "Criativos",    icon: "◈" },
+  { href: "/gestor/turbomax",          label: "TurboMax",     icon: "⚡" },
 ];
 
 export default function GestorShell({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UsuarioInfo | null>(null);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab");
 
   useEffect(() => {
     gestorApi.me().then(setUser).catch(() => {
@@ -36,8 +40,15 @@ export default function GestorShell({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="flex-1 px-3 py-4">
-          {NAV.map(({ href, label, icon }) => {
-            const active = href === "/gestor" ? pathname === "/gestor" : pathname.startsWith(href);
+          {NAV.map(({ href, label, icon, tab }) => {
+            let active: boolean;
+            if (tab) {
+              active = pathname === "/gestor" && currentTab === tab;
+            } else if (href === "/gestor") {
+              active = pathname === "/gestor" && !currentTab;
+            } else {
+              active = pathname.startsWith(href);
+            }
             return (
               <Link
                 key={href}

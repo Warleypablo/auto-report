@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   gestorApi,
   ClienteGestor,
@@ -1729,6 +1730,7 @@ function AbaConfiguracoes({
 
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function GestorDashboard() {
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<UsuarioInfo | null>(null);
   const [clientes, setClientes] = useState<ClienteGestor[]>([]);
   const [jobs, setJobs] = useState<JobInfo[]>([]);
@@ -1737,7 +1739,8 @@ export default function GestorDashboard() {
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [loadingMetricas, setLoadingMetricas] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const initialTab = (searchParams.get("tab") as Tab | null) ?? "dashboard";
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [reportesTab, setReportesTab] = useState<ReportesTab>("reportes-clientes");
   const [configTab, setConfigTab] = useState<ConfigTab>("config-clientes");
 
