@@ -480,6 +480,10 @@ def _buscar_campanhas_meta(
     if not ad_account_id:
         return {"erro": f"Cliente '{slug}' não tem ID Meta Ads configurado"}
 
+    for d in (date_start, date_end):
+        if len(d) != 10 or d[4] != "-" or d[7] != "-" or not d.replace("-", "").isdigit():
+            return {"erro": f"Formato de data inválido: '{d}'. Use YYYY-MM-DD."}
+
     from config.settings import ACCESS_TOKEN_META_SYSTEM  # noqa: PLC0415
 
     raw = str(ad_account_id)
@@ -545,6 +549,10 @@ def _buscar_anuncios_meta(
     if not ad_account_id:
         return {"erro": f"Cliente '{slug}' não tem ID Meta Ads configurado"}
 
+    for d in (date_start, date_end):
+        if len(d) != 10 or d[4] != "-" or d[7] != "-" or not d.replace("-", "").isdigit():
+            return {"erro": f"Formato de data inválido: '{d}'. Use YYYY-MM-DD."}
+
     from config.settings import ACCESS_TOKEN_META_SYSTEM  # noqa: PLC0415
 
     raw = str(ad_account_id)
@@ -595,7 +603,7 @@ def _buscar_anuncios_meta(
             "cpm": round(spend / impressions * 1000, 2) if impressions else 0,
             "frequency": round(frequency, 2),
             "hook_rate": round(video_3s / impressions * 100, 2) if impressions else None,
-            "purchases": int(purchases),
+            "purchases": int(round(purchases)),
             "purchase_roas": round(purchase_value / spend, 2) if spend else 0,
         })
 
