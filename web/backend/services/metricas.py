@@ -107,6 +107,9 @@ def build_breakdown(cliente_id: uuid.UUID, mes: str | None, session: Session) ->
             "cpa": _parse_br(rd.get(f"{{{{cpa_adf{i}}}}}")),
             "impressoes": _parse_int_br(rd.get(f"{{{{imp_adf{i}}}}}")),
             "imagem_url": img if img not in ("__NO_IMAGE__", "-", "") else None,
+            "ctr": _parse_br(rd.get(f"{{{{ctr_adf{i}}}}}")),
+            "frequency": _parse_br(rd.get(f"{{{{freq_adf{i}}}}}")),
+            "hook_rate": _parse_br(rd.get(f"{{{{hook_adf{i}}}}}")),
         })
 
     google_ads = []
@@ -122,6 +125,7 @@ def build_breakdown(cliente_id: uuid.UUID, mes: str | None, session: Session) ->
             "cpa": _parse_br(rd.get(f"{{{{cpa_adg{i}}}}}")),
             "roas": _parse_br(rd.get(f"{{{{roas_adg{i}}}}}")),
             "impressoes": _parse_int_br(rd.get(f"{{{{imp_adg{i}}}}}")),
+            "ctr": _parse_br(rd.get(f"{{{{ctr_adg{i}}}}}")),
         })
 
     return {"meta_ads": meta_ads, "google_ads": google_ads}
