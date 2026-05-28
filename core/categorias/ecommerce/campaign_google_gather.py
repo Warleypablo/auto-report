@@ -88,7 +88,8 @@ def coletar_metricas_campanhas_google(
         "       metrics.cost_micros, "
         "       metrics.conversions, "
         "       metrics.conversions_value, "
-        "       metrics.impressions "
+        "       metrics.impressions, "
+        "       metrics.clicks "
         "FROM campaign "
         f"WHERE segments.date BETWEEN '{start}' AND '{end}' "
         "  AND metrics.conversions > 0 "
@@ -127,12 +128,14 @@ def coletar_metricas_campanhas_google(
         cost_micros = row.metrics.cost_micros or 0
         invest = Decimal(cost_micros) / Decimal(1_000_000)
 
-        conv_dec = _to_decimal(row.metrics.conversions)
-        fat_dec  = _to_decimal(row.metrics.conversions_value)
-        impress  = int(row.metrics.impressions) if row.metrics.impressions else None
+        conv_dec   = _to_decimal(row.metrics.conversions)
+        fat_dec    = _to_decimal(row.metrics.conversions_value)
+        impress    = int(row.metrics.impressions) if row.metrics.impressions else None
+        clicks_int = int(row.metrics.clicks or 0)
 
         cpa  = _calc_cpa(invest, conv_dec)
         roas = _calc_roas(fat_dec, invest)
+        ctr  = (clicks_int / impress * 100) if impress and impress > 0 else None
 
         placeholders.update({
             f"{{{{nome_adg{rank}}}}}": row.campaign.name or "",
@@ -142,6 +145,7 @@ def coletar_metricas_campanhas_google(
             f"{{{{roas_adg{rank}}}}}": _fmt_roas(float(roas))   if roas else "",
             f"{{{{fat_adg{rank}}}}}":  _fmt_brl(float(fat_dec), 2),
             f"{{{{imp_adg{rank}}}}}":  _fmt_int(impress),
+            f"{{{{ctr_adg{rank}}}}}":  f"{ctr:.2f}".replace(".", ",") if ctr is not None else _DEF_DASH,
         })
         rank += 1
 
@@ -155,6 +159,7 @@ def coletar_metricas_campanhas_google(
             f"{{{{roas_adg{rank}}}}}": "-",
             f"{{{{fat_adg{rank}}}}}":  "-",
             f"{{{{imp_adg{rank}}}}}":  "-",
+            f"{{{{ctr_adg{rank}}}}}":  "-",
         })
         rank += 1
 
