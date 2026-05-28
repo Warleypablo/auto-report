@@ -126,12 +126,31 @@ export default function TurboMaxPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [clientes, setClientes] = useState<ClienteGestor[]>([]);
   const [clienteSlug, setClienteSlug] = useState("");
+  const [userId, setUserId] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const generationRef = useRef(0);
 
   useEffect(() => {
     gestorApi.clientes().then((res) => setClientes(res.items)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    gestorApi.me().then((u) => {
+      setUserId(u.id);
+      const saved = localStorage.getItem(`turbomax_history_${u.id}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as ChatMessage[];
+          if (parsed.length > 0) setMessages(parsed);
+        } catch {}
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    localStorage.setItem(`turbomax_history_${userId}`, JSON.stringify(messages));
+  }, [messages, userId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -154,9 +173,10 @@ export default function TurboMaxPage() {
       if (generationRef.current === gen) {
         setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
       }
-    } catch {
+    } catch (err) {
       if (generationRef.current === gen) {
-        setErro("Erro ao conectar com o TurboMax. Tente novamente.");
+        const msg = err instanceof Error ? err.message : "Erro ao conectar com o TurboMax.";
+        setErro(msg);
       }
     } finally {
       if (generationRef.current === gen) {
@@ -177,6 +197,7 @@ export default function TurboMaxPage() {
     setMessages([WELCOME]);
     setErro(null);
     setLoading(false);
+    if (userId) localStorage.removeItem(`turbomax_history_${userId}`);
   }
 
   return (
