@@ -6,6 +6,14 @@ import Link from "next/link";
 import GestorShell from "../_shell";
 import { gestorApi } from "@/lib/api-gestor";
 import type { GoogleAd, MetaAd } from "@/lib/api-gestor";
+import { EvolucaoChart } from "@/components/performance/EvolucaoChart";
+import { MetaAdFullscreen } from "@/components/performance/MetaAdFullscreen";
+import { GoogleAdFullscreen } from "@/components/performance/GoogleAdFullscreen";
+import { useAdContext } from "@/components/performance/useAdContext";
+import { KpiHeader } from "@/components/performance/blocks/KpiHeader";
+import { MetricsRows } from "@/components/performance/blocks/MetricsRows";
+import { ContextBlock } from "@/components/performance/blocks/ContextBlock";
+import { CriativoPreview } from "@/components/performance/blocks/CriativoPreview";
 import { deslocarMes, mesUltimoFechado } from "@/lib/mes-utils";
 import {
   fmtRoas,
@@ -17,9 +25,6 @@ import {
 import {
   ScatterChart,
   Scatter,
-  ComposedChart,
-  Bar,
-  Line,
   XAxis,
   YAxis,
   ZAxis,
@@ -33,40 +38,6 @@ import {
 type RankedMetaAd = MetaAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number; rankDelta: number | null };
 type RankedGoogleAd = GoogleAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number; rankDelta: number | null };
 
-type HistoryPoint = {
-  mes: string;
-  mesLabel: string;
-  roas: number | null;
-  cpm: number | null;
-  investimento: number | null;
-  faturamento: number | null;
-};
-
-const MES_ABBR: Record<string, string> = {
-  "01": "Jan", "02": "Fev", "03": "Mar", "04": "Abr",
-  "05": "Mai", "06": "Jun", "07": "Jul", "08": "Ago",
-  "09": "Set", "10": "Out", "11": "Nov", "12": "Dez",
-};
-
-function detectFadiga(history: HistoryPoint[]): { label: string; kind: "fadiga" | "queda" | "saudavel" } | null {
-  const withData = history.filter(p => p.roas !== null);
-  if (withData.length < 2) return null;
-  const prev = withData[withData.length - 2];
-  const last = withData[withData.length - 1];
-  if (
-    prev.cpm !== null && last.cpm !== null &&
-    last.cpm > prev.cpm * 1.15 &&
-    prev.roas !== null && last.roas !== null &&
-    last.roas < prev.roas * 0.85
-  ) {
-    return { label: "⚠️ Fadiga detectada", kind: "fadiga" };
-  }
-  if (prev.roas !== null && last.roas !== null && last.roas < prev.roas * 0.80) {
-    return { label: "↘ Performance em queda", kind: "queda" };
-  }
-  return { label: "✓ Saudável", kind: "saudavel" };
-}
-
 function mesLabel(mes: string): string {
   const [ano, m] = mes.split("-");
   const nomes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
@@ -78,10 +49,6 @@ function fmtK(v: number | null): string {
   if (v >= 1_000_000) return `R$${(v / 1_000_000).toFixed(1).replace(".", ",")}M`;
   if (v >= 1_000) return `R$${(v / 1_000).toFixed(1).replace(".", ",")}k`;
   return `R$${Math.round(v)}`;
-}
-
-function fmtPct(v: number): string {
-  return `${v.toFixed(1).replace(".", ",")}%`;
 }
 
 const MEDAL = ["🥇", "🥈", "🥉"];
@@ -327,225 +294,32 @@ function PodiumGoogle({ ads, maxRoas, onSelect }: {
   );
 }
 
-// ── Evolução temporal ─────────────────────────────────────────────────────────
-
-function EvolucaoTooltip({ active, payload }: { active?: boolean; payload?: { payload: HistoryPoint }[] }) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2 text-xs shadow-lg">
-      <p className="mb-1.5 font-medium text-[var(--ink)]">{d.mesLabel}</p>
-      <p style={{ color: "#34d399" }}>ROAS: {d.roas != null ? `${d.roas.toFixed(2)}×` : "—"}</p>
-      <p style={{ color: "#f59e0b" }}>CPM: {d.cpm != null ? fmtK(d.cpm) : "—"}</p>
-      <p className="text-[var(--muted)]">Faturamento: {fmtK(d.faturamento)}</p>
-      <p className="text-[var(--muted)]">Investimento: {fmtK(d.investimento)}</p>
-    </div>
-  );
-}
-
-function EvolucaoTab({
-  clienteSlug,
-  adNome,
-  adType,
-  mes,
-}: {
-  clienteSlug: string;
-  adNome: string;
-  adType: "meta" | "google";
-  mes: string;
-}) {
-  const [history, setHistory] = useState<HistoryPoint[] | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const meses = Array.from({ length: 6 }, (_, i) => deslocarMes(mes, -i)).reverse();
-    Promise.all(
-      meses.map(m => gestorApi.metricasBreakdown(clienteSlug, m).catch(() => null))
-    ).then(results => {
-      const pts: HistoryPoint[] = meses.map((m, i) => {
-        const bd = results[i];
-        const ads = adType === "meta" ? (bd?.meta_ads ?? []) : (bd?.google_ads ?? []);
-        const ad = ads.find(a => a.nome === adNome) ?? null;
-        const cpm =
-          ad?.investimento && ad?.impressoes && ad.impressoes > 0
-            ? (ad.investimento / ad.impressoes) * 1000
-            : null;
-        return {
-          mes: m,
-          mesLabel: MES_ABBR[m.slice(5, 7)] ?? m.slice(5, 7),
-          roas: ad?.roas ?? null,
-          cpm,
-          investimento: ad?.investimento ?? null,
-          faturamento: ad?.faturamento ?? null,
-        };
-      });
-      setHistory(pts);
-      setLoading(false);
-    }).catch(() => {
-      setHistory([]);
-      setLoading(false);
-    });
-  }, [clienteSlug, adNome, adType, mes]);
-
-  if (loading) {
-    return (
-      <div className="mt-6 space-y-3 px-1">
-        <div className="h-[180px] animate-pulse rounded-xl bg-[var(--paper-deep)]" />
-        <div className="flex gap-2">
-          {[78, 55, 90, 45, 70, 60].map((w, i) => (
-            <div key={i} className="animate-pulse rounded bg-[var(--paper-deep)]" style={{ height: 4, width: `${w}px`, animationDelay: `${i * 80}ms` }} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const hasAnyData = history?.some(p => p.roas !== null) ?? false;
-
-  if (!hasAnyData) {
-    return (
-      <div className="mt-10 text-center text-xs text-[var(--muted)]">
-        Sem histórico disponível para este criativo.
-      </div>
-    );
-  }
-
-  const diagnosis = detectFadiga(history!);
-
-  return (
-    <div className="mt-4">
-      {diagnosis && (
-        <div className={`mb-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
-          diagnosis.kind === "fadiga"
-            ? "bg-amber-900/30 text-amber-300"
-            : diagnosis.kind === "queda"
-            ? "bg-red-900/30 text-red-300"
-            : "bg-emerald-900/30 text-emerald-300"
-        }`}>
-          {diagnosis.label}
-        </div>
-      )}
-
-      <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={history!} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-          <XAxis
-            dataKey="mesLabel"
-            tick={{ fontSize: 9, fill: "#6b7280" }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            yAxisId="ratio"
-            tick={{ fontSize: 9, fill: "#6b7280" }}
-            axisLine={false}
-            tickLine={false}
-            tickFormatter={(v: number) => `${v}×`}
-          />
-          <YAxis
-            yAxisId="reais"
-            orientation="right"
-            tick={{ fontSize: 9, fill: "#6b7280" }}
-            axisLine={false}
-            tickLine={false}
-            tickFormatter={(v: number) => fmtK(v)}
-          />
-          <Bar yAxisId="reais" dataKey="faturamento" fill="#34d399" opacity={0.22} radius={[2, 2, 0, 0]} />
-          <Bar yAxisId="reais" dataKey="investimento" fill="#6b7280" opacity={0.18} radius={[2, 2, 0, 0]} />
-          <Line
-            yAxisId="ratio"
-            type="monotone"
-            dataKey="roas"
-            stroke="#34d399"
-            strokeWidth={2}
-            dot={{ r: 3, fill: "#34d399", strokeWidth: 0 }}
-            connectNulls={false}
-          />
-          <Line
-            yAxisId="reais"
-            type="monotone"
-            dataKey="cpm"
-            stroke="#f59e0b"
-            strokeWidth={1.5}
-            strokeDasharray="4 2"
-            dot={{ r: 2, fill: "#f59e0b", strokeWidth: 0 }}
-            connectNulls={false}
-          />
-          <Tooltip content={<EvolucaoTooltip />} />
-        </ComposedChart>
-      </ResponsiveContainer>
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] text-[var(--muted)]">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-0.5 w-4 rounded" style={{ background: "#34d399" }} />
-          ROAS
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: "#f59e0b" }} />
-          CPM
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#34d399", opacity: 0.5 }} />
-          Fat.
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#6b7280", opacity: 0.4 }} />
-          Inv.
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ── Drawer helpers ────────────────────────────────────────────────────────────
-
-function MetricRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-[var(--rule-soft)] py-2 last:border-0">
-      <span className="text-xs text-[var(--muted)]">{label}</span>
-      <span className={`font-mono-num text-sm ${highlight ? "font-semibold text-[var(--forest)]" : "text-[var(--ink)]"}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function ContextBar({ label, pct }: { label: string; pct: number }) {
-  return (
-    <div className="mb-3">
-      <div className="mb-1 flex justify-between text-[10px] text-[var(--muted)]">
-        <span>{label}</span>
-        <span>{fmtPct(pct)}</span>
-      </div>
-      <div className="h-1.5 w-full rounded-full bg-[var(--paper-deep)]">
-        <div className="h-1.5 rounded-full bg-[var(--forest)] opacity-70" style={{ width: `${Math.min(pct, 100)}%` }} />
-      </div>
-    </div>
-  );
-}
-
 // ── Drawers ───────────────────────────────────────────────────────────────────
 
-function MetaDrawer({ ad, allAds, onClose, mes }: { ad: RankedMetaAd; allAds: RankedMetaAd[]; onClose: () => void; mes: string }) {
+function MetaDrawer({
+  ad,
+  allAds,
+  onClose,
+  onExpand,
+  mes,
+}: {
+  ad: RankedMetaAd;
+  allAds: RankedMetaAd[];
+  onClose: () => void;
+  onExpand: () => void;
+  mes: string;
+}) {
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
   const [drawerTab, setDrawerTab] = useState<"metricas" | "evolucao">("metricas");
-
-  const tier = roasTier(ad.roas);
-  const adsComRoas = allAds.filter((a) => a.roas != null && a.roas > 0);
-  const avgRoas = adsComRoas.length > 0 ? adsComRoas.reduce((s, a) => s + (a.roas ?? 0), 0) / adsComRoas.length : null;
-  const roasVsAvg = avgRoas && ad.roas ? ad.roas / avgRoas : null;
-  const maxRoas = adsComRoas.length > 0 ? Math.max(...adsComRoas.map((a) => a.roas ?? 0)) : 0;
-  const barPct = maxRoas > 0 && ad.roas ? (ad.roas / maxRoas) * 100 : 0;
-  const totalInv = allAds.reduce((s, a) => s + (a.investimento ?? 0), 0);
-  const totalFat = allAds.reduce((s, a) => s + (a.faturamento ?? 0), 0);
-  const shareInv = totalInv > 0 && ad.investimento ? (ad.investimento / totalInv) * 100 : null;
-  const shareFat = totalFat > 0 && ad.faturamento ? (ad.faturamento / totalFat) * 100 : null;
-  const cpm = ad.impressoes && ad.investimento && ad.impressoes > 0 ? (ad.investimento / ad.impressoes) * 1000 : null;
+  const ctx = useAdContext(ad, allAds);
+  const adsComRoas = allAds.filter((a) => a.roas != null && a.roas > 0).length;
 
   return (
     <>
@@ -553,15 +327,32 @@ function MetaDrawer({ ad, allAds, onClose, mes }: { ad: RankedMetaAd; allAds: Ra
       <aside className="fixed right-0 top-0 z-50 flex h-full w-[380px] flex-col bg-[var(--paper)] shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--rule-soft)] px-5 py-4">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-[var(--ink)]" title={ad.nome}>{ad.nome}</p>
+            <p className="truncate text-sm font-medium text-[var(--ink)]" title={ad.nome}>
+              {ad.nome}
+            </p>
             <p className="text-xs text-[var(--muted)]">{ad.clienteNome}</p>
           </div>
-          <button onClick={onClose} className="mt-0.5 flex-shrink-0 text-lg leading-none text-[var(--muted)] transition hover:text-[var(--ink)]">×</button>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <button
+              onClick={onExpand}
+              aria-label="Expandir para tela inteira"
+              title="Expandir"
+              className="text-base leading-none text-[var(--muted)] transition hover:text-[var(--ink)]"
+            >
+              ⛶
+            </button>
+            <button
+              onClick={onClose}
+              aria-label="Fechar"
+              className="text-lg leading-none text-[var(--muted)] transition hover:text-[var(--ink)]"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
-        {/* Abas */}
         <div className="flex border-b border-[var(--rule-soft)] px-5">
-          {(["metricas", "evolucao"] as const).map(t => (
+          {(["metricas", "evolucao"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setDrawerTab(t)}
@@ -578,72 +369,31 @@ function MetaDrawer({ ad, allAds, onClose, mes }: { ad: RankedMetaAd; allAds: Ra
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {drawerTab === "evolucao" ? (
-            <EvolucaoTab
+            <EvolucaoChart
               clienteSlug={ad.clienteSlug}
               adNome={ad.nome}
               adType="meta"
               mes={mes}
+              mode="drawer"
             />
           ) : (
             <>
-          {ad.imagem_url && (
-            <div className="mb-5 overflow-hidden rounded-xl border border-[var(--rule-soft)]" style={{ height: 220 }}>
-              <AdThumbnail src={ad.imagem_url} alt={ad.nome} className="h-full w-full object-cover" />
-            </div>
-          )}
-
-          {/* Rank + ROAS */}
-          <div className="mb-5 flex items-center gap-3">
-            {ad.rank < 3 && <span className="text-2xl">{MEDAL[ad.rank]}</span>}
-            {ad.rank >= 3 && <span className="font-mono-num text-sm text-[var(--muted)]">#{ad.rank + 1}</span>}
-            <div className="flex-1 min-w-0">
-              <div className="mb-1 flex items-center justify-between">
-                <span className={`font-mono-num text-lg font-semibold ${TIER_TEXT[tier]}`}>{fmtRoas(ad.roas)}</span>
-                <span className="text-[10px] text-[var(--muted)]">{adsComRoas.length} criativos</span>
-              </div>
-              <div className="h-1.5 w-full rounded-full bg-[var(--paper-deep)]">
-                <div className={`h-1.5 rounded-full ${TIER_BAR[tier]}`} style={{ width: `${barPct}%` }} />
-              </div>
-            </div>
-          </div>
-
-          <p className="mb-2 text-[10px] uppercase tracking-widest text-[var(--muted)]">Métricas</p>
-          <div className="mb-5 rounded-xl border border-[var(--rule-soft)] px-4">
-            <MetricRow label="Faturamento" value={fmtK(ad.faturamento)} highlight />
-            <MetricRow label="Investimento" value={fmtK(ad.investimento)} />
-            <MetricRow label="ROAS" value={fmtRoas(ad.roas)} highlight />
-            {ad.conversoes != null && <MetricRow label="Conversões" value={String(ad.conversoes)} />}
-            {ad.leads != null && <MetricRow label="Leads" value={String(ad.leads)} />}
-            {ad.cpa != null && <MetricRow label="CPA" value={fmtK(ad.cpa)} />}
-            {ad.cpl != null && <MetricRow label="CPL" value={fmtK(ad.cpl)} />}
-            {ad.impressoes != null && <MetricRow label="Impressões" value={ad.impressoes.toLocaleString("pt-BR")} />}
-            {cpm != null && <MetricRow label="CPM" value={fmtK(cpm)} />}
-          </div>
-
-          <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Contexto · carteira</p>
-
-          {roasVsAvg != null && (
-            <div className="mb-4 rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-4 py-3">
-              <p className="text-xs text-[var(--muted)]">ROAS vs. média da carteira</p>
-              <p className={`mt-1 font-mono-num text-2xl font-semibold ${roasVsAvg >= 1 ? "text-[var(--forest)]" : "text-[var(--crimson)]"}`}>
-                {roasVsAvg >= 1 ? "+" : ""}{((roasVsAvg - 1) * 100).toFixed(0)}%
+              <CriativoPreview ad={ad} mode="drawer" />
+              <KpiHeader ad={ad} ctx={ctx} totalAdsComRoas={adsComRoas} mode="drawer" />
+              <p className="mb-2 text-[10px] uppercase tracking-widest text-[var(--muted)]">
+                Métricas
               </p>
-              <p className="mt-0.5 text-[10px] text-[var(--muted)]">Média: {avgRoas ? fmtRoas(avgRoas) : "—"}</p>
-            </div>
-          )}
-
-          {(shareInv != null || shareFat != null) && (
-            <div className="rounded-xl border border-[var(--rule-soft)] px-4 py-3">
-              {shareInv != null && <ContextBar label="Share de investimento" pct={shareInv} />}
-              {shareFat != null && <ContextBar label="Share de faturamento" pct={shareFat} />}
-            </div>
-          )}
+              <MetricsRows ad={ad} cpm={ctx.cpm} mode="drawer" />
+              <ContextBlock ctx={ctx} mode="drawer" />
             </>
           )}
         </div>
 
         <div className="border-t border-[var(--rule-soft)] px-5 py-3">
-          <Link href={`/gestor/${ad.clienteSlug}`} className="block text-center text-xs text-[var(--forest)] transition hover:underline">
+          <Link
+            href={`/gestor/${ad.clienteSlug}`}
+            className="block text-center text-xs text-[var(--forest)] transition hover:underline"
+          >
             Ver dashboard do cliente →
           </Link>
         </div>
@@ -652,26 +402,30 @@ function MetaDrawer({ ad, allAds, onClose, mes }: { ad: RankedMetaAd; allAds: Ra
   );
 }
 
-function GoogleDrawer({ ad, allAds, onClose, mes }: { ad: RankedGoogleAd; allAds: RankedGoogleAd[]; onClose: () => void; mes: string }) {
+function GoogleDrawer({
+  ad,
+  allAds,
+  onClose,
+  onExpand,
+  mes,
+}: {
+  ad: RankedGoogleAd;
+  allAds: RankedGoogleAd[];
+  onClose: () => void;
+  onExpand: () => void;
+  mes: string;
+}) {
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
   const [drawerTab, setDrawerTab] = useState<"metricas" | "evolucao">("metricas");
-
-  const tier = roasTier(ad.roas);
-  const adsComRoas = allAds.filter((a) => a.roas != null && a.roas > 0);
-  const avgRoas = adsComRoas.length > 0 ? adsComRoas.reduce((s, a) => s + (a.roas ?? 0), 0) / adsComRoas.length : null;
-  const roasVsAvg = avgRoas && ad.roas ? ad.roas / avgRoas : null;
-  const maxRoas = adsComRoas.length > 0 ? Math.max(...adsComRoas.map((a) => a.roas ?? 0)) : 0;
-  const barPct = maxRoas > 0 && ad.roas ? (ad.roas / maxRoas) * 100 : 0;
-  const totalInv = allAds.reduce((s, a) => s + (a.investimento ?? 0), 0);
-  const totalFat = allAds.reduce((s, a) => s + (a.faturamento ?? 0), 0);
-  const shareInv = totalInv > 0 && ad.investimento ? (ad.investimento / totalInv) * 100 : null;
-  const shareFat = totalFat > 0 && ad.faturamento ? (ad.faturamento / totalFat) * 100 : null;
-  const cpm = ad.impressoes && ad.investimento && ad.impressoes > 0 ? (ad.investimento / ad.impressoes) * 1000 : null;
+  const ctx = useAdContext(ad, allAds);
+  const adsComRoas = allAds.filter((a) => a.roas != null && a.roas > 0).length;
 
   return (
     <>
@@ -679,15 +433,32 @@ function GoogleDrawer({ ad, allAds, onClose, mes }: { ad: RankedGoogleAd; allAds
       <aside className="fixed right-0 top-0 z-50 flex h-full w-[380px] flex-col bg-[var(--paper)] shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--rule-soft)] px-5 py-4">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-[var(--ink)]" title={ad.nome}>{ad.nome}</p>
+            <p className="truncate text-sm font-medium text-[var(--ink)]" title={ad.nome}>
+              {ad.nome}
+            </p>
             <p className="text-xs text-[var(--muted)]">{ad.clienteNome}</p>
           </div>
-          <button onClick={onClose} className="mt-0.5 flex-shrink-0 text-lg leading-none text-[var(--muted)] transition hover:text-[var(--ink)]">×</button>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <button
+              onClick={onExpand}
+              aria-label="Expandir para tela inteira"
+              title="Expandir"
+              className="text-base leading-none text-[var(--muted)] transition hover:text-[var(--ink)]"
+            >
+              ⛶
+            </button>
+            <button
+              onClick={onClose}
+              aria-label="Fechar"
+              className="text-lg leading-none text-[var(--muted)] transition hover:text-[var(--ink)]"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
-        {/* Abas */}
         <div className="flex border-b border-[var(--rule-soft)] px-5">
-          {(["metricas", "evolucao"] as const).map(t => (
+          {(["metricas", "evolucao"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setDrawerTab(t)}
@@ -704,63 +475,30 @@ function GoogleDrawer({ ad, allAds, onClose, mes }: { ad: RankedGoogleAd; allAds
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {drawerTab === "evolucao" ? (
-            <EvolucaoTab
+            <EvolucaoChart
               clienteSlug={ad.clienteSlug}
               adNome={ad.nome}
               adType="google"
               mes={mes}
+              mode="drawer"
             />
           ) : (
             <>
-          <div className="mb-5 flex items-center gap-3">
-            {ad.rank < 3 && <span className="text-2xl">{MEDAL[ad.rank]}</span>}
-            {ad.rank >= 3 && <span className="font-mono-num text-sm text-[var(--muted)]">#{ad.rank + 1}</span>}
-            <div className="flex-1 min-w-0">
-              <div className="mb-1 flex items-center justify-between">
-                <span className={`font-mono-num text-lg font-semibold ${TIER_TEXT[tier]}`}>{fmtRoas(ad.roas)}</span>
-                <span className="text-[10px] text-[var(--muted)]">{adsComRoas.length} campanhas</span>
-              </div>
-              <div className="h-1.5 w-full rounded-full bg-[var(--paper-deep)]">
-                <div className={`h-1.5 rounded-full ${TIER_BAR[tier]}`} style={{ width: `${barPct}%` }} />
-              </div>
-            </div>
-          </div>
-
-          <p className="mb-2 text-[10px] uppercase tracking-widest text-[var(--muted)]">Métricas</p>
-          <div className="mb-5 rounded-xl border border-[var(--rule-soft)] px-4">
-            <MetricRow label="Faturamento" value={fmtK(ad.faturamento)} highlight />
-            <MetricRow label="Investimento" value={fmtK(ad.investimento)} />
-            <MetricRow label="ROAS" value={fmtRoas(ad.roas)} highlight />
-            {ad.conversoes != null && <MetricRow label="Conversões" value={String(ad.conversoes)} />}
-            {ad.cpa != null && <MetricRow label="CPA" value={fmtK(ad.cpa)} />}
-            {ad.impressoes != null && <MetricRow label="Impressões" value={ad.impressoes.toLocaleString("pt-BR")} />}
-            {cpm != null && <MetricRow label="CPM" value={fmtK(cpm)} />}
-          </div>
-
-          <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Contexto · carteira</p>
-
-          {roasVsAvg != null && (
-            <div className="mb-4 rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-4 py-3">
-              <p className="text-xs text-[var(--muted)]">ROAS vs. média da carteira</p>
-              <p className={`mt-1 font-mono-num text-2xl font-semibold ${roasVsAvg >= 1 ? "text-[var(--forest)]" : "text-[var(--crimson)]"}`}>
-                {roasVsAvg >= 1 ? "+" : ""}{((roasVsAvg - 1) * 100).toFixed(0)}%
+              <KpiHeader ad={ad} ctx={ctx} totalAdsComRoas={adsComRoas} mode="drawer" />
+              <p className="mb-2 text-[10px] uppercase tracking-widest text-[var(--muted)]">
+                Métricas
               </p>
-              <p className="mt-0.5 text-[10px] text-[var(--muted)]">Média: {avgRoas ? fmtRoas(avgRoas) : "—"}</p>
-            </div>
-          )}
-
-          {(shareInv != null || shareFat != null) && (
-            <div className="rounded-xl border border-[var(--rule-soft)] px-4 py-3">
-              {shareInv != null && <ContextBar label="Share de investimento" pct={shareInv} />}
-              {shareFat != null && <ContextBar label="Share de faturamento" pct={shareFat} />}
-            </div>
-          )}
+              <MetricsRows ad={ad} cpm={ctx.cpm} mode="drawer" />
+              <ContextBlock ctx={ctx} mode="drawer" />
             </>
           )}
         </div>
 
         <div className="border-t border-[var(--rule-soft)] px-5 py-3">
-          <Link href={`/gestor/${ad.clienteSlug}`} className="block text-center text-xs text-[var(--forest)] transition hover:underline">
+          <Link
+            href={`/gestor/${ad.clienteSlug}`}
+            className="block text-center text-xs text-[var(--forest)] transition hover:underline"
+          >
             Ver dashboard do cliente →
           </Link>
         </div>
@@ -1046,6 +784,8 @@ export default function RankingsPage() {
   const [googleAds, setGoogleAds] = useState<RankedGoogleAd[]>([]);
   const [selectedMeta, setSelectedMeta] = useState<RankedMetaAd | null>(null);
   const [selectedGoogle, setSelectedGoogle] = useState<RankedGoogleAd | null>(null);
+  const [selectedMetaFullscreen, setSelectedMetaFullscreen] = useState<RankedMetaAd | null>(null);
+  const [selectedGoogleFullscreen, setSelectedGoogleFullscreen] = useState<RankedGoogleAd | null>(null);
   const [clienteFilter, setClienteFilter] = useState("");
   const [gestorFilter, setGestorFilter] = useState("");
 
@@ -1309,8 +1049,42 @@ export default function RankingsPage() {
         </>
       )}
 
-      {selectedMeta && <MetaDrawer ad={selectedMeta} allAds={metaAds} onClose={() => setSelectedMeta(null)} mes={mes} />}
-      {selectedGoogle && <GoogleDrawer ad={selectedGoogle} allAds={googleAds} onClose={() => setSelectedGoogle(null)} mes={mes} />}
+      {selectedMeta && (
+        <MetaDrawer
+          ad={selectedMeta}
+          allAds={metaAds}
+          onClose={() => setSelectedMeta(null)}
+          onExpand={() => {
+            setSelectedMetaFullscreen(selectedMeta);
+            setSelectedMeta(null);
+          }}
+          mes={mes}
+        />
+      )}
+      {selectedGoogle && (
+        <GoogleDrawer
+          ad={selectedGoogle}
+          allAds={googleAds}
+          onClose={() => setSelectedGoogle(null)}
+          onExpand={() => {
+            setSelectedGoogleFullscreen(selectedGoogle);
+            setSelectedGoogle(null);
+          }}
+          mes={mes}
+        />
+      )}
+      <MetaAdFullscreen
+        ad={selectedMetaFullscreen}
+        allAds={metaAds}
+        onClose={() => setSelectedMetaFullscreen(null)}
+        mes={mes}
+      />
+      <GoogleAdFullscreen
+        ad={selectedGoogleFullscreen}
+        allAds={googleAds}
+        onClose={() => setSelectedGoogleFullscreen(null)}
+        mes={mes}
+      />
     </main>
     </GestorShell>
   );

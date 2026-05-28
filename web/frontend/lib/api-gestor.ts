@@ -110,6 +110,9 @@ export type MetaAd = {
   cpa: number | null;
   impressoes: number | null;
   imagem_url: string | null;
+  ctr: number | null;
+  frequency: number | null;
+  hook_rate: number | null;
 };
 
 export type GoogleAd = {
@@ -120,6 +123,7 @@ export type GoogleAd = {
   cpa: number | null;
   roas: number | null;
   impressoes: number | null;
+  ctr: number | null;
 };
 
 export type MetricasBreakdown = {

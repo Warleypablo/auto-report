@@ -80,6 +80,42 @@ def _lead_count_from_any(obj) -> int:
     except (TypeError, ValueError):
         return 0
 
+def _video_3s_views_from_row(row: dict) -> Optional[int]:
+    """Extrai contagem de 3-second video plays do row da Meta Insights API.
+
+    Tenta na ordem: `video_3_sec_watched_actions` (campo dedicado) e
+    `actions[action_type=video_view]` (fallback clássico). Retorna `None`
+    quando nenhuma das chaves está presente — sinal de que o anúncio não
+    é em vídeo (estático/imagem), distinguindo de "zero views".
+    """
+    primary = row.get("video_3_sec_watched_actions")
+    if primary:
+        total = 0
+        for item in primary:
+            if isinstance(item, dict) and "value" in item:
+                try:
+                    total += int(float(item["value"]))
+                except (TypeError, ValueError):
+                    continue
+        return total
+
+    actions = row.get("actions")
+    if actions and isinstance(actions, list):
+        total = 0
+        found = False
+        for item in actions:
+            if not isinstance(item, dict):
+                continue
+            if item.get("action_type") == "video_view":
+                found = True
+                try:
+                    total += int(float(item.get("value", 0)))
+                except (TypeError, ValueError):
+                    continue
+        return total if found else None
+
+    return None
+
 ###############################################################################
 # Miniaturas dos criativos
 ###############################################################################
@@ -145,7 +181,10 @@ def coletar_metricas_anuncios_meta(
         ),
         "time_increment": "all_days",
         # agora inclui results + conversions para não perder formatos novos
-        "fields": "ad_id,ad_name,spend,impressions,results,actions,conversions",
+        "fields": (
+            "ad_id,ad_name,spend,impressions,results,actions,conversions,"
+            "clicks,reach,video_3_sec_watched_actions"
+        ),
         "action_attribution_windows": json.dumps(_ATTR_WINDOW, separators=(",", ":")),
         "action_report_time": "conversion",
         "limit": 5000,
@@ -180,11 +219,14 @@ def coletar_metricas_anuncios_meta(
             _lead_count_from_any(row.get("actions"))
         )
         ads.append({
-            "ad_name": row.get("ad_name") or _DEF_DASH,
-            "ad_id":   row.get("ad_id"),
-            "spend":   float(row.get("spend", 0.0)),
-            "lead":    leads,
-            "imp":     int(row.get("impressions") or 0),
+            "ad_name":  row.get("ad_name") or _DEF_DASH,
+            "ad_id":    row.get("ad_id"),
+            "spend":    float(row.get("spend", 0.0)),
+            "lead":     leads,
+            "imp":      int(row.get("impressions") or 0),
+            "clicks":   int(row.get("clicks") or 0),
+            "reach":    int(row.get("reach") or 0),
+            "video_3s": _video_3s_views_from_row(row),
         })
 
     # Filtra anúncios com leads > 0
@@ -203,6 +245,11 @@ def coletar_metricas_anuncios_meta(
     for rank, ad in enumerate(ads_top, start=1):
         cpl = _calc_cpl(ad["spend"], ad["lead"])
         lpi = _calc_lpi(ad["lead"], ad["imp"])
+        ctr = (ad["clicks"] / ad["imp"] * 100) if ad["imp"] > 0 else None
+        frequency = (ad["imp"] / ad["reach"]) if ad["reach"] > 0 else None
+        hook_rate = None
+        if ad["video_3s"] is not None and ad["imp"] > 0:
+            hook_rate = ad["video_3s"] / ad["imp"] * 100
         placeholders.update({
             f"{{{{nome_adf{rank}}}}}": ad["ad_name"],
             f"{{{{img_adf{rank}}}}}":  ad["thumb"],
@@ -211,6 +258,9 @@ def coletar_metricas_anuncios_meta(
             f"{{{{inv_adf{rank}}}}}":  _fmt_brl(ad["spend"], 2),
             f"{{{{lpi_adf{rank}}}}}":  _fmt_percent(lpi) if lpi is not None else _DEF_DASH,
             f"{{{{imp_adf{rank}}}}}":  _fmt_int(ad["imp"]),
+            f"{{{{ctr_adf{rank}}}}}":  f"{ctr:.2f}".replace(".", ",") if ctr is not None else _DEF_DASH,
+            f"{{{{freq_adf{rank}}}}}": f"{frequency:.2f}".replace(".", ",") if frequency is not None else _DEF_DASH,
+            f"{{{{hook_adf{rank}}}}}": f"{hook_rate:.2f}".replace(".", ",") if hook_rate is not None else _DEF_DASH,
         })
 
     # Preenche os placeholders restantes com "" e sinalizador de imagem
@@ -223,6 +273,9 @@ def coletar_metricas_anuncios_meta(
             f"{{{{inv_adf{rank}}}}}":  "-",
             f"{{{{lpi_adf{rank}}}}}":  "-",
             f"{{{{imp_adf{rank}}}}}":  "-",
+            f"{{{{ctr_adf{rank}}}}}":  "-",
+            f"{{{{freq_adf{rank}}}}}": "-",
+            f"{{{{hook_adf{rank}}}}}": "-",
         })
 
     return placeholders

@@ -63,9 +63,9 @@ def coletar_metricas_campanhas_google(
         "AND metrics.conversions > 0"
     )
 
-    # GAQL – custo + impressões ------------------------------------------
+    # GAQL – custo + impressões + cliques --------------------------------
     query_tot = (
-        "SELECT campaign.id, metrics.cost_micros, metrics.impressions "
+        "SELECT campaign.id, metrics.cost_micros, metrics.impressions, metrics.clicks "
         "FROM campaign "
         f"WHERE segments.date BETWEEN '{start}' AND '{end}' "
     )
@@ -95,8 +95,8 @@ def coletar_metricas_campanhas_google(
         set_status(cliente, "ERRO API CAMP")
         return {}
 
-    # custo + impressões --------------------------------------------------
-    cost_by_id, imp_by_id = {}, {}
+    # custo + impressões + cliques ----------------------------------------
+    cost_by_id, imp_by_id, clicks_by_id = {}, {}, {}
     try:
         for batch in ga_service.search_stream(
             customer_id=str(cliente.id_google_ads),
@@ -104,8 +104,9 @@ def coletar_metricas_campanhas_google(
         ):
             for row in batch.results:
                 cid = row.campaign.id
-                cost_by_id[cid] = cost_by_id.get(cid, 0) + (row.metrics.cost_micros or 0)
-                imp_by_id[cid]  = imp_by_id.get(cid, 0)  + (row.metrics.impressions or 0)
+                cost_by_id[cid]   = cost_by_id.get(cid, 0)   + (row.metrics.cost_micros or 0)
+                imp_by_id[cid]    = imp_by_id.get(cid, 0)    + (row.metrics.impressions or 0)
+                clicks_by_id[cid] = clicks_by_id.get(cid, 0) + int(row.metrics.clicks or 0)
     except GoogleAdsException as exc:
         log.error("GAQL tot falhou (%s): %s", cliente.nome, exc.failure)
         set_status(cliente, "ERRO API CAMP")
@@ -120,10 +121,12 @@ def coletar_metricas_campanhas_google(
         leads_int       = conv_by_id[cid]
         cost_micros     = cost_by_id.get(cid, 0)
         impressions_int = imp_by_id.get(cid, 0)
+        clicks_int      = clicks_by_id.get(cid, 0)
 
         invest = cost_micros / 1_000_000 if cost_micros else 0.0
         cpl    = _calc_cpl(invest, leads_int)
         lpi    = _calc_lpi(leads_int, impressions_int)
+        ctr    = (clicks_int / impressions_int * 100) if impressions_int > 0 else None
 
         placeholders.update({
             f"{{{{nome_adg{rank}}}}}": name_by_id.get(cid, ""),
@@ -132,6 +135,7 @@ def coletar_metricas_campanhas_google(
             f"{{{{inv_adg{rank}}}}}":  _fmt_brl(invest, 2),
             f"{{{{lpi_adg{rank}}}}}":  _fmt_percent(lpi) if lpi is not None else "",
             f"{{{{imp_adg{rank}}}}}":  _fmt_int(impressions_int),
+            f"{{{{ctr_adg{rank}}}}}":  f"{ctr:.2f}".replace(".", ",") if ctr is not None else _DEF_DASH,
         })
 
     # Preenche até top_n com campos vazios
@@ -143,6 +147,7 @@ def coletar_metricas_campanhas_google(
             f"{{{{inv_adg{rank}}}}}":  "-",
             f"{{{{lpi_adg{rank}}}}}":  "-",
             f"{{{{imp_adg{rank}}}}}":  "-",
+            f"{{{{ctr_adg{rank}}}}}":  "-",
         })
 
     return placeholders
