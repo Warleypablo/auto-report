@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
+import GestorShell from "../_shell";
 import { gestorApi } from "@/lib/api-gestor";
 import type { GoogleAd, MetaAd } from "@/lib/api-gestor";
 import { deslocarMes, mesUltimoFechado } from "@/lib/mes-utils";
@@ -530,10 +531,26 @@ export default function RankingsPage() {
   const [googleAds, setGoogleAds] = useState<RankedGoogleAd[]>([]);
   const [selectedMeta, setSelectedMeta] = useState<RankedMetaAd | null>(null);
   const [selectedGoogle, setSelectedGoogle] = useState<RankedGoogleAd | null>(null);
+  const [clienteFilter, setClienteFilter] = useState("");
 
   const mesOpcoes = useMemo(
     () => Array.from({ length: 12 }, (_, i) => deslocarMes(mesUltimoFechado(), -i)),
     [],
+  );
+
+  const clientesDisponiveis = useMemo(() => {
+    const slugs = new Map<string, string>();
+    for (const a of [...metaAds, ...googleAds]) slugs.set(a.clienteSlug, a.clienteNome);
+    return Array.from(slugs.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [metaAds, googleAds]);
+
+  const filteredMeta = useMemo(
+    () => clienteFilter ? metaAds.filter((a) => a.clienteSlug === clienteFilter) : metaAds,
+    [metaAds, clienteFilter],
+  );
+  const filteredGoogle = useMemo(
+    () => clienteFilter ? googleAds.filter((a) => a.clienteSlug === clienteFilter) : googleAds,
+    [googleAds, clienteFilter],
   );
 
   useEffect(() => {
@@ -572,21 +589,18 @@ export default function RankingsPage() {
     return () => { cancelled = true; };
   }, [mes]);
 
-  const activeAds = rede === "meta" ? metaAds : googleAds;
+  const activeAds = rede === "meta" ? filteredMeta : filteredGoogle;
   const totalFat = activeAds.reduce((s, a) => s + (a.faturamento ?? 0), 0);
   const totalInv = activeAds.reduce((s, a) => s + (a.investimento ?? 0), 0);
   const roasMedio = totalInv > 0 ? totalFat / totalInv : null;
   const maxRoas = activeAds.length > 0 ? Math.max(...activeAds.filter(a => a.roas != null).map(a => a.roas ?? 0)) : 0;
 
-  const restMeta = metaAds.slice(3);
-  const restGoogle = googleAds.slice(3);
+  const restMeta = filteredMeta.slice(3);
+  const restGoogle = filteredGoogle.slice(3);
 
   return (
+    <GestorShell>
     <main className="mx-auto max-w-6xl px-6 py-12">
-      <Link href="/gestor" className="mb-8 block text-xs text-[var(--muted)] transition hover:text-[var(--ink)]">
-        ← Seus clientes
-      </Link>
-
       {/* Header */}
       <div className="mb-8 flex items-end justify-between gap-4">
         <div>
@@ -595,7 +609,19 @@ export default function RankingsPage() {
           </h1>
           <p className="mt-1 text-sm text-[var(--muted)]">Rankings de criativos e campanhas da carteira</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {clientesDisponiveis.length > 0 && (
+            <select
+              value={clienteFilter}
+              onChange={(e) => setClienteFilter(e.target.value)}
+              className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-1.5 text-xs text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+            >
+              <option value="">Todos os clientes</option>
+              {clientesDisponiveis.map(([slug, nome]) => (
+                <option key={slug} value={slug}>{nome}</option>
+              ))}
+            </select>
+          )}
           <label htmlFor="mes-ref" className="text-xs text-[var(--muted)]">Mês</label>
           <select
             id="mes-ref"
@@ -644,16 +670,16 @@ export default function RankingsPage() {
           ]} />
 
           {/* Pódio top 3 */}
-          {rede === "meta" && metaAds.length >= 1 && (
+          {rede === "meta" && filteredMeta.length >= 1 && (
             <div className="mb-2">
               <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Top 3 criativos</p>
-              <PodiumMeta ads={metaAds} maxRoas={maxRoas} onSelect={setSelectedMeta} />
+              <PodiumMeta ads={filteredMeta} maxRoas={maxRoas} onSelect={setSelectedMeta} />
             </div>
           )}
-          {rede === "google" && googleAds.length >= 1 && (
+          {rede === "google" && filteredGoogle.length >= 1 && (
             <div className="mb-2">
               <p className="mb-3 text-[10px] uppercase tracking-widest text-[var(--muted)]">Top 3 campanhas</p>
-              <PodiumGoogle ads={googleAds} maxRoas={maxRoas} onSelect={setSelectedGoogle} />
+              <PodiumGoogle ads={filteredGoogle} maxRoas={maxRoas} onSelect={setSelectedGoogle} />
             </div>
           )}
 
@@ -676,5 +702,6 @@ export default function RankingsPage() {
       {selectedMeta && <MetaDrawer ad={selectedMeta} allAds={metaAds} onClose={() => setSelectedMeta(null)} />}
       {selectedGoogle && <GoogleDrawer ad={selectedGoogle} allAds={googleAds} onClose={() => setSelectedGoogle(null)} />}
     </main>
+    </GestorShell>
   );
 }
