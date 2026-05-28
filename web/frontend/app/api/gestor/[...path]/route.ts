@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const BACKEND = process.env.INTERNAL_API_URL ?? "http://localhost:8765";
 
@@ -44,7 +45,10 @@ async function handler(
   }
 
   const data = await backendRes.json().catch(() => ({}));
-  return NextResponse.json(data, { status: backendRes.status });
+  return NextResponse.json(data, {
+    status: backendRes.status,
+    headers: { "Cache-Control": "no-store" },
+  });
 }
 
 export { handler as GET, handler as POST, handler as PATCH, handler as DELETE };

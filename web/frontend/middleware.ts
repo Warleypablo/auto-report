@@ -21,7 +21,7 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (pathname.startsWith("/gestor/")) {
+  if (pathname === "/gestor" || pathname.startsWith("/gestor/")) {
     const token = req.cookies.get("gestor_token")?.value;
     if (!token) {
       const loginUrl = req.nextUrl.clone();
