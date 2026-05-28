@@ -17,6 +17,9 @@ import {
 import {
   ScatterChart,
   Scatter,
+  ComposedChart,
+  Bar,
+  Line,
   XAxis,
   YAxis,
   ZAxis,
@@ -29,6 +32,40 @@ import {
 
 type RankedMetaAd = MetaAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number; rankDelta: number | null };
 type RankedGoogleAd = GoogleAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number; rankDelta: number | null };
+
+type HistoryPoint = {
+  mes: string;
+  mesLabel: string;
+  roas: number | null;
+  cpm: number | null;
+  investimento: number | null;
+  faturamento: number | null;
+};
+
+const MES_ABBR: Record<string, string> = {
+  "01": "Jan", "02": "Fev", "03": "Mar", "04": "Abr",
+  "05": "Mai", "06": "Jun", "07": "Jul", "08": "Ago",
+  "09": "Set", "10": "Out", "11": "Nov", "12": "Dez",
+};
+
+function detectFadiga(history: HistoryPoint[]): { label: string; kind: "fadiga" | "queda" | "saudavel" } | null {
+  const withData = history.filter(p => p.roas !== null);
+  if (withData.length < 2) return null;
+  const prev = withData[withData.length - 2];
+  const last = withData[withData.length - 1];
+  if (
+    prev.cpm !== null && last.cpm !== null &&
+    last.cpm > prev.cpm * 1.15 &&
+    prev.roas !== null && last.roas !== null &&
+    last.roas < prev.roas * 0.85
+  ) {
+    return { label: "⚠️ Fadiga detectada", kind: "fadiga" };
+  }
+  if (prev.roas !== null && last.roas !== null && last.roas < prev.roas * 0.80) {
+    return { label: "↘ Performance em queda", kind: "queda" };
+  }
+  return { label: "✓ Saudável", kind: "saudavel" };
+}
 
 function mesLabel(mes: string): string {
   const [ano, m] = mes.split("-");
