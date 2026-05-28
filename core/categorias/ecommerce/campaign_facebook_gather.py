@@ -202,7 +202,8 @@ def coletar_metricas_anuncios_meta(
         "time_increment": "all_days",
         "fields": (
             "ad_id,ad_name,spend,impressions,"
-            "actions,action_values"
+            "actions,action_values,"
+            "clicks,reach,video_3_sec_watched_actions"
         ),
         # ► BUGFIX · só 7d_click
         "action_attribution_windows": json.dumps(_ATTR_WINDOW, separators=(",", ":")),
@@ -247,12 +248,15 @@ def coletar_metricas_anuncios_meta(
         )
         ad_id = row.get("ad_id")
         ads.append({
-            "ad_name": row.get("ad_name") or _DEF_DASH,
-            "ad_id":   ad_id,
-            "spend":   spend,
-            "conv":    conv,
-            "fat":     fat,
-            "imp":     int(row.get("impressions") or 0),
+            "ad_name":  row.get("ad_name") or _DEF_DASH,
+            "ad_id":    ad_id,
+            "spend":    spend,
+            "conv":     conv,
+            "fat":      fat,
+            "imp":      int(row.get("impressions") or 0),
+            "clicks":   int(row.get("clicks") or 0),
+            "reach":    int(row.get("reach") or 0),
+            "video_3s": _video_3s_views_from_row(row),
         })
         if ad_id:
             ad_ids.append(ad_id)
@@ -275,6 +279,11 @@ def coletar_metricas_anuncios_meta(
     for ad in ads_top:
         cpa  = _calc_cpa(ad["spend"], ad["conv"])
         roas = _calc_roas(ad["fat"], ad["spend"])
+        ctr = (ad["clicks"] / ad["imp"] * 100) if ad["imp"] > 0 else None
+        frequency = (ad["imp"] / ad["reach"]) if ad["reach"] > 0 else None
+        hook_rate = None
+        if ad["video_3s"] is not None and ad["imp"] > 0:
+            hook_rate = ad["video_3s"] / ad["imp"] * 100
 
         placeholders.update({
             f"{{{{nome_adf{rank}}}}}": ad["ad_name"],
@@ -285,6 +294,9 @@ def coletar_metricas_anuncios_meta(
             f"{{{{roas_adf{rank}}}}}": _fmt_roas(roas)   if roas is not None else _DEF_DASH,
             f"{{{{fat_adf{rank}}}}}":  _fmt_brl(ad["fat"], 2),
             f"{{{{imp_adf{rank}}}}}":  _fmt_int(ad["imp"]),
+            f"{{{{ctr_adf{rank}}}}}":  f"{ctr:.2f}".replace(".", ",") if ctr is not None else _DEF_DASH,
+            f"{{{{freq_adf{rank}}}}}": f"{frequency:.2f}".replace(".", ",") if frequency is not None else _DEF_DASH,
+            f"{{{{hook_adf{rank}}}}}": f"{hook_rate:.2f}".replace(".", ",") if hook_rate is not None else _DEF_DASH,
         })
         rank += 1
 
@@ -299,6 +311,9 @@ def coletar_metricas_anuncios_meta(
             f"{{{{roas_adf{rank}}}}}": "-",
             f"{{{{fat_adf{rank}}}}}":  "-",
             f"{{{{imp_adf{rank}}}}}":  "-",
+            f"{{{{ctr_adf{rank}}}}}":  "-",
+            f"{{{{freq_adf{rank}}}}}": "-",
+            f"{{{{hook_adf{rank}}}}}": "-",
         })
         rank += 1
 
