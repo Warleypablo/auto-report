@@ -726,6 +726,7 @@ def _buscar_anuncios_google(
             "impressions": impressions,
             "clicks": clicks,
             "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+            "cpm": round(cost / impressions * 1000, 2) if impressions else 0,
             "cpc": round(cost / clicks, 2) if clicks else 0,
             "conversions": round(conv, 1),
             "conv_value": round(conv_value, 2),

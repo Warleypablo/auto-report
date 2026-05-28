@@ -566,3 +566,7 @@ def test_buscar_anuncios_google_mock_client(db_cliente):
     assert ad["spend"] == 1.5
     assert ad["roas"] == pytest.approx(3.6, rel=1e-2)  # 5.4/1.5
     assert ad["ctr"] == pytest.approx(5.0, rel=1e-2)
+    # fake_row.metrics.cost_micros = 1_500_000 → cost = 1.5
+    # fake_row.metrics.impressions = 8000
+    # cpm = 1.5 / 8000 * 1000 = 0.1875 → rounds to 0.19
+    assert ad["cpm"] == pytest.approx(0.19, rel=1e-2)
