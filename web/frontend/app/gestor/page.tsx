@@ -15,6 +15,7 @@ import {
   JobInfo,
 } from "@/lib/api-gestor";
 import Link from "next/link";
+import AdThumb from "@/components/AdThumb";
 import {
   BarChart,
   Bar,
@@ -945,11 +946,7 @@ function AbaDashboard({
                                             {visiveis.map((ad, i) => (
                                               <tr key={i} className="border-b border-[var(--rule-soft)]/40">
                                                 <td className="py-2 pr-3">
-                                                  {ad.imagem_url ? (
-                                                    <img src={ad.imagem_url} alt={ad.nome} className="h-10 w-10 rounded object-cover" />
-                                                  ) : (
-                                                    <div className="h-10 w-10 rounded bg-[var(--paper-soft)]" />
-                                                  )}
+                                                  <AdThumb src={ad.imagem_url} name={ad.nome} className="h-10 w-10 rounded" />
                                                 </td>
                                                 <td className="py-2 pr-3 font-medium text-[var(--ink)]">{ad.nome}</td>
                                                 <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">{fmtBRL(ad.investimento)}</td>

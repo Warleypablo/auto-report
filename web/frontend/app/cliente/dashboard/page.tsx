@@ -12,6 +12,7 @@ import {
   clienteApi,
 } from "@/lib/api-cliente";
 
+import AdThumb from "@/components/AdThumb";
 import CampaignBars from "@/components/CampaignBars";
 import CreativeGallery from "@/components/CreativeGallery";
 import DetailsDrawer from "@/components/DetailsDrawer";
@@ -292,12 +293,7 @@ function FullMetaTable({ ads }: { ads: any[] }) {
         {ads.map((ad, i) => (
           <tr key={i} className="border-b border-[var(--rule-soft)]/40 hover:bg-[var(--paper-soft)]">
             <td className="py-2 pr-3">
-              {ad.imagem_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={ad.imagem_url} alt={ad.nome} className="h-10 w-10 rounded object-cover" />
-              ) : (
-                <div className="h-10 w-10 rounded bg-[var(--paper-deep)]" />
-              )}
+              <AdThumb src={ad.imagem_url} name={ad.nome} className="h-10 w-10 rounded" />
             </td>
             <td className="py-2 pr-3 text-[var(--ink)]">{ad.nome}</td>
             <td className="py-2 pr-3 text-right font-mono-num text-[var(--ink)]">
