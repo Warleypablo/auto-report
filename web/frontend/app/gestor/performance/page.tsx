@@ -39,16 +39,35 @@ const MEDAL = ["🥇", "🥈", "🥉"];
 
 // ── Imagem com fallback ───────────────────────────────────────────────────────
 
+const THUMB_GRADIENTS = [
+  ["#1a3d2e", "#0d2019"],
+  ["#2a1f4a", "#160f28"],
+  ["#1a2f4a", "#0d1a28"],
+  ["#3d2a1a", "#22160d"],
+  ["#1a3d3d", "#0d2222"],
+  ["#2a1a3d", "#160d22"],
+  ["#3d1a2a", "#220d16"],
+];
+
+function nameHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
+  return h;
+}
+
 function AdThumbnail({ src, alt, className }: { src: string | null; alt: string; className?: string }) {
   const [broken, setBroken] = useState(false);
   if (!src || broken) {
+    const [from, to] = THUMB_GRADIENTS[nameHash(alt) % THUMB_GRADIENTS.length];
+    const initial = (alt.trim()[0] ?? "?").toUpperCase();
     return (
-      <div className={`flex items-center justify-center bg-[var(--paper-deep)] ${className ?? ""}`}>
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="opacity-20">
-          <rect x="2" y="4" width="16" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-          <circle cx="7.5" cy="9" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
-          <path d="M2 14l4-4 3 3 3-3 6 5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-        </svg>
+      <div
+        className={`flex items-center justify-center select-none ${className ?? ""}`}
+        style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
+      >
+        <span className="font-display font-bold text-white/20" style={{ fontSize: "clamp(1.5rem, 30%, 4rem)" }}>
+          {initial}
+        </span>
       </div>
     );
   }
