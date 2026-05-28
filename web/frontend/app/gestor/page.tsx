@@ -54,7 +54,7 @@ function fmtNum(v: number | null, decimals = 2): string {
 function fmtPct(v: number | null): string {
   if (v == null) return "—";
   const sign = v >= 0 ? "+" : "";
-  return `${sign}${(v * 100).toFixed(1)}%`;
+  return `${sign}${v.toFixed(1)}%`;
 }
 function mesLabel(mes: string): string {
   const [ano, m] = mes.split("-");
