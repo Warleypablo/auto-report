@@ -7,6 +7,8 @@ import GestorShell from "../_shell";
 import { gestorApi } from "@/lib/api-gestor";
 import type { GoogleAd, MetaAd } from "@/lib/api-gestor";
 import { EvolucaoChart } from "@/components/performance/EvolucaoChart";
+import { MetaAdFullscreen } from "@/components/performance/MetaAdFullscreen";
+import { GoogleAdFullscreen } from "@/components/performance/GoogleAdFullscreen";
 import { deslocarMes, mesUltimoFechado } from "@/lib/mes-utils";
 import {
   fmtRoas,
@@ -842,6 +844,8 @@ export default function RankingsPage() {
   const [googleAds, setGoogleAds] = useState<RankedGoogleAd[]>([]);
   const [selectedMeta, setSelectedMeta] = useState<RankedMetaAd | null>(null);
   const [selectedGoogle, setSelectedGoogle] = useState<RankedGoogleAd | null>(null);
+  const [selectedMetaFullscreen, setSelectedMetaFullscreen] = useState<RankedMetaAd | null>(null);
+  const [selectedGoogleFullscreen, setSelectedGoogleFullscreen] = useState<RankedGoogleAd | null>(null);
   const [clienteFilter, setClienteFilter] = useState("");
   const [gestorFilter, setGestorFilter] = useState("");
 
@@ -1107,6 +1111,18 @@ export default function RankingsPage() {
 
       {selectedMeta && <MetaDrawer ad={selectedMeta} allAds={metaAds} onClose={() => setSelectedMeta(null)} mes={mes} />}
       {selectedGoogle && <GoogleDrawer ad={selectedGoogle} allAds={googleAds} onClose={() => setSelectedGoogle(null)} mes={mes} />}
+      <MetaAdFullscreen
+        ad={selectedMetaFullscreen}
+        allAds={metaAds}
+        onClose={() => setSelectedMetaFullscreen(null)}
+        mes={mes}
+      />
+      <GoogleAdFullscreen
+        ad={selectedGoogleFullscreen}
+        allAds={googleAds}
+        onClose={() => setSelectedGoogleFullscreen(null)}
+        mes={mes}
+      />
     </main>
     </GestorShell>
   );
