@@ -15,8 +15,8 @@ import {
   TIER_BAR,
 } from "@/lib/roas-tier";
 
-type RankedMetaAd = MetaAd & { clienteNome: string; clienteSlug: string; rank: number };
-type RankedGoogleAd = GoogleAd & { clienteNome: string; clienteSlug: string; rank: number };
+type RankedMetaAd = MetaAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number };
+type RankedGoogleAd = GoogleAd & { clienteNome: string; clienteSlug: string; gestorNome: string | null; rank: number };
 
 function mesLabel(mes: string): string {
   const [ano, m] = mes.split("-");
@@ -577,26 +577,41 @@ export default function RankingsPage() {
   const [selectedMeta, setSelectedMeta] = useState<RankedMetaAd | null>(null);
   const [selectedGoogle, setSelectedGoogle] = useState<RankedGoogleAd | null>(null);
   const [clienteFilter, setClienteFilter] = useState("");
+  const [gestorFilter, setGestorFilter] = useState("");
 
   const mesOpcoes = useMemo(
     () => Array.from({ length: 12 }, (_, i) => deslocarMes(mesUltimoFechado(), -i)),
     [],
   );
 
-  const clientesDisponiveis = useMemo(() => {
-    const slugs = new Map<string, string>();
-    for (const a of [...metaAds, ...googleAds]) slugs.set(a.clienteSlug, a.clienteNome);
-    return Array.from(slugs.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  const gestoresDisponiveis = useMemo(() => {
+    const nomes = new Set<string>();
+    for (const a of [...metaAds, ...googleAds]) if (a.gestorNome) nomes.add(a.gestorNome);
+    return Array.from(nomes).sort((a, b) => a.localeCompare(b));
   }, [metaAds, googleAds]);
 
-  const filteredMeta = useMemo(
-    () => clienteFilter ? metaAds.filter((a) => a.clienteSlug === clienteFilter) : metaAds,
-    [metaAds, clienteFilter],
-  );
-  const filteredGoogle = useMemo(
-    () => clienteFilter ? googleAds.filter((a) => a.clienteSlug === clienteFilter) : googleAds,
-    [googleAds, clienteFilter],
-  );
+  const clientesDisponiveis = useMemo(() => {
+    const base = gestorFilter
+      ? [...metaAds, ...googleAds].filter((a) => a.gestorNome === gestorFilter)
+      : [...metaAds, ...googleAds];
+    const slugs = new Map<string, string>();
+    for (const a of base) slugs.set(a.clienteSlug, a.clienteNome);
+    return Array.from(slugs.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [metaAds, googleAds, gestorFilter]);
+
+  const filteredMeta = useMemo(() => {
+    let ads = metaAds;
+    if (gestorFilter) ads = ads.filter((a) => a.gestorNome === gestorFilter);
+    if (clienteFilter) ads = ads.filter((a) => a.clienteSlug === clienteFilter);
+    return ads;
+  }, [metaAds, gestorFilter, clienteFilter]);
+
+  const filteredGoogle = useMemo(() => {
+    let ads = googleAds;
+    if (gestorFilter) ads = ads.filter((a) => a.gestorNome === gestorFilter);
+    if (clienteFilter) ads = ads.filter((a) => a.clienteSlug === clienteFilter);
+    return ads;
+  }, [googleAds, gestorFilter, clienteFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -623,9 +638,9 @@ export default function RankingsPage() {
         for (const { cliente, bd } of results) {
           if (!bd) continue;
           for (const ad of bd.meta_ads ?? [])
-            allMeta.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug, rank: 0 });
+            allMeta.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug, gestorNome: cliente.gestor, rank: 0 });
           for (const ad of bd.google_ads ?? [])
-            allGoogle.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug, rank: 0 });
+            allGoogle.push({ ...ad, clienteNome: cliente.nome, clienteSlug: cliente.slug, gestorNome: cliente.gestor, rank: 0 });
         }
         setMetaAds(sortByRoas(allMeta).map((a, i) => ({ ...a, rank: i })));
         setGoogleAds(sortByRoas(allGoogle).map((a, i) => ({ ...a, rank: i })));
@@ -657,6 +672,18 @@ export default function RankingsPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {gestoresDisponiveis.length > 0 && (
+            <select
+              value={gestorFilter}
+              onChange={(e) => { setGestorFilter(e.target.value); setClienteFilter(""); }}
+              className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-3 py-2 text-xs text-[var(--ink)] focus:border-[var(--forest)] focus:outline-none"
+            >
+              <option value="">Todos os gestores</option>
+              {gestoresDisponiveis.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          )}
           {clientesDisponiveis.length > 0 && (
             <select
               value={clienteFilter}
@@ -679,12 +706,12 @@ export default function RankingsPage() {
               <option key={m} value={m}>{mesLabel(m)}</option>
             ))}
           </select>
-          {clienteFilter && (
+          {(gestorFilter || clienteFilter) && (
             <button
-              onClick={() => setClienteFilter("")}
+              onClick={() => { setGestorFilter(""); setClienteFilter(""); }}
               className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-3 py-2 text-xs text-[var(--muted)] transition hover:text-[var(--ink)]"
             >
-              Limpar filtro ×
+              Limpar filtros ×
             </button>
           )}
         </div>
