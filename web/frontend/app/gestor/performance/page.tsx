@@ -381,6 +381,9 @@ function EvolucaoTab({
       });
       setHistory(pts);
       setLoading(false);
+    }).catch(() => {
+      setHistory([]);
+      setLoading(false);
     });
   }, [clienteSlug, adNome, adType, mes]);
 
