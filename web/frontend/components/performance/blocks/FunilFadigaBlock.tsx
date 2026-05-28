@@ -69,6 +69,14 @@ export function FunilFadigaBlock({ ad, ctx, variant }: FunilFadigaBlockProps) {
       ? adAny.ctr == null && adAny.frequency == null && adAny.hook_rate == null
       : adAny.ctr == null;
 
+  // "Apenas vídeo" só faz sentido quando há OUTRAS métricas com valor —
+  // sinal de que o snapshot foi coletado mas o anúncio não é vídeo.
+  // Em snapshots antigos (todos null), a mensagem global já explica.
+  const hookHintWhenNull =
+    !allUnavailable && (adAny.ctr != null || adAny.frequency != null)
+      ? "Apenas vídeo"
+      : undefined;
+
   return (
     <div className="rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-6 py-5">
       <p className="mb-4 text-[10px] uppercase tracking-widest text-[var(--muted)]">
@@ -90,7 +98,7 @@ export function FunilFadigaBlock({ ad, ctx, variant }: FunilFadigaBlockProps) {
               avg={ctx.avgHookRate}
               formatFn={fmtPct}
               unit="%"
-              unavailableHint="Apenas vídeo"
+              unavailableHint={hookHintWhenNull}
             />
             <FunilKpi
               label="Frequency"
