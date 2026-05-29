@@ -203,3 +203,39 @@ def test_meta_insights_diarios_parseia_linhas_por_dia():
     assert d2["faturamento"] == Decimal("0")
     assert d2["conversoes"] == Decimal("0")
     assert d2["video_3s"] is None      # sem campo de vídeo → None
+
+
+@respx.mock
+def test_meta_metadados_lote_extrai_nome_tipo_thumb_e_link():
+    from etl.collect_criativos import _meta_metadados_lote
+
+    payload = {
+        "ad-1": {
+            "id": "ad-1",
+            "name": "Criativo A",
+            "preview_shareable_link": "https://fb.com/p/1",
+            "creative": {
+                "object_type": "VIDEO",
+                "image_url": "https://cdn.fb.com/img1.jpg",
+                "thumbnail_url": "https://cdn.fb.com/thumb1.jpg",
+            },
+        },
+        "ad-2": {
+            "id": "ad-2",
+            "name": "Criativo B",
+            "preview_shareable_link": "https://fb.com/p/2",
+            "creative": {"object_type": "SHARE", "thumbnail_url": "https://cdn.fb.com/thumb2.jpg"},
+        },
+    }
+    respx.get(url__regex=r"https://graph\.facebook\.com/v[\d.]+\?.*").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+
+    meta = _meta_metadados_lote(["ad-1", "ad-2"])
+
+    assert meta["ad-1"]["nome"] == "Criativo A"
+    assert meta["ad-1"]["tipo"] == "video"                          # object_type lower
+    assert meta["ad-1"]["preview_link"] == "https://fb.com/p/1"
+    assert meta["ad-1"]["imagem_url"] == "https://cdn.fb.com/img1.jpg"    # image_url preferido
+    assert meta["ad-2"]["imagem_url"] == "https://cdn.fb.com/thumb2.jpg"  # fallback thumbnail_url
+    assert meta["ad-2"]["tipo"] == "share"

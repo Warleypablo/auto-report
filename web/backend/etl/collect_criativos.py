@@ -177,3 +177,32 @@ def _meta_insights_diarios(ad_account_id: str, since: date, until: date) -> list
         next_url = paging.get("next")
         next_params = None  # o link "next" já vem com todos os params/cursor
     return linhas
+
+
+def _meta_metadados_lote(ad_ids: list[str]) -> dict[str, dict]:
+    """Busca nome/tipo/preview-link/imagem por ad_id em lotes de _BATCH_SIZE via
+    endpoint ?ids=. Retorna {ad_id: {nome, tipo, preview_link, imagem_url}}.
+    imagem_url prefere creative.image_url e cai para creative.thumbnail_url."""
+    out: dict[str, dict] = {}
+    base = f"https://graph.facebook.com/{META_API_VERSION}"
+    for i in range(0, len(ad_ids), _BATCH_SIZE):
+        chunk = [a for a in ad_ids[i : i + _BATCH_SIZE] if a]
+        if not chunk:
+            continue
+        params = {
+            "ids": ",".join(chunk),
+            "fields": "name,creative{thumbnail_url,image_url,object_type},preview_shareable_link",
+            "access_token": ACCESS_TOKEN_META_SYSTEM,
+        }
+        resp = httpx.get(base, params=params, timeout=TIMEOUT, follow_redirects=True)
+        resp.raise_for_status()
+        for ad_id, obj in (resp.json() or {}).items():
+            creative = obj.get("creative") or {}
+            object_type = creative.get("object_type")
+            out[ad_id] = {
+                "nome": obj.get("name"),
+                "tipo": object_type.lower() if object_type else None,
+                "preview_link": obj.get("preview_shareable_link"),
+                "imagem_url": creative.get("image_url") or creative.get("thumbnail_url"),
+            }
+    return out
