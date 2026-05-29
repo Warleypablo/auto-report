@@ -174,6 +174,26 @@ def _google_deep_link(*, customer_id: str, ad_group_id: str | None, ad_id: str) 
     )
 
 
+# Tipos de anúncio Google que carregam imagem própria via image_ad.image_url.
+_GOOGLE_IMAGE_AD_TYPES = {"IMAGE_AD"}
+
+
+def _google_thumb_url(ad) -> str | None:
+    """URL da imagem do anúncio, ou None (search/sem imagem própria).
+
+    `ad` é o objeto `ad_group_ad.ad` retornado pelo google-ads. `ad.type_.name`
+    é a string do enum (ex.: 'IMAGE_AD', 'EXPANDED_TEXT_AD', 'RESPONSIVE_DISPLAY_AD').
+    Nesta fase só image ads expoem imagem diretamente; responsive/video (cujos
+    assets exigem segunda chamada a Asset API) e search/text -> None -> SEM_IMAGEM,
+    conforme a limitacao de plataforma registrada no spec.
+    """
+    tipo = getattr(getattr(ad, "type_", None), "name", "") or ""
+    if tipo in _GOOGLE_IMAGE_AD_TYPES:
+        url = getattr(getattr(ad, "image_ad", None), "image_url", "") or ""
+        return url or None
+    return None
+
+
 def _meta_insights_diarios(ad_account_id: str, since: date, until: date) -> list[dict]:
     """Chama /act_{id}/insights level=ad time_increment=1 e devolve uma lista de
     dicts normalizados, um por (ad_id, dia). Reusa o parsing de actions/

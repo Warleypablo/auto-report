@@ -543,6 +543,34 @@ def test_google_deep_link_sem_ad_group_retorna_none():
     assert _google_deep_link(customer_id="1234567890", ad_group_id="", ad_id="999") is None
 
 
+def _fake_ad(type_name, *, image_url=""):
+    ad = MagicMock()
+    ad.type_.name = type_name
+    ad.image_ad.image_url = image_url
+    return ad
+
+
+def test_google_thumb_url_image_ad():
+    from etl.collect_criativos import _google_thumb_url
+
+    ad = _fake_ad("IMAGE_AD", image_url="https://cdn.example/img.png")
+    assert _google_thumb_url(ad) == "https://cdn.example/img.png"
+
+
+def test_google_thumb_url_search_ad_retorna_none():
+    from etl.collect_criativos import _google_thumb_url
+
+    ad = _fake_ad("EXPANDED_TEXT_AD")
+    assert _google_thumb_url(ad) is None
+
+
+def test_google_thumb_url_image_ad_sem_url_retorna_none():
+    from etl.collect_criativos import _google_thumb_url
+
+    ad = _fake_ad("IMAGE_AD", image_url="")
+    assert _google_thumb_url(ad) is None
+
+
 def test_run_collect_criativos_ignora_cliente_ativo_sem_id_meta_ads(TS):
     """Cliente ativo mas com id_meta_ads=None NÃO deve ser processado.
     run_collect_criativos filtra via .isnot(None) na query."""
