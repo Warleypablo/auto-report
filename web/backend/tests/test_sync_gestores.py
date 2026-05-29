@@ -28,6 +28,7 @@ def app_with_db():
             CREATE TABLE staging.cup_clientes (
                 task_id text PRIMARY KEY,
                 nome text,
+                cnpj text,
                 subtask_ids text
             )
         """))
