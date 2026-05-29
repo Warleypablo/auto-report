@@ -56,6 +56,9 @@ def _thumb_jpeg(cor: tuple[int, int, int], rotulo: str) -> bytes:
 
 def main() -> None:
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 8
+    # Para N grande (demo de escala / "mostra todos") usa thumb de cor sólida em vez
+    # de baixar centenas de fotos reais (lento). Fotos reais só para N pequeno (showcase).
+    usar_fotos = n <= 10
     hoje = date.today()
     with SessionLocal() as s:
         # limpa qualquer demo anterior (idempotente)
@@ -108,13 +111,16 @@ def main() -> None:
                 s.add(cr)
                 s.flush()
                 if tem_img:
-                    # Baixa uma foto real (determinística por ad_id) pelo MESMO
-                    # pipeline de rehospedagem da produção; cai pra cor sólida se falhar.
-                    try:
-                        conteudo, mime = fetch_e_redimensionar(
-                            f"https://picsum.photos/seed/{ad_id}/600/600"
-                        )
-                    except Exception:
+                    if usar_fotos:
+                        # Foto real (determinística por ad_id) pelo MESMO pipeline de
+                        # rehospedagem da produção; cai pra cor sólida se falhar.
+                        try:
+                            conteudo, mime = fetch_e_redimensionar(
+                                f"https://picsum.photos/seed/{ad_id}/600/600"
+                            )
+                        except Exception:
+                            conteudo, mime = _thumb_jpeg(_CORES[(ci + di) % len(_CORES)], cr.nome), "image/jpeg"
+                    else:
                         conteudo, mime = _thumb_jpeg(_CORES[(ci + di) % len(_CORES)], cr.nome), "image/jpeg"
                     s.add(CriativoThumb(criativo_id=cr.id, conteudo=conteudo, mime=mime))
                 n_cri += 1
