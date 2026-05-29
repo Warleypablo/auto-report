@@ -399,7 +399,133 @@ def test_coletar_criativos_meta_thumb_erro_nao_derruba_cliente(TS, cliente_id):
         assert len(s.scalars(select(AdInsight).where(AdInsight.cliente_id == cliente_id)).all()) == 1
 
 
+@respx.mock
+def test_meta_insights_diarios_pagina_seguindo_paging_next():
+    """O loop while next_url deve agregar dados de todas as páginas."""
+    from etl.collect_criativos import _meta_insights_diarios
+
+    pagina2_url = "https://graph.facebook.com/v23.0/act_42/insights?after=cursor2"
+
+    pagina1 = {
+        "data": [
+            {
+                "ad_id": "ad-p1", "ad_name": "Pagina 1", "date_start": "2026-05-01",
+                "spend": "5.00", "impressions": "500", "clicks": "5", "reach": "400",
+                "actions": [], "action_values": [],
+            }
+        ],
+        "paging": {"next": pagina2_url},
+    }
+    pagina2 = {
+        "data": [
+            {
+                "ad_id": "ad-p2", "ad_name": "Pagina 2", "date_start": "2026-05-02",
+                "spend": "7.00", "impressions": "700", "clicks": "7", "reach": "600",
+                "actions": [], "action_values": [],
+            }
+        ]
+        # sem "paging" → fim do loop
+    }
+
+    # Usa side_effect com contador para que a 1ª chamada retorne página 1
+    # e a 2ª retorne página 2 — evita loop infinito se regex matchasse ambas.
+    respostas = [
+        httpx.Response(200, json=pagina1),
+        httpx.Response(200, json=pagina2),
+    ]
+    call_count = 0
+
+    def retorna_por_chamada(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        resp = respostas[call_count]
+        call_count += 1
+        return resp
+
+    respx.get(url__regex=r"https://graph\.facebook\.com/.*insights.*").mock(
+        side_effect=retorna_por_chamada
+    )
+
+    linhas = _meta_insights_diarios("42", date(2026, 5, 1), date(2026, 5, 2))
+
+    assert call_count == 2, f"Esperado 2 chamadas HTTP (2 páginas), mas foram {call_count}"
+    assert len(linhas) == 2, f"Esperado 2 linhas (2 páginas), recebido {len(linhas)}"
+    ad_ids = {l["ad_id"] for l in linhas}
+    assert "ad-p1" in ad_ids
+    assert "ad-p2" in ad_ids
+
+
+@respx.mock
+def test_meta_insights_diarios_removeprefix_nao_corrompe_id_patologico():
+    """removeprefix('act_') preserva id patológico 'caa_99' → URL act_caa_99/insights.
+    lstrip('act_') corromperia para 'act_99' (strips chars 'a','c','t','_')."""
+    from etl.collect_criativos import _meta_insights_diarios
+
+    # id que NÃO começa com 'act_' mas cujos caracteres iniciais seriam consumidos por lstrip
+    id_patologico = "caa_99"
+
+    captured_urls: list[str] = []
+
+    def captura_request(request: httpx.Request) -> httpx.Response:
+        captured_urls.append(str(request.url))
+        return httpx.Response(200, json={"data": []})
+
+    respx.get(url__regex=r"https://graph\.facebook\.com/.*").mock(side_effect=captura_request)
+
+    _meta_insights_diarios(id_patologico, date(2026, 5, 1), date(2026, 5, 1))
+
+    assert len(captured_urls) == 1
+    url_chamada = captured_urls[0]
+    assert "act_caa_99/insights" in url_chamada, (
+        f"URL esperada conter 'act_caa_99/insights', mas foi: {url_chamada}"
+    )
+    assert "act_99/insights" not in url_chamada, (
+        f"URL corrompida por lstrip detectada: {url_chamada}"
+    )
+
+
 from unittest.mock import patch
+
+
+def test_run_collect_criativos_ignora_cliente_ativo_sem_id_meta_ads(TS):
+    """Cliente ativo mas com id_meta_ads=None NÃO deve ser processado.
+    run_collect_criativos filtra via .isnot(None) na query."""
+    from etl import collect_criativos as mod
+
+    # Cria cliente ativo SEM id_meta_ads (slug único para não colidir)
+    slug = f"test-sem-meta-{uuid.uuid4().hex[:8]}"
+    with TS() as s:
+        from models import Categoria
+        c = Cliente(slug=slug, nome=slug, categoria=Categoria.ECOMMERCE, ativo=True)
+        # id_meta_ads deixa None (default)
+        s.add(c)
+        s.commit()
+        cliente_sem_meta_id = c.id
+
+    try:
+        chamados: list[uuid.UUID] = []
+
+        def fake_coletar(cliente, since, until, session_factory=None):
+            chamados.append(cliente.id)
+            return True
+
+        with patch.object(mod, "coletar_criativos_meta", side_effect=fake_coletar), \
+             patch.object(mod, "SessionLocal", TS), \
+             patch.object(mod, "advisory_lock") as fake_lock:
+            fake_lock.return_value.__enter__ = lambda *a: None
+            fake_lock.return_value.__exit__ = lambda *a: False
+            resumo = mod.run_collect_criativos(backfill_meses=1)
+
+        assert cliente_sem_meta_id not in chamados, (
+            "coletar_criativos_meta foi chamado para cliente sem id_meta_ads"
+        )
+        # total reflete apenas clientes com id_meta_ads (este não entra na contagem)
+        assert resumo["total"] == len(chamados)
+    finally:
+        with TS() as s:
+            c = s.get(Cliente, cliente_sem_meta_id)
+            if c:
+                s.delete(c)
+                s.commit()
 
 
 def test_run_collect_criativos_exige_exatamente_um_modo():
