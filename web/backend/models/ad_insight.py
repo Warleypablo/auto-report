@@ -9,6 +9,7 @@ from sqlalchemy import (
     Date,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -27,6 +28,8 @@ class AdInsight(Base):
         UniqueConstraint(
             "cliente_id", "rede", "ad_id", "dia", name="uq_ad_insight_cliente_rede_ad_dia"
         ),
+        Index("ix_ad_insights_cliente_dia", "cliente_id", "dia"),
+        Index("ix_ad_insights_cliente_rede_dia", "cliente_id", "rede", "dia"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -127,3 +127,10 @@ def test_ad_insight_reusa_enum_rede_anuncio(TS):
     # rede em criativos e ad_insights compartilham o MESMO tipo Postgres
     assert AdInsight.__table__.c.rede.type.name == "rede_anuncio"
     assert Criativo.__table__.c.rede.type.name == "rede_anuncio"
+
+
+def test_indices_compostos_declarados_nos_models():
+    cr_idx = {ix.name for ix in Criativo.__table__.indexes}
+    assert "ix_criativos_cliente_rede" in cr_idx
+    ai_idx = {ix.name for ix in AdInsight.__table__.indexes}
+    assert {"ix_ad_insights_cliente_dia", "ix_ad_insights_cliente_rede_dia"} <= ai_idx

@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     LargeBinary,
     String,
     Text,
@@ -37,6 +38,7 @@ class Criativo(Base):
     __tablename__ = "criativos"
     __table_args__ = (
         UniqueConstraint("cliente_id", "rede", "ad_id", name="uq_criativo_cliente_rede_ad"),
+        Index("ix_criativos_cliente_rede", "cliente_id", "rede"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
