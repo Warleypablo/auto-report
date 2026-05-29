@@ -646,6 +646,118 @@ def test_coletar_google_id_zero_retorna_true_sem_chamar_api():
     p.assert_not_called()
 
 
+@pytest.fixture
+def cliente_google(TS):
+    slug = f"google-{uuid.uuid4().hex[:8]}"
+    with TS() as s:
+        c = Cliente(
+            slug=slug, nome=slug, categoria=Categoria.ECOMMERCE,
+            id_google_ads="1234567890",
+        )
+        s.add(c)
+        s.commit()
+        cid = c.id
+    yield cid
+    with TS() as s:
+        c = s.get(Cliente, cid)
+        if c:
+            s.delete(c)
+            s.commit()
+
+
+def s_cliente(TS, cliente_id):
+    """Recarrega o Cliente numa sessao da fixture para passar ao coletor."""
+    with TS() as s:
+        return s.get(Cliente, cliente_id)
+
+
+def _gaql_row(*, ad_id, ad_group_id, ad_type, day, cost_micros, conversions,
+              conv_value, impressions, clicks, name="", image_url=""):
+    row = MagicMock()
+    row.ad_group_ad.ad.id = int(ad_id)
+    row.ad_group_ad.ad.name = name
+    row.ad_group_ad.ad.type_.name = ad_type
+    row.ad_group_ad.ad.image_ad.image_url = image_url
+    row.ad_group_ad.ad_group = f"customers/1234567890/adGroups/{ad_group_id}"
+    row.segments.date = day  # "YYYY-MM-DD"
+    row.metrics.cost_micros = cost_micros
+    row.metrics.conversions = conversions
+    row.metrics.conversions_value = conv_value
+    row.metrics.impressions = impressions
+    row.metrics.clicks = clicks
+    return row
+
+
+def test_coletar_google_persiste_insights_criativos_e_thumb(cliente_google, TS):
+    from etl.collect_criativos import coletar_criativos_google
+
+    rows = [
+        _gaql_row(ad_id="999", ad_group_id="555", ad_type="IMAGE_AD",
+                  day="2026-01-01", cost_micros=2_000_000, conversions=2.0,
+                  conv_value=100.0, impressions=1000, clicks=10,
+                  name="Banner Promo", image_url="https://cdn.example/x.png"),
+        _gaql_row(ad_id="999", ad_group_id="555", ad_type="IMAGE_AD",
+                  day="2026-01-02", cost_micros=1_000_000, conversions=1.0,
+                  conv_value=50.0, impressions=500, clicks=5,
+                  name="Banner Promo", image_url="https://cdn.example/x.png"),
+        _gaql_row(ad_id="111", ad_group_id="555", ad_type="EXPANDED_TEXT_AD",
+                  day="2026-01-01", cost_micros=3_000_000, conversions=0.0,
+                  conv_value=0.0, impressions=2000, clicks=20, name="Search 1"),
+    ]
+    fake_service = MagicMock()
+    fake_service.search.return_value = rows
+
+    with patch("etl.collect_criativos._get_google_ads_service", return_value=fake_service), \
+         patch("etl.collect_criativos.fetch_e_redimensionar",
+               return_value=(b"\xff\xd8jpeg", "image/jpeg")) as fr:
+        ok = coletar_criativos_google(
+            s_cliente(TS, cliente_google), date(2026, 1, 1), date(2026, 1, 31),
+            session_factory=TS,
+        )
+
+    assert ok is True
+    fr.assert_called_once_with("https://cdn.example/x.png", lado_max=320)
+
+    with TS() as s:
+        insights = s.scalars(
+            select(AdInsight).where(AdInsight.cliente_id == cliente_google)
+            .order_by(AdInsight.ad_id, AdInsight.dia)
+        ).all()
+        # 999 em 2 dias + 111 em 1 dia = 3 linhas
+        assert len(insights) == 3
+        i0 = next(i for i in insights if i.ad_id == "999" and i.dia == date(2026, 1, 1))
+        assert i0.rede == RedeAnuncio.GOOGLE
+        assert i0.investimento == 2  # 2_000_000 micros
+        assert i0.faturamento == 100
+        assert i0.conversoes == 2
+        assert i0.impressoes == 1000
+        assert i0.clicks == 10
+        assert i0.leads is None
+        assert i0.video_3s is None
+        assert i0.reach is None
+
+        criativos = s.scalars(
+            select(Criativo).where(Criativo.cliente_id == cliente_google)
+            .order_by(Criativo.ad_id)
+        ).all()
+        by_ad = {c.ad_id: c for c in criativos}
+        assert by_ad["999"].rede == RedeAnuncio.GOOGLE
+        assert by_ad["999"].thumb_status == ThumbStatus.OK
+        assert by_ad["999"].nome == "Banner Promo"
+        assert by_ad["999"].tipo == "IMAGE_AD"
+        assert by_ad["999"].preview_link == (
+            "https://ads.google.com/aw/ads?ocid=1234567890&__e=999&adGroupId=555"
+        )
+        assert by_ad["999"].primeiro_dia == date(2026, 1, 1)
+        assert by_ad["999"].ultimo_dia == date(2026, 1, 2)
+        assert by_ad["111"].thumb_status == ThumbStatus.SEM_IMAGEM
+
+        thumb = s.get(CriativoThumb, by_ad["999"].id)
+        assert thumb is not None
+        assert thumb.conteudo == b"\xff\xd8jpeg"
+        assert thumb.mime == "image/jpeg"
+
+
 def test_run_collect_criativos_exige_exatamente_um_modo():
     from etl.collect_criativos import run_collect_criativos
 

@@ -423,7 +423,121 @@ def coletar_criativos_google(
     if not customer_id or customer_id == "0":
         log.info("collect_criativos_google skip sem id: %s", cliente.nome)
         return True
-    raise NotImplementedError  # corpo implementado na Task 6
+
+    from decimal import Decimal
+
+    try:
+        service = _get_google_ads_service()
+    except Exception:
+        log.exception("collect_criativos_google auth falhou (%s)", cliente.nome)
+        return False
+
+    query = _build_google_query(since, until)
+    try:
+        response = service.search(customer_id=str(customer_id), query=query)
+        rows = list(response)
+    except GoogleAdsException:
+        log.exception("collect_criativos_google GAQL falhou (%s)", cliente.nome)
+        return False
+
+    # Agrega por (ad_id, dia); guarda metadados por ad_id.
+    insights: dict[tuple[str, date], dict] = {}
+    metas: dict[str, dict] = {}
+    for row in rows:
+        ad = row.ad_group_ad.ad
+        ad_id = str(ad.id)
+        dia = date.fromisoformat(str(row.segments.date))
+        acc = insights.setdefault(
+            (ad_id, dia),
+            {"investimento": Decimal("0"), "faturamento": Decimal("0"),
+             "conversoes": Decimal("0"), "impressoes": 0, "clicks": 0},
+        )
+        acc["investimento"] += Decimal(row.metrics.cost_micros or 0) / Decimal(1_000_000)
+        acc["faturamento"] += Decimal(str(row.metrics.conversions_value or 0))
+        acc["conversoes"] += Decimal(str(row.metrics.conversions or 0))
+        acc["impressoes"] += int(row.metrics.impressions or 0)
+        acc["clicks"] += int(row.metrics.clicks or 0)
+
+        ad_group_path = row.ad_group_ad.ad_group
+        ad_group_id = str(ad_group_path).rsplit("/", 1)[-1] if ad_group_path else None
+        meta = metas.setdefault(
+            ad_id,
+            {"nome": ad.name or None,
+             "tipo": getattr(getattr(ad, "type_", None), "name", None),
+             "thumb_url": _google_thumb_url(ad),
+             "ad_group_id": ad_group_id,
+             "primeiro_dia": dia, "ultimo_dia": dia},
+        )
+        meta["primeiro_dia"] = min(meta["primeiro_dia"], dia)
+        meta["ultimo_dia"] = max(meta["ultimo_dia"], dia)
+
+    session = session_factory()
+    own_session = session_factory is SessionLocal
+    try:
+        for (ad_id, dia), v in insights.items():
+            upsert_ad_insight(
+                session,
+                cliente_id=cliente.id,
+                rede=RedeAnuncio.GOOGLE,
+                ad_id=ad_id,
+                dia=dia,
+                investimento=v["investimento"],
+                faturamento=v["faturamento"],
+                conversoes=v["conversoes"],
+                leads=None,
+                impressoes=v["impressoes"],
+                clicks=v["clicks"],
+                video_3s=None,
+                reach=None,
+            )
+
+        for ad_id, meta in metas.items():
+            thumb_url = meta["thumb_url"]
+            if thumb_url:
+                try:
+                    conteudo, mime = fetch_e_redimensionar(thumb_url, lado_max=320)
+                    thumb_status = ThumbStatus.OK
+                except Exception:
+                    log.exception(
+                        "collect_criativos_google thumb falhou (%s ad_id=%s)",
+                        cliente.nome, ad_id,
+                    )
+                    conteudo, mime, thumb_status = None, None, ThumbStatus.ERRO
+            else:
+                conteudo, mime, thumb_status = None, None, ThumbStatus.SEM_IMAGEM
+
+            preview_link = _google_deep_link(
+                customer_id=str(customer_id),
+                ad_group_id=meta["ad_group_id"],
+                ad_id=ad_id,
+            )
+            criativo = upsert_criativo(
+                session,
+                cliente_id=cliente.id,
+                rede=RedeAnuncio.GOOGLE,
+                ad_id=ad_id,
+                nome=meta["nome"],
+                tipo=meta["tipo"],
+                preview_link=preview_link,
+                thumb_status=thumb_status,
+                primeiro_dia=meta["primeiro_dia"],
+                ultimo_dia=meta["ultimo_dia"],
+            )
+            if thumb_status == ThumbStatus.OK and conteudo is not None:
+                session.merge(
+                    CriativoThumb(criativo_id=criativo.id, conteudo=conteudo, mime=mime)
+                )
+
+        session.commit()
+    finally:
+        if own_session:
+            session.close()
+
+    log.info(
+        "collect_criativos_google ok (%s): ads=%d dias=%d",
+        cliente.nome, len(metas), len(insights),
+    )
+    return True
 
 
 def _janela_backfill(backfill_meses: int, hoje: date) -> tuple[date, date]:
