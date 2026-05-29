@@ -758,6 +758,71 @@ def test_coletar_google_persiste_insights_criativos_e_thumb(cliente_google, TS):
         assert thumb.mime == "image/jpeg"
 
 
+def test_coletar_google_idempotente(cliente_google, TS):
+    from etl.collect_criativos import coletar_criativos_google
+
+    def make_rows():
+        return [
+            _gaql_row(ad_id="999", ad_group_id="555", ad_type="IMAGE_AD",
+                      day="2026-01-01", cost_micros=2_000_000, conversions=2.0,
+                      conv_value=100.0, impressions=1000, clicks=10,
+                      name="Banner", image_url="https://cdn.example/x.png"),
+        ]
+
+    def run_once():
+        fake_service = MagicMock()
+        fake_service.search.return_value = make_rows()
+        with patch("etl.collect_criativos._get_google_ads_service", return_value=fake_service), \
+             patch("etl.collect_criativos.fetch_e_redimensionar",
+                   return_value=(b"jpegbytes", "image/jpeg")):
+            return coletar_criativos_google(
+                s_cliente(TS, cliente_google), date(2026, 1, 1), date(2026, 1, 31),
+                session_factory=TS,
+            )
+
+    assert run_once() is True
+    assert run_once() is True
+
+    with TS() as s:
+        insights = s.scalars(
+            select(AdInsight).where(AdInsight.cliente_id == cliente_google)
+        ).all()
+        assert len(insights) == 1
+        assert insights[0].investimento == 2     # nao 4 -> sobrescreveu
+        assert insights[0].faturamento == 100
+
+        criativos = s.scalars(
+            select(Criativo).where(Criativo.cliente_id == cliente_google)
+        ).all()
+        assert len(criativos) == 1
+        thumbs = s.scalars(
+            select(CriativoThumb).where(CriativoThumb.criativo_id == criativos[0].id)
+        ).all()
+        # uma thumb por criativo (PK = criativo_id, dedup por anuncio)
+        assert len(thumbs) == 1
+
+
+def test_coletar_google_gaql_exception_retorna_false(cliente_google, TS):
+    from google.ads.googleads.errors import GoogleAdsException
+
+    from etl.collect_criativos import coletar_criativos_google
+
+    fake_service = MagicMock()
+    fake_service.search.side_effect = GoogleAdsException(None, None, None, None)
+
+    with patch("etl.collect_criativos._get_google_ads_service", return_value=fake_service):
+        ok = coletar_criativos_google(
+            s_cliente(TS, cliente_google), date(2026, 1, 1), date(2026, 1, 31),
+            session_factory=TS,
+        )
+
+    assert ok is False
+    with TS() as s:
+        assert s.scalars(
+            select(AdInsight).where(AdInsight.cliente_id == cliente_google)
+        ).all() == []
+
+
 def test_run_collect_criativos_exige_exatamente_um_modo():
     from etl.collect_criativos import run_collect_criativos
 
