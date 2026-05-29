@@ -35,6 +35,7 @@ export type ClienteGestor = {
   pasta_url: string | null;
   cup_task_id: string | null;
   ativo: boolean;
+  gestor_travado: boolean;
   cup: CupInfo | null;
 };
 
@@ -42,6 +43,7 @@ export type ClienteEditData = {
   nome?: string | null;
   categoria?: string | null;
   gestor?: string | null;
+  gestor_travado?: boolean;
   id_google_ads?: string | null;
   id_meta_ads?: string | null;
   id_ga4?: string | null;
@@ -299,6 +301,7 @@ export const gestorApi = {
   syncGestoresFromClickup: () =>
     apiCall<{
       atualizados: number;
+      a_atualizar: number;
       total_ativos: number;
       com_match_nome: number;
       com_contrato_performance: number;

@@ -52,6 +52,7 @@ export default function ClickupVinculosPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{
     atualizados: number;
+    a_atualizar: number;
     total_ativos: number;
     com_match_nome: number;
     com_contrato_performance: number;
@@ -264,6 +265,8 @@ export default function ClickupVinculosPage() {
         {syncResult && (
           <p className="mt-3 text-xs text-[var(--ink-soft)]">
             <span className="text-[var(--forest)]">{syncResult.atualizados} atualizados</span>
+            {" · "}
+            {syncResult.a_atualizar} elegíveis (não travados)
             {" · "}
             {syncResult.total_ativos} clientes ativos
             {" · "}
