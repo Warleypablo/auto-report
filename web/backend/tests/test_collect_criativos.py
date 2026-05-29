@@ -397,3 +397,72 @@ def test_coletar_criativos_meta_thumb_erro_nao_derruba_cliente(TS, cliente_id):
         assert cri.thumb_status == ThumbStatus.ERRO
         assert s.get(CriativoThumb, cri.id) is None
         assert len(s.scalars(select(AdInsight).where(AdInsight.cliente_id == cliente_id)).all()) == 1
+
+
+from unittest.mock import patch
+
+
+def test_run_collect_criativos_exige_exatamente_um_modo():
+    from etl.collect_criativos import run_collect_criativos
+
+    with pytest.raises(ValueError):
+        run_collect_criativos()  # nenhum modo
+    with pytest.raises(ValueError):
+        run_collect_criativos(backfill_meses=6, incremental=True)  # ambos
+
+
+def test_run_collect_criativos_backfill_chama_coletor_por_cliente(TS, cliente_id):
+    from etl import collect_criativos as mod
+
+    with TS() as s:
+        c = s.get(Cliente, cliente_id)
+        c.id_meta_ads = "act_777"
+        s.commit()
+
+    janelas = {}
+
+    def fake_coletar(cliente, since, until, session_factory=None):
+        janelas[cliente.id] = (since, until)
+        return True
+
+    with patch.object(mod, "coletar_criativos_meta", side_effect=fake_coletar), \
+         patch.object(mod, "SessionLocal", TS), \
+         patch.object(mod, "advisory_lock") as fake_lock:
+        fake_lock.return_value.__enter__ = lambda *a: None
+        fake_lock.return_value.__exit__ = lambda *a: False
+        resumo = mod.run_collect_criativos(backfill_meses=6)
+
+    assert resumo["ok"] >= 1
+    assert resumo["total"] >= 1
+    # janela de backfill ~6 meses (>= 150 dias)
+    since, until = janelas[cliente_id]
+    assert (until - since).days >= 150
+
+
+def test_run_collect_criativos_incremental_usa_retroacao(TS, cliente_id):
+    from datetime import date as _date, timedelta
+
+    from etl import collect_criativos as mod
+
+    with TS() as s:
+        c = s.get(Cliente, cliente_id)
+        c.id_meta_ads = "act_777"
+        s.commit()
+
+    janelas = {}
+
+    def fake_coletar(cliente, since, until, session_factory=None):
+        janelas[cliente.id] = (since, until)
+        return True
+
+    with patch.object(mod, "coletar_criativos_meta", side_effect=fake_coletar), \
+         patch.object(mod, "SessionLocal", TS), \
+         patch.object(mod, "advisory_lock") as fake_lock:
+        fake_lock.return_value.__enter__ = lambda *a: None
+        fake_lock.return_value.__exit__ = lambda *a: False
+        mod.run_collect_criativos(incremental=True)
+
+    since, until = janelas[cliente_id]
+    ontem = _date.today() - timedelta(days=1)
+    assert until == ontem
+    assert since == ontem - timedelta(days=mod.RETROACAO_DIAS)

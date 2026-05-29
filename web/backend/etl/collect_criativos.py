@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 import uuid
 from collections.abc import Callable
-from datetime import date
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -14,7 +16,7 @@ _ROOT = Path(__file__).resolve().parents[3]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, true
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -22,12 +24,14 @@ import json
 
 import httpx
 
+from app_settings import get_settings
 from config.settings import ACCESS_TOKEN_META_SYSTEM
 from core.categorias.ecommerce.campaign_facebook_gather import (
     _extract_purchase_metrics,
     _video_3s_views_from_row,
 )
-from db import SessionLocal
+from db import SessionLocal, engine
+from etl.lock import LockTaken, advisory_lock
 from models import AdInsight, Criativo, CriativoThumb, RedeAnuncio, ThumbStatus
 from models import Cliente
 
@@ -330,3 +334,87 @@ def coletar_criativos_meta(
     finally:
         if own:
             session.close()
+
+
+def _janela_backfill(backfill_meses: int, hoje: date) -> tuple[date, date]:
+    until = hoje
+    # aproxima meses por 30 dias (suficiente para a janela de backfill)
+    since = hoje - timedelta(days=30 * backfill_meses)
+    return since, until
+
+
+def _janela_incremental(hoje: date) -> tuple[date, date]:
+    ontem = hoje - timedelta(days=1)
+    return ontem - timedelta(days=RETROACAO_DIAS), ontem
+
+
+def run_collect_criativos(
+    backfill_meses: int | None = None,
+    incremental: bool = False,
+    today: date | None = None,
+) -> dict:
+    """Entrypoint. backfill_meses=6 → janela últimos ~6 meses; incremental=True →
+    ontem + RETROACAO_DIAS de retroação. Exatamente um modo (XOR). Coleta os
+    clientes ativos com id_meta_ads em paralelo. Retorna {ok, fail, total}."""
+    if (backfill_meses is None) == (not incremental):
+        raise ValueError("Escolha exatamente um modo: backfill_meses XOR incremental")
+
+    hoje = today or date.today()
+    if incremental:
+        since, until = _janela_incremental(hoje)
+    else:
+        since, until = _janela_backfill(backfill_meses, hoje)
+
+    settings = get_settings()
+    try:
+        with advisory_lock(engine, "etl:criativos:run", blocking=False):
+            with SessionLocal() as session:
+                clientes = session.scalars(
+                    select(Cliente).where(
+                        Cliente.ativo == true(),
+                        Cliente.id_meta_ads.isnot(None),
+                    )
+                ).all()
+                clientes_ids = [c.id for c in clientes]
+
+            ok = 0
+            fail = 0
+
+            def _processa(cliente_id: uuid.UUID) -> bool:
+                with SessionLocal() as s:
+                    cliente = s.get(Cliente, cliente_id)
+                    return coletar_criativos_meta(
+                        cliente, since, until, session_factory=SessionLocal
+                    )
+
+            with ThreadPoolExecutor(max_workers=settings.etl_threads) as pool:
+                futures = {pool.submit(_processa, cid): cid for cid in clientes_ids}
+                for f in as_completed(futures):
+                    if f.result():
+                        ok += 1
+                    else:
+                        fail += 1
+
+            resumo = {"ok": ok, "fail": fail, "total": len(clientes_ids)}
+            log.info("criativos_finalizado", extra=resumo)
+            return resumo
+    except LockTaken:
+        log.warning("criativos_skip_lock_ocupado")
+        return {"skipped": True}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Coleta de criativos (Meta ad-level)")
+    grupo = parser.add_mutually_exclusive_group(required=True)
+    grupo.add_argument("--backfill-meses", type=int, dest="backfill_meses")
+    grupo.add_argument("--incremental", action="store_true")
+    args = parser.parse_args()
+    resumo = run_collect_criativos(
+        backfill_meses=args.backfill_meses, incremental=args.incremental
+    )
+    log.info("criativos_cli_resumo", extra=resumo)
+    print(resumo)
+
+
+if __name__ == "__main__":
+    main()
