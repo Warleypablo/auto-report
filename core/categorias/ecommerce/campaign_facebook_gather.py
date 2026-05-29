@@ -153,6 +153,34 @@ def _get_creatives_thumbnail_urls(ad_ids: List[str]) -> Dict[str, str]:
     return thumbs
 
 # -----------------------------------------------------------------------------
+# Helper de placeholders vazios
+# -----------------------------------------------------------------------------
+
+def _adf_placeholders_vazios(top_n: int) -> Dict[str, str]:
+    """Placeholders "vazios" (—) p/ a tabela de Anúncios em Destaque.
+
+    Devolvido quando não há dados de anúncios (período sem entrega, conta sem
+    ID Meta, erro na API, etc.) para o template NUNCA exibir placeholders crus.
+    """
+    ph: Dict[str, str] = {}
+    for rank in range(1, top_n + 1):
+        ph.update({
+            f"{{{{nome_adf{rank}}}}}": "-",
+            f"{{{{img_adf{rank}}}}}":  "__NO_IMAGE__",
+            f"{{{{conv_adf{rank}}}}}": "-",
+            f"{{{{cpa_adf{rank}}}}}":  "-",
+            f"{{{{inv_adf{rank}}}}}":  "-",
+            f"{{{{roas_adf{rank}}}}}": "-",
+            f"{{{{fat_adf{rank}}}}}":  "-",
+            f"{{{{imp_adf{rank}}}}}":  "-",
+            f"{{{{ctr_adf{rank}}}}}":  "-",
+            f"{{{{freq_adf{rank}}}}}": "-",
+            f"{{{{hook_adf{rank}}}}}": "-",
+        })
+    return ph
+
+
+# -----------------------------------------------------------------------------
 # Função principal
 # -----------------------------------------------------------------------------
 
@@ -173,14 +201,14 @@ def coletar_metricas_anuncios_meta(
     if not periodo.inicio or not periodo.fim:
         log.error("Periodo inválido para %s (ads meta)", cliente.nome)
         set_status(cliente, "ERRO DATA ADS")
-        return {}
+        return _adf_placeholders_vazios(top_n)
 
     # ad_account_id: Optional[str] = getattr(cliente, "id_meta_ads", None)
     ad_account_id = cliente.id_meta_ads
     if not ad_account_id:
         log.warning("Cliente %s sem ID Meta Ads", cliente.nome)
         set_status(cliente, "SEM META ID")
-        return {}
+        return _adf_placeholders_vazios(top_n)
 
     # --------------------------------------------------------------------- #
     # Monta parâmetros da requisição                                        #
@@ -224,16 +252,16 @@ def coletar_metricas_anuncios_meta(
         err = exc.response.text if exc.response else str(exc)
         log.error("HTTP Meta Ads (%s): %s", cliente.nome, err)
         set_status(cliente, "ERRO API ADS")
-        return {}
+        return _adf_placeholders_vazios(top_n)
     except Exception as exc:  # noqa: BLE001
         log.exception("Falha Meta Ads (%s): %s", cliente.nome, exc)
         set_status(cliente, "ERRO API ADS")
-        return {}
+        return _adf_placeholders_vazios(top_n)
 
     if not rows:
         log.info("Meta Ads devolveu lista vazia para %s", cliente.nome)
         set_status(cliente, "SEM DADOS ADS")
-        return {}
+        return _adf_placeholders_vazios(top_n)
 
     # --------------------------------------------------------------------- #
     # Processa linha‑a‑linha e agrega métricas                              #
