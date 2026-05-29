@@ -576,6 +576,7 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
                 type="week"
                 value={semana}
                 onChange={(e) => setSemana(e.target.value)}
+                max={isoWeekAtual()}
                 aria-label="Semana de referência"
                 className="rounded border border-[var(--rule-soft)] bg-[var(--paper)] px-2 py-1 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
               />
