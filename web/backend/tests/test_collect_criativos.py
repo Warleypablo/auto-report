@@ -483,7 +483,23 @@ def test_meta_insights_diarios_removeprefix_nao_corrompe_id_patologico():
     )
 
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+
+def test_get_google_ads_service_usa_cred_manager():
+    fake_client = MagicMock()
+    fake_service = MagicMock()
+    fake_client.get_service.return_value = fake_service
+    with patch(
+        "etl.collect_criativos._build_google_ads_client",
+        return_value=fake_client,
+    ):
+        from etl.collect_criativos import _get_google_ads_service
+
+        svc = _get_google_ads_service()
+
+    assert svc is fake_service
+    fake_client.get_service.assert_called_once_with("GoogleAdsService")
 
 
 def test_run_collect_criativos_ignora_cliente_ativo_sem_id_meta_ads(TS):

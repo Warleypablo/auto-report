@@ -26,6 +26,8 @@ import httpx
 
 from app_settings import get_settings
 from config.settings import ACCESS_TOKEN_META_SYSTEM
+from core.cred_manager import _build_google_ads_client
+from google.ads.googleads.errors import GoogleAdsException
 from core.categorias.ecommerce.campaign_facebook_gather import (
     _extract_purchase_metrics,
     _video_3s_views_from_row,
@@ -130,6 +132,12 @@ def upsert_criativo(
         },
     )
     session.execute(stmt)
+
+
+def _get_google_ads_service():
+    """Wrapper para permitir mock em testes (espelha etl.collect._get_handler)."""
+    client = _build_google_ads_client()
+    return client.get_service("GoogleAdsService")
 
 
 def _meta_insights_diarios(ad_account_id: str, since: date, until: date) -> list[dict]:
