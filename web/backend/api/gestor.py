@@ -5,8 +5,9 @@ import os
 import threading
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import distinct, select, text, update
 from sqlalchemy.orm import Session, selectinload
@@ -18,6 +19,8 @@ from models import Cliente, GestorCadastrado, Insight, ReportJob, Usuario, Usuar
 from models.snapshot import Snapshot
 from models.snapshot import Frequencia as SnapFrequencia
 from models.cliente import Categoria as CatEnum
+from models.criativo import Criativo, CriativoThumb, ThumbStatus
+from services.criativos import agregar_criativos
 from models.report_job import JobStatus
 from etl.cliente_publico import slugify
 from schemas import (
@@ -26,6 +29,7 @@ from schemas import (
     BackfillResponse,
     CoberturaClienteItem,
     CoberturaResponse,
+    CriativosResponse,
     AssignClientesRequest,
     ClienteCreateRequest,
     CupClienteInfo,
@@ -416,6 +420,7 @@ def sync_gestores_from_clickup(
                     c.id,
                     c.nome,
                     c.gestor,
+                    c.gestor_travado,
                     LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(c.nome),
                         'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
                         'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
@@ -434,12 +439,12 @@ def sync_gestores_from_clickup(
                 FROM staging.cup_clientes cc
             ),
             cliente_matched AS (
-                SELECT cn.id, cn.gestor, cup.subtask_ids
+                SELECT cn.id, cn.gestor, cn.gestor_travado, cup.subtask_ids
                 FROM cliente_norm cn
                 JOIN cup_norm cup ON cn.nome_norm = cup.nome_norm
             ),
             subtasks_explodidas AS (
-                SELECT cm.id AS cliente_id, cm.gestor, TRIM(s.subtask_id) AS subtask_id
+                SELECT cm.id AS cliente_id, cm.gestor, cm.gestor_travado, TRIM(s.subtask_id) AS subtask_id
                 FROM cliente_matched cm
                 CROSS JOIN LATERAL UNNEST(STRING_TO_ARRAY(cm.subtask_ids, ';')) AS s(subtask_id)
                 WHERE COALESCE(cm.subtask_ids, '') <> ''
@@ -448,6 +453,7 @@ def sync_gestores_from_clickup(
                 SELECT DISTINCT ON (se.cliente_id)
                     se.cliente_id,
                     se.gestor AS gestor_atual,
+                    se.gestor_travado AS gestor_travado,
                     ct.responsavel AS novo_gestor
                 FROM subtasks_explodidas se
                 JOIN staging.cup_contratos ct ON TRIM(ct.id_subtask) = se.subtask_id
@@ -461,7 +467,8 @@ def sync_gestores_from_clickup(
                 (SELECT COUNT(*) FROM performance_resp WHERE novo_gestor IS NOT NULL AND TRIM(novo_gestor) <> '') AS com_responsavel,
                 (SELECT COUNT(*) FROM performance_resp pr
                   WHERE pr.novo_gestor IS NOT NULL AND TRIM(pr.novo_gestor) <> ''
-                    AND pr.gestor_atual IS DISTINCT FROM pr.novo_gestor) AS a_atualizar
+                    AND pr.gestor_atual IS DISTINCT FROM pr.novo_gestor
+                    AND pr.gestor_travado = false) AS a_atualizar
         """)
     ).mappings().one()
 
@@ -514,6 +521,7 @@ def sync_gestores_from_clickup(
                 atualizado_em = NOW()
             FROM performance_resp pr
             WHERE c.id = pr.cliente_id
+              AND c.gestor_travado = false
               AND (c.gestor IS DISTINCT FROM pr.novo_gestor)
         """)
     )
@@ -527,6 +535,7 @@ def sync_gestores_from_clickup(
 
     return {
         "atualizados": result.rowcount,
+        "a_atualizar": counts["a_atualizar"],
         "total_ativos": counts["total_ativos"],
         "com_match_nome": counts["com_match_nome"],
         "com_contrato_performance": counts["com_contrato_performance"],
@@ -1797,4 +1806,100 @@ def get_cobertura(
             )
             for c in clientes
         ],
+    )
+
+
+# ── GET /gestor/criativos ──────────────────────────────────────────────────
+
+@router.get("/criativos", response_model=CriativosResponse)
+def list_criativos(
+    de: date = Query(..., description="YYYY-MM-DD inclusive"),
+    ate: date = Query(..., description="YYYY-MM-DD inclusive"),
+    rede: Literal["meta", "google", "todos"] = Query("todos"),
+    categoria: list[Literal["ECOMMERCE", "LEAD_COM_SITE", "LEAD_SEM_SITE"]] | None = Query(None),
+    gestor: str | None = Query(None),
+    cliente: str | None = Query(None, description="slug do cliente"),
+    fat_min: float | None = Query(None),
+    fat_max: float | None = Query(None),
+    inv_min: float | None = Query(None),
+    inv_max: float | None = Query(None),
+    cli_fat_min: float | None = Query(None),
+    cli_fat_max: float | None = Query(None),
+    cli_inv_min: float | None = Query(None),
+    cli_inv_max: float | None = Query(None),
+    order_by: Literal["roas", "faturamento", "investimento"] = Query("roas"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> CriativosResponse:
+    items, total = agregar_criativos(
+        session,
+        de=de,
+        ate=ate,
+        rede=rede,
+        categorias=list(categoria) if categoria else None,
+        gestor=gestor,
+        cliente_slug=cliente,
+        fat_min=fat_min,
+        fat_max=fat_max,
+        inv_min=inv_min,
+        inv_max=inv_max,
+        cli_fat_min=cli_fat_min,
+        cli_fat_max=cli_fat_max,
+        cli_inv_min=cli_inv_min,
+        cli_inv_max=cli_inv_max,
+        order_by=order_by,
+        limit=limit,
+        offset=offset,
+        user=user,
+    )
+    for it in items:
+        if it.thumb_status == "ok":
+            it.thumb_url = f"/api/gestor/criativos/{it.criativo_id}/thumb"
+        else:
+            it.thumb_url = None
+    return CriativosResponse(items=items, total=total)
+
+
+# ── GET /gestor/criativos/{criativo_id}/thumb ──────────────────────────────
+
+@router.get("/criativos/{criativo_id}/thumb")
+def get_criativo_thumb(
+    criativo_id: uuid.UUID,
+    request: Request,
+    user: Usuario = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> Response:
+    criativo = session.get(Criativo, criativo_id)
+    if criativo is None or criativo.thumb_status != ThumbStatus.OK:
+        raise HTTPException(status_code=404, detail="Thumb não encontrada")
+
+    # Escopo de acesso: admin tudo; gestor valida UsuarioCliente.
+    if not user.is_admin:
+        autorizado = session.execute(
+            select(UsuarioCliente.cliente_id).where(
+                UsuarioCliente.usuario_id == user.id,
+                UsuarioCliente.cliente_id == criativo.cliente_id,
+            )
+        ).scalar_one_or_none()
+        if autorizado is None:
+            raise HTTPException(status_code=404, detail="Thumb não encontrada")
+
+    etag = f'"{criativo_id}"'
+    cache_headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=31536000, immutable",
+    }
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=cache_headers)
+
+    thumb = session.get(CriativoThumb, criativo_id)
+    if thumb is None:
+        raise HTTPException(status_code=404, detail="Thumb não encontrada")
+
+    return Response(
+        content=thumb.conteudo,
+        media_type=thumb.mime,
+        headers=cache_headers,
     )

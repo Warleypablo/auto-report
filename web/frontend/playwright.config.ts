@@ -13,6 +13,12 @@ export default defineConfig({
     headless: true,
     trace: "retain-on-failure",
   },
+  webServer: {
+    command: "PORT=3010 npm run dev",
+    url: "http://localhost:3010",
+    reuseExistingServer: true,
+    timeout: 120_000,
+  },
   projects: [
     {
       name: "chromium",

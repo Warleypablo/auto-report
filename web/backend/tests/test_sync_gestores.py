@@ -1,0 +1,170 @@
+from datetime import date
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+
+from app_settings import Settings, get_settings
+from db import get_session
+from models import Cliente, Usuario
+from models.base import Base
+from models.cliente import Categoria
+
+
+TEST_DB_URL = "postgresql+psycopg://vitrine:vitrine@localhost:5432/vitrine_test"
+
+
+@pytest.fixture
+def app_with_db():
+    engine = create_engine(TEST_DB_URL)
+
+    with engine.begin() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
+        conn.execute(text("DROP TABLE IF EXISTS staging.cup_contratos"))
+        conn.execute(text("DROP TABLE IF EXISTS staging.cup_clientes"))
+        conn.execute(text("""
+            CREATE TABLE staging.cup_clientes (
+                task_id text PRIMARY KEY,
+                nome text,
+                cnpj text,
+                subtask_ids text
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE staging.cup_contratos (
+                id_subtask text,
+                servico text,
+                responsavel text,
+                data_inicio date
+            )
+        """))
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    TS = sessionmaker(bind=engine)
+
+    from api.gestor import router
+    from api.auth import require_auth, require_admin
+
+    app = FastAPI()
+    app.include_router(router, prefix="/gestor")
+
+    def s_dep():
+        with TS() as s:
+            yield s
+
+    def cfg_dep():
+        return Settings(database_url=TEST_DB_URL)
+
+    admin = Usuario(
+        email="admin@test.com", nome="Admin",
+        senha_hash="x", is_admin=True, ativo=True,
+    )
+    with TS() as s:
+        s.add(admin)
+        s.commit()
+        s.refresh(admin)
+        admin_id = admin.id
+
+    def fake_admin():
+        with TS() as s:
+            return s.get(Usuario, admin_id)
+
+    app.dependency_overrides[get_session] = s_dep
+    app.dependency_overrides[get_settings] = cfg_dep
+    app.dependency_overrides[require_auth] = fake_admin
+    app.dependency_overrides[require_admin] = fake_admin
+    return app, TS
+
+
+def _seed_cliente(TS, *, nome, gestor, task_id, subtask_id, gestor_travado=False):
+    with TS() as s:
+        c = Cliente(
+            slug=nome.lower().replace(" ", "-"),
+            nome=nome,
+            categoria=Categoria.ECOMMERCE,
+            gestor=gestor,
+            cup_task_id=task_id,
+            ativo=True,
+            gestor_travado=gestor_travado,
+        )
+        s.add(c)
+        s.execute(
+            text("INSERT INTO staging.cup_clientes (task_id, nome, subtask_ids) "
+                 "VALUES (:t, :n, :s)"),
+            {"t": task_id, "n": nome, "s": subtask_id},
+        )
+        s.execute(
+            text("INSERT INTO staging.cup_contratos "
+                 "(id_subtask, servico, responsavel, data_inicio) "
+                 "VALUES (:sub, 'Gestão de Performance', :resp, :dt)"),
+            {"sub": subtask_id, "resp": "Novo Gestor", "dt": date(2026, 1, 1)},
+        )
+        s.commit()
+        s.refresh(c)
+        return c.id
+
+
+def test_patch_seta_gestor_travado(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente(TS, nome="Loja A", gestor="Velho Gestor",
+                        task_id="t1", subtask_id="s1")
+    client = TestClient(app)
+
+    r = client.patch(f"/gestor/clientes/{cid}", json={"gestor_travado": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["gestor_travado"] is True
+
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor_travado is True
+
+
+def test_sync_sobrescreve_gestor_alterado(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente(TS, nome="Loja B", gestor="Velho Gestor",
+                        task_id="t2", subtask_id="s2")
+    client = TestClient(app)
+
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["atualizados"] == 1
+
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Novo Gestor"
+
+
+def test_sync_respeita_gestor_travado(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente(TS, nome="Loja C", gestor="Velho Gestor",
+                        task_id="t3", subtask_id="s3", gestor_travado=True)
+    client = TestClient(app)
+
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["atualizados"] == 0
+    assert body["a_atualizar"] == 0
+
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Velho Gestor"
+
+
+def test_sync_idempotente(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente(TS, nome="Loja D", gestor="Velho Gestor",
+                        task_id="t4", subtask_id="s4")
+    client = TestClient(app)
+
+    r1 = client.post("/gestor/clientes/sync-gestores")
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["atualizados"] == 1
+
+    r2 = client.post("/gestor/clientes/sync-gestores")
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["atualizados"] == 0
+    assert r2.json()["a_atualizar"] == 0
+
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Novo Gestor"

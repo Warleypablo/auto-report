@@ -26,6 +26,9 @@ class Cliente(Base):
     logo_url: Mapped[str | None] = mapped_column(String, nullable=True)
     categoria: Mapped[Categoria] = mapped_column(Enum(Categoria, name="categoria"), nullable=False)
     gestor: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    gestor_travado: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     id_google_ads: Mapped[str | None] = mapped_column(String, nullable=True)
     id_meta_ads: Mapped[str | None] = mapped_column(String, nullable=True)
     id_ga4: Mapped[str | None] = mapped_column(String, nullable=True)

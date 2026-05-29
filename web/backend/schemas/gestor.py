@@ -61,6 +61,7 @@ class ClienteGestorItem(BaseModel):
     pasta_url: str | None = None
     cup_task_id: str | None = None
     ativo: bool = True
+    gestor_travado: bool = False
     cup: CupClienteInfo | None = None
 
     @field_validator("categoria", mode="before")
@@ -198,6 +199,7 @@ class ClienteEditRequest(BaseModel):
     nome: str | None = None
     categoria: Literal["E-commerce", "Lead Com Site", "Lead Sem Site"] | None = None
     gestor: str | None = None
+    gestor_travado: bool | None = None
     id_google_ads: str | None = None
     id_meta_ads: str | None = None
     id_ga4: str | None = None
@@ -219,6 +221,7 @@ class ClienteDetalheItem(BaseModel):
     painel_url: str | None = None
     pasta_url: str | None = None
     ativo: bool
+    gestor_travado: bool = False
 
     @field_validator("categoria", mode="before")
     @classmethod

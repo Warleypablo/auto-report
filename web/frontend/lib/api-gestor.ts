@@ -35,6 +35,7 @@ export type ClienteGestor = {
   pasta_url: string | null;
   cup_task_id: string | null;
   ativo: boolean;
+  gestor_travado: boolean;
   cup: CupInfo | null;
 };
 
@@ -42,6 +43,7 @@ export type ClienteEditData = {
   nome?: string | null;
   categoria?: string | null;
   gestor?: string | null;
+  gestor_travado?: boolean;
   id_google_ads?: string | null;
   id_meta_ads?: string | null;
   id_ga4?: string | null;
@@ -124,6 +126,61 @@ export type GoogleAd = {
   roas: number | null;
   impressoes: number | null;
   ctr: number | null;
+};
+
+export type RedeAnuncio = "meta" | "google";
+export type ThumbStatus = "pendente" | "ok" | "sem_imagem" | "erro";
+
+export type CriativoAgregado = {
+  criativo_id: string;
+  cliente_slug: string;
+  cliente_nome: string;
+  categoria: string;
+  gestor_nome: string | null;
+  rede: RedeAnuncio;
+  ad_id: string;
+  nome: string | null;
+  tipo: string | null;
+  preview_link: string | null;
+  thumb_url: string | null;
+  thumb_status: ThumbStatus;
+  investimento: number;
+  faturamento: number;
+  roas: number | null;
+  ctr: number | null;
+  cpa: number | null;
+  cpl: number | null;
+  impressoes: number;
+  clicks: number;
+  conversoes: number;
+  leads: number | null;
+  hook_rate: number | null;
+  frequency: number | null;
+};
+
+export type CriativosResponse = {
+  items: CriativoAgregado[];
+  total: number;
+};
+
+export type CriativosParams = {
+  de: string; // YYYY-MM-DD
+  ate: string; // YYYY-MM-DD
+  rede?: "meta" | "google" | "todos";
+  categoria?: Array<"ECOMMERCE" | "LEAD_COM_SITE" | "LEAD_SEM_SITE">;
+  gestor?: string;
+  cliente?: string; // slug
+  fat_min?: number;
+  fat_max?: number;
+  inv_min?: number;
+  inv_max?: number;
+  cli_fat_min?: number;
+  cli_fat_max?: number;
+  cli_inv_min?: number;
+  cli_inv_max?: number;
+  order_by?: "roas" | "faturamento" | "investimento";
+  limit?: number;
+  offset?: number;
 };
 
 export type MetricasBreakdown = {
@@ -299,6 +356,7 @@ export const gestorApi = {
   syncGestoresFromClickup: () =>
     apiCall<{
       atualizados: number;
+      a_atualizar: number;
       total_ativos: number;
       com_match_nome: number;
       com_contrato_performance: number;
@@ -372,6 +430,26 @@ export const gestorApi = {
 
   metricasTimeline: (slug: string, meses?: number) =>
     apiCall<MetricasTimeline>(`metricas/${slug}/timeline${meses ? `?meses=${meses}` : ""}`),
+
+  criativos: (params: CriativosParams) => {
+    const qs = new URLSearchParams();
+    qs.set("de", params.de);
+    qs.set("ate", params.ate);
+    if (params.rede) qs.set("rede", params.rede);
+    (params.categoria ?? []).forEach((c) => qs.append("categoria", c));
+    if (params.gestor) qs.set("gestor", params.gestor);
+    if (params.cliente) qs.set("cliente", params.cliente);
+    for (const k of [
+      "fat_min", "fat_max", "inv_min", "inv_max",
+      "cli_fat_min", "cli_fat_max", "cli_inv_min", "cli_inv_max",
+      "limit", "offset",
+    ] as const) {
+      const v = params[k];
+      if (v !== undefined && v !== null) qs.set(k, String(v));
+    }
+    if (params.order_by) qs.set("order_by", params.order_by);
+    return apiCall<CriativosResponse>(`criativos?${qs.toString()}`);
+  },
 
   // Admin
   listUsuarios: () =>
