@@ -146,3 +146,104 @@ def test_derivadas_none_quando_denominador_zero(db):
     assert it.cpl is None        # leads soma None
     assert it.hook_rate is None  # video_3s None
     assert it.frequency is None  # reach None
+
+
+def _seed_dois_clientes(s):
+    admin = _admin(s)
+    c1 = _cliente(s, slug="ecom", nome="Ecom", gestor="Ana", categoria=Categoria.ECOMMERCE)
+    c2 = _cliente(s, slug="lead", nome="Lead", gestor="Bruno", categoria=Categoria.LEAD_COM_SITE)
+    _criativo(s, cliente=c1, rede=RedeAnuncio.META, ad_id="M1")
+    _criativo(s, cliente=c1, rede=RedeAnuncio.GOOGLE, ad_id="G1", tipo="search")
+    _criativo(s, cliente=c2, rede=RedeAnuncio.META, ad_id="M2")
+    # c1/META: inv 100 fat 1000
+    _insight(s, cliente=c1, rede=RedeAnuncio.META, ad_id="M1", dia=date(2026, 5, 1),
+             investimento=100, faturamento=1000, impressoes=500, clicks=10)
+    # c1/GOOGLE: inv 200 fat 300
+    _insight(s, cliente=c1, rede=RedeAnuncio.GOOGLE, ad_id="G1", dia=date(2026, 5, 1),
+             investimento=200, faturamento=300, impressoes=500, clicks=10)
+    # c2/META: inv 50 fat 50
+    _insight(s, cliente=c2, rede=RedeAnuncio.META, ad_id="M2", dia=date(2026, 5, 1),
+             investimento=50, faturamento=50, impressoes=500, clicks=10)
+    s.commit()
+    return admin.id
+
+
+def _run(s, admin, **over):
+    kwargs = dict(
+        de=date(2026, 5, 1), ate=date(2026, 5, 31), rede="todos", categorias=None,
+        gestor=None, cliente_slug=None, fat_min=None, fat_max=None, inv_min=None,
+        inv_max=None, cli_fat_min=None, cli_fat_max=None, cli_inv_min=None,
+        cli_inv_max=None, order_by="roas", limit=50, offset=0, user=admin,
+    )
+    kwargs.update(over)
+    return agregar_criativos(s, **kwargs)
+
+
+def test_filtro_rede_meta(db):
+    TS = db
+    with TS() as s:
+        admin_id = _seed_dois_clientes(s)
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        items, total = _run(s, admin, rede="meta")
+    assert total == 2
+    assert {it.ad_id for it in items} == {"M1", "M2"}
+    assert all(it.rede == "meta" for it in items)
+
+
+def test_filtro_categoria(db):
+    TS = db
+    with TS() as s:
+        admin_id = _seed_dois_clientes(s)
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        items, total = _run(s, admin, categorias=["ECOMMERCE"])
+    assert {it.cliente_slug for it in items} == {"ecom"}
+    assert total == 2  # M1 + G1
+
+
+def test_filtro_gestor(db):
+    TS = db
+    with TS() as s:
+        admin_id = _seed_dois_clientes(s)
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        items, total = _run(s, admin, gestor="Bruno")
+    assert total == 1
+    assert items[0].ad_id == "M2"
+
+
+def test_filtro_cliente_slug(db):
+    TS = db
+    with TS() as s:
+        admin_id = _seed_dois_clientes(s)
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        items, total = _run(s, admin, cliente_slug="lead")
+    assert total == 1
+    assert items[0].cliente_slug == "lead"
+
+
+def test_faixa_faturamento_por_criativo(db):
+    TS = db
+    with TS() as s:
+        admin_id = _seed_dois_clientes(s)
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        # só anúncios com faturamento somado >= 300 → M1 (1000) e G1 (300)
+        items, total = _run(s, admin, fat_min=300)
+    assert {it.ad_id for it in items} == {"M1", "G1"}
+    assert total == 2
+
+
+def test_faixa_investimento_por_cliente(db):
+    TS = db
+    with TS() as s:
+        admin_id = _seed_dois_clientes(s)
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        # cliente ecom investe 300 no total (100+200); lead investe 50.
+        # cli_inv_min=100 mantém só ecom (todos os anúncios dele).
+        items, total = _run(s, admin, cli_inv_min=100)
+    assert {it.cliente_slug for it in items} == {"ecom"}
+    assert total == 2

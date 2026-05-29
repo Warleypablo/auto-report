@@ -49,6 +49,31 @@ def agregar_criativos(
     gestor = clientes vinculados via UsuarioCliente. Retorna (items, total)
     onde total = nº de grupos antes de limit/offset.
     """
+    # Subquery opcional de faixas por-cliente: agrega ad_insights por cliente no
+    # range e seleciona os cliente_id que satisfazem as faixas; usado como filtro.
+    clientes_in_faixa: list[uuid.UUID] | None = None
+    if any(v is not None for v in (cli_fat_min, cli_fat_max, cli_inv_min, cli_inv_max)):
+        cli_agg = (
+            select(
+                AdInsight.cliente_id.label("cliente_id"),
+                func.sum(AdInsight.faturamento).label("fat"),
+                func.sum(AdInsight.investimento).label("inv"),
+            )
+            .where(AdInsight.dia >= de, AdInsight.dia <= ate)
+            .group_by(AdInsight.cliente_id)
+            .subquery()
+        )
+        cli_filter = select(cli_agg.c.cliente_id)
+        if cli_fat_min is not None:
+            cli_filter = cli_filter.where(cli_agg.c.fat >= cli_fat_min)
+        if cli_fat_max is not None:
+            cli_filter = cli_filter.where(cli_agg.c.fat <= cli_fat_max)
+        if cli_inv_min is not None:
+            cli_filter = cli_filter.where(cli_agg.c.inv >= cli_inv_min)
+        if cli_inv_max is not None:
+            cli_filter = cli_filter.where(cli_agg.c.inv <= cli_inv_max)
+        clientes_in_faixa = session.execute(cli_filter).scalars().all()
+
     # Somas por anúncio
     base = (
         select(
@@ -68,6 +93,29 @@ def agregar_criativos(
         .where(AdInsight.dia >= de, AdInsight.dia <= ate, Cliente.ativo.is_(True))
         .group_by(AdInsight.cliente_id, AdInsight.rede, AdInsight.ad_id)
     )
+
+    # Filtros opcionais
+    if rede in _REDE_MAP:
+        base = base.where(AdInsight.rede == _REDE_MAP[rede])
+    if categorias:
+        cats = [Categoria[c] for c in categorias]
+        base = base.where(Cliente.categoria.in_(cats))
+    if gestor:
+        base = base.where(Cliente.gestor == gestor)
+    if cliente_slug:
+        base = base.where(Cliente.slug == cliente_slug)
+    if clientes_in_faixa is not None:
+        base = base.where(AdInsight.cliente_id.in_(clientes_in_faixa))
+
+    # Faixas por-criativo (HAVING sobre as somas)
+    if fat_min is not None:
+        base = base.having(func.sum(AdInsight.faturamento) >= fat_min)
+    if fat_max is not None:
+        base = base.having(func.sum(AdInsight.faturamento) <= fat_max)
+    if inv_min is not None:
+        base = base.having(func.sum(AdInsight.investimento) >= inv_min)
+    if inv_max is not None:
+        base = base.having(func.sum(AdInsight.investimento) <= inv_max)
 
     # Escopo de acesso
     if not user.is_admin:
