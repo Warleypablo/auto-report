@@ -164,6 +164,16 @@ def _build_google_query(since: date, until: date) -> str:
     )
 
 
+def _google_deep_link(*, customer_id: str, ad_group_id: str | None, ad_id: str) -> str | None:
+    """Deep-link para o anúncio no Google Ads UI. None quando não construível."""
+    if not ad_group_id:
+        return None
+    return (
+        f"https://ads.google.com/aw/ads?ocid={customer_id}"
+        f"&__e={ad_id}&adGroupId={ad_group_id}"
+    )
+
+
 def _meta_insights_diarios(ad_account_id: str, since: date, until: date) -> list[dict]:
     """Chama /act_{id}/insights level=ad time_increment=1 e devolve uma lista de
     dicts normalizados, um por (ad_id, dia). Reusa o parsing de actions/

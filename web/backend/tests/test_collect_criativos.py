@@ -527,6 +527,22 @@ def test_build_google_query_contem_campos_e_datas():
         assert campo in q
 
 
+def test_google_deep_link():
+    from etl.collect_criativos import _google_deep_link
+
+    link = _google_deep_link(customer_id="1234567890", ad_group_id="555", ad_id="999")
+    assert link == (
+        "https://ads.google.com/aw/ads?ocid=1234567890&__e=999&adGroupId=555"
+    )
+
+
+def test_google_deep_link_sem_ad_group_retorna_none():
+    from etl.collect_criativos import _google_deep_link
+
+    assert _google_deep_link(customer_id="1234567890", ad_group_id=None, ad_id="999") is None
+    assert _google_deep_link(customer_id="1234567890", ad_group_id="", ad_id="999") is None
+
+
 def test_run_collect_criativos_ignora_cliente_ativo_sem_id_meta_ads(TS):
     """Cliente ativo mas com id_meta_ads=None NÃO deve ser processado.
     run_collect_criativos filtra via .isnot(None) na query."""
