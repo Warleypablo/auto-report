@@ -956,6 +956,12 @@ def trigger_report(
     if not _MES_RE.match(body.mes):
         raise HTTPException(status_code=400, detail="mes deve ser YYYY-MM")
 
+    if body.semana_inicio is not None:
+        try:
+            date.fromisoformat(body.semana_inicio)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="semana_inicio deve ser YYYY-MM-DD")
+
     # Verify user has access to this client (admins can access all clients)
     if user.is_admin:
         cliente = session.execute(
@@ -994,6 +1000,7 @@ def trigger_report(
         cliente_id=cliente.id,
         mes=body.mes,
         frequencia=body.frequencia,
+        semana_inicio=body.semana_inicio,
         status=JobStatus.PENDING,
     )
     session.add(job)
@@ -1005,6 +1012,7 @@ def trigger_report(
     cliente_nome = cliente.nome
     mes = body.mes
     frequencia = body.frequencia
+    semana_inicio = body.semana_inicio
 
     def _run():
         # Imports DENTRO do try para que qualquer ImportError também caia no handler.
@@ -1034,7 +1042,7 @@ def trigger_report(
                     bg_session.commit()
 
                 _log.info("[job %s/%s] chamando gerar_slides", job_id, cliente_nome)
-                url = gerar_slides(slug=cliente_slug, nome_cliente=cliente_nome, mes=mes, frequencia=frequencia)
+                url = gerar_slides(slug=cliente_slug, nome_cliente=cliente_nome, mes=mes, frequencia=frequencia, semana_inicio=semana_inicio)
                 _log.info("[job %s/%s] gerar_slides retornou url=%s", job_id, cliente_nome, url)
 
                 with SessionLocal() as bg_session:
