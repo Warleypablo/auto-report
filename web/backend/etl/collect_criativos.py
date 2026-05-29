@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import sys
 import uuid
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -26,7 +27,11 @@ from core.categorias.ecommerce.campaign_facebook_gather import (
     _extract_purchase_metrics,
     _video_3s_views_from_row,
 )
+from db import SessionLocal
 from models import AdInsight, Criativo, CriativoThumb, RedeAnuncio, ThumbStatus
+from models import Cliente
+
+from .thumbnails import fetch_e_redimensionar
 
 log = logging.getLogger(__name__)
 
@@ -206,3 +211,122 @@ def _meta_metadados_lote(ad_ids: list[str]) -> dict[str, dict]:
                 "imagem_url": creative.get("image_url") or creative.get("thumbnail_url"),
             }
     return out
+
+
+def _gravar_thumb(session: Session, criativo_id: uuid.UUID, conteudo: bytes, mime: str) -> None:
+    """Upsert idempotente de criativo_thumbs (PK criativo_id)."""
+    payload = dict(criativo_id=criativo_id, conteudo=conteudo, mime=mime)
+    stmt = insert(CriativoThumb).values(**payload)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[CriativoThumb.criativo_id],
+        set_={"conteudo": stmt.excluded.conteudo, "mime": stmt.excluded.mime},
+    )
+    session.execute(stmt)
+
+
+def coletar_criativos_meta(
+    cliente: Cliente,
+    since: date,
+    until: date,
+    session_factory: Callable[[], Session] = SessionLocal,
+) -> bool:
+    """Coleta insights ad-level Meta (time_increment=1) + metadados/thumb/link em
+    lote. Upsert em ad_insights e criativos; rehospeda a thumb. Retorna True em
+    sucesso (False se o cliente não tem id_meta_ads ou se a coleta falhou)."""
+    ad_account_id = cliente.id_meta_ads
+    if not ad_account_id:
+        log.warning("criativos_meta_sem_id", extra={"cliente": cliente.nome})
+        return False
+
+    cliente_id = cliente.id
+    try:
+        linhas = _meta_insights_diarios(ad_account_id, since, until)
+    except Exception:
+        log.exception("criativos_meta_insights_falhou", extra={"cliente": cliente.nome})
+        return False
+
+    if not linhas:
+        log.info("criativos_meta_sem_dados", extra={"cliente": cliente.nome})
+        return True
+
+    ad_ids = sorted({l["ad_id"] for l in linhas})
+    session = session_factory()
+    own = session_factory is SessionLocal
+    try:
+        # 1) Grava o fato (ad_insights) e o esqueleto da dimensão (criativos).
+        for l in linhas:
+            upsert_ad_insight(
+                session,
+                cliente_id=cliente_id,
+                rede=RedeAnuncio.META,
+                ad_id=l["ad_id"],
+                dia=l["dia"],
+                investimento=l["investimento"],
+                faturamento=l["faturamento"],
+                conversoes=l["conversoes"],
+                leads=None,
+                impressoes=l["impressoes"],
+                clicks=l["clicks"],
+                video_3s=l["video_3s"],
+                reach=l["reach"],
+            )
+            upsert_criativo(
+                session,
+                cliente_id=cliente_id,
+                rede=RedeAnuncio.META,
+                ad_id=l["ad_id"],
+                nome=l["ad_name"],
+                tipo=None,
+                preview_link=None,
+                dia=l["dia"],
+            )
+        session.commit()
+
+        # 2) Metadados em lote (nome/tipo/preview/imagem) + thumb.
+        try:
+            metadados = _meta_metadados_lote(ad_ids)
+        except Exception:
+            log.exception("criativos_meta_metadados_falhou", extra={"cliente": cliente.nome})
+            metadados = {}
+
+        for ad_id in ad_ids:
+            meta = metadados.get(ad_id) or {}
+            upsert_criativo(
+                session,
+                cliente_id=cliente_id,
+                rede=RedeAnuncio.META,
+                ad_id=ad_id,
+                nome=meta.get("nome"),
+                tipo=meta.get("tipo"),
+                preview_link=meta.get("preview_link"),
+                dia=until,
+            )
+            session.flush()
+            criativo = session.scalar(
+                select(Criativo).where(
+                    Criativo.cliente_id == cliente_id,
+                    Criativo.rede == RedeAnuncio.META,
+                    Criativo.ad_id == ad_id,
+                )
+            )
+            imagem_url = meta.get("imagem_url")
+            if not imagem_url:
+                criativo.thumb_status = ThumbStatus.SEM_IMAGEM
+                continue
+            try:
+                conteudo, mime = fetch_e_redimensionar(imagem_url, lado_max=320)
+                _gravar_thumb(session, criativo.id, conteudo, mime)
+                criativo.thumb_status = ThumbStatus.OK
+            except Exception:
+                log.exception("criativos_meta_thumb_falhou",
+                              extra={"cliente": cliente.nome, "ad_id": ad_id})
+                criativo.thumb_status = ThumbStatus.ERRO
+        session.commit()
+        return True
+    except Exception:
+        session.rollback()
+        log.exception("criativos_meta_falhou", extra={"cliente": cliente.nome})
+        return False
+    finally:
+        if own:
+            session.close()

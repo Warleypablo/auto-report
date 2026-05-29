@@ -239,3 +239,135 @@ def test_meta_metadados_lote_extrai_nome_tipo_thumb_e_link():
     assert meta["ad-1"]["imagem_url"] == "https://cdn.fb.com/img1.jpg"    # image_url preferido
     assert meta["ad-2"]["imagem_url"] == "https://cdn.fb.com/thumb2.jpg"  # fallback thumbnail_url
     assert meta["ad-2"]["tipo"] == "share"
+
+
+import io as _io
+
+from PIL import Image as _Image
+
+from models import CriativoThumb
+
+
+def _png(w, h):
+    buf = _io.BytesIO()
+    _Image.new("RGB", (w, h), (10, 20, 30)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@respx.mock
+def test_coletar_criativos_meta_grava_insights_criativos_e_thumb(TS, cliente_id):
+    from etl.collect_criativos import coletar_criativos_meta
+
+    with TS() as s:
+        c = s.get(Cliente, cliente_id)
+        c.id_meta_ads = "act_777"
+        s.commit()
+
+    insights = {
+        "data": [
+            {
+                "ad_id": "ad-1", "ad_name": "Criativo A", "date_start": "2026-05-01",
+                "spend": "10.00", "impressions": "1000", "clicks": "15", "reach": "800",
+                "actions": [{"action_type": "omni_purchase", "value": "3"}],
+                "action_values": [{"action_type": "omni_purchase", "value": "120.00"}],
+                "video_3_sec_watched_actions": [{"value": "250"}],
+            }
+        ]
+    }
+    metadados = {
+        "ad-1": {
+            "id": "ad-1", "name": "Criativo A",
+            "preview_shareable_link": "https://fb.com/p/1",
+            "creative": {"object_type": "VIDEO", "image_url": "https://cdn.fb.com/img1.jpg"},
+        }
+    }
+
+    respx.get(url__regex=r"https://graph\.facebook\.com/.*/insights").mock(
+        return_value=httpx.Response(200, json=insights)
+    )
+    respx.get(url__regex=r"https://graph\.facebook\.com/v[\d.]+\?.*").mock(
+        return_value=httpx.Response(200, json=metadados)
+    )
+    respx.get("https://cdn.fb.com/img1.jpg").mock(
+        return_value=httpx.Response(200, content=_png(640, 480),
+                                    headers={"Content-Type": "image/png"})
+    )
+
+    with TS() as s:
+        cliente = s.get(Cliente, cliente_id)
+        ok = coletar_criativos_meta(cliente, date(2026, 5, 1), date(2026, 5, 1),
+                                    session_factory=TS)
+    assert ok is True
+
+    with TS() as s:
+        ins = s.scalars(
+            select(AdInsight).where(AdInsight.cliente_id == cliente_id)
+        ).all()
+        assert len(ins) == 1
+        assert ins[0].investimento == Decimal("10.00")
+        assert ins[0].faturamento == Decimal("120.00")
+
+        cri = s.scalar(
+            select(Criativo).where(Criativo.cliente_id == cliente_id)
+        )
+        assert cri.nome == "Criativo A"
+        assert cri.tipo == "video"
+        assert cri.preview_link == "https://fb.com/p/1"
+        assert cri.thumb_status == ThumbStatus.OK
+
+        thumb = s.get(CriativoThumb, cri.id)
+        assert thumb is not None
+        assert thumb.mime == "image/jpeg"
+        img = _Image.open(_io.BytesIO(thumb.conteudo))
+        assert max(img.size) == 320
+
+
+@respx.mock
+def test_coletar_criativos_meta_idempotente_em_rerun(TS, cliente_id):
+    from etl.collect_criativos import coletar_criativos_meta
+
+    with TS() as s:
+        c = s.get(Cliente, cliente_id)
+        c.id_meta_ads = "act_777"
+        s.commit()
+
+    insights = {
+        "data": [
+            {
+                "ad_id": "ad-1", "ad_name": "Criativo A", "date_start": "2026-05-01",
+                "spend": "10.00", "impressions": "1000", "clicks": "15", "reach": "800",
+                "actions": [], "action_values": [],
+            }
+        ]
+    }
+    respx.get(url__regex=r"https://graph\.facebook\.com/.*/insights").mock(
+        return_value=httpx.Response(200, json=insights)
+    )
+    respx.get(url__regex=r"https://graph\.facebook\.com/v[\d.]+\?.*").mock(
+        return_value=httpx.Response(200, json={"ad-1": {"id": "ad-1", "name": "A",
+            "creative": {"object_type": "SHARE"}}})  # sem imagem → SEM_IMAGEM
+    )
+
+    with TS() as s:
+        cliente = s.get(Cliente, cliente_id)
+        coletar_criativos_meta(cliente, date(2026, 5, 1), date(2026, 5, 1), session_factory=TS)
+    with TS() as s:
+        cliente = s.get(Cliente, cliente_id)
+        coletar_criativos_meta(cliente, date(2026, 5, 1), date(2026, 5, 1), session_factory=TS)
+
+    with TS() as s:
+        ins = s.scalars(select(AdInsight).where(AdInsight.cliente_id == cliente_id)).all()
+        cri = s.scalars(select(Criativo).where(Criativo.cliente_id == cliente_id)).all()
+        assert len(ins) == 1     # rerun não duplica o fato
+        assert len(cri) == 1     # rerun não duplica a dimensão
+        assert cri[0].thumb_status == ThumbStatus.SEM_IMAGEM
+
+
+def test_coletar_criativos_meta_sem_id_retorna_false(TS, cliente_id):
+    from etl.collect_criativos import coletar_criativos_meta
+
+    with TS() as s:
+        cliente = s.get(Cliente, cliente_id)   # id_meta_ads = None
+        ok = coletar_criativos_meta(cliente, date(2026, 5, 1), date(2026, 5, 1),
+                                    session_factory=TS)
+    assert ok is False
