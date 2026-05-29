@@ -907,3 +907,59 @@ def test_run_collect_criativos_incremental_usa_retroacao(TS, cliente_id):
     ontem = _date.today() - timedelta(days=1)
     assert until == ontem
     assert since == ontem - timedelta(days=mod.RETROACAO_DIAS)
+
+
+def test_run_collect_criativos_so_meta_nao_submete_google(TS):
+    """Cliente só-Meta (sem id_google_ads) deve gerar apenas 1 tentativa (Meta).
+    Confirma que total/ok não são inflados pelo no-op do coletor Google."""
+    from etl import collect_criativos as mod
+
+    slug = f"test-so-meta-{uuid.uuid4().hex[:8]}"
+    with TS() as s:
+        from models import Categoria
+        c = Cliente(slug=slug, nome=slug, categoria=Categoria.ECOMMERCE, ativo=True,
+                    id_meta_ads="act_777")
+        # id_google_ads deixa None (default)
+        s.add(c)
+        s.commit()
+        cliente_so_meta_id = c.id
+
+    try:
+        chamados_meta: list[uuid.UUID] = []
+        chamados_google: list[uuid.UUID] = []
+
+        def fake_meta(cliente, since, until, session_factory=None):
+            chamados_meta.append(cliente.id)
+            return True
+
+        def fake_google(cliente, since, until, session_factory=None):
+            chamados_google.append(cliente.id)
+            return True
+
+        with patch.object(mod, "coletar_criativos_meta", side_effect=fake_meta), \
+             patch.object(mod, "coletar_criativos_google", side_effect=fake_google), \
+             patch.object(mod, "SessionLocal", TS), \
+             patch.object(mod, "advisory_lock") as fake_lock:
+            fake_lock.return_value.__enter__ = lambda *a: None
+            fake_lock.return_value.__exit__ = lambda *a: False
+            resumo = mod.run_collect_criativos(backfill_meses=1)
+
+        # coletor Meta foi chamado para o cliente só-Meta
+        assert cliente_so_meta_id in chamados_meta, (
+            "coletar_criativos_meta não foi chamado para cliente só-Meta"
+        )
+        # coletor Google NÃO foi chamado para o cliente só-Meta
+        assert cliente_so_meta_id not in chamados_google, (
+            "coletar_criativos_google foi chamado para cliente sem id_google_ads (inflando total)"
+        )
+        # total conta apenas tentativas reais: 1 para este cliente (só Meta),
+        # mais quaisquer outros clientes do banco — validamos que é >= 1 e consistente
+        assert resumo["total"] == len(chamados_meta) + len(chamados_google), (
+            f"total={resumo['total']} != chamadas reais ({len(chamados_meta) + len(chamados_google)})"
+        )
+    finally:
+        with TS() as s:
+            c = s.get(Cliente, cliente_so_meta_id)
+            if c:
+                s.delete(c)
+                s.commit()

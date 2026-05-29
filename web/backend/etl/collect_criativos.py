@@ -586,8 +586,10 @@ def run_collect_criativos(
             with ThreadPoolExecutor(max_workers=settings.etl_threads) as pool:
                 futures = []
                 for cliente in clientes:
-                    futures.append(pool.submit(coletar_criativos_meta, cliente, since, until))
-                    futures.append(pool.submit(coletar_criativos_google, cliente, since, until))
+                    if cliente.id_meta_ads:
+                        futures.append(pool.submit(coletar_criativos_meta, cliente, since, until))
+                    if cliente.id_google_ads and cliente.id_google_ads != "0":
+                        futures.append(pool.submit(coletar_criativos_google, cliente, since, until))
                 for f in as_completed(futures):
                     if f.result():
                         ok += 1
