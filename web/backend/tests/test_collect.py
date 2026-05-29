@@ -51,8 +51,8 @@ def test_processar_cliente_grava_snapshot(cliente_id):
 
     fake_handler = MagicMock()
     fake_handler.coletar_dados.return_value = {
-        "{{fat_sem}}": "R$ 1.000,00",
-        "{{roas}}": "4,2x",
+        "{{fat_mes}}": "R$ 1.000,00",
+        "{{inv_mes}}": "R$ 250,00",
     }
 
     with patch("etl.collect._get_handler", return_value=fake_handler):
@@ -69,7 +69,7 @@ def test_processar_cliente_grava_snapshot(cliente_id):
         snap = s.scalar(select(Snapshot).where(Snapshot.cliente_id == cliente_id))
         assert snap is not None
         assert snap.faturamento == Decimal("1000")
-        assert snap.roas == Decimal("4.2")
+        assert snap.roas == Decimal("4")  # 1000 / 250, derivado de fat/inv mensais
 
 
 def test_processar_cliente_falha_handler_retorna_false(cliente_id):
