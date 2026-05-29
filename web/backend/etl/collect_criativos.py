@@ -559,7 +559,8 @@ def run_collect_criativos(
 ) -> dict:
     """Entrypoint. backfill_meses=6 → janela últimos ~6 meses; incremental=True →
     ontem + RETROACAO_DIAS de retroação. Exatamente um modo (XOR). Coleta os
-    clientes ativos com id_meta_ads em paralelo. Retorna {ok, fail, total}."""
+    clientes ativos com id_meta_ads ou id_google_ads em paralelo (Meta + Google).
+    Retorna {ok, fail, total}."""
     if (backfill_meses is None) == (not incremental):
         raise ValueError("Escolha exatamente um modo: backfill_meses XOR incremental")
 
@@ -576,30 +577,24 @@ def run_collect_criativos(
                 clientes = session.scalars(
                     select(Cliente).where(
                         Cliente.ativo == true(),
-                        Cliente.id_meta_ads.isnot(None),
+                        (Cliente.id_meta_ads.isnot(None)) | (Cliente.id_google_ads.isnot(None)),
                     )
                 ).all()
-                clientes_ids = [c.id for c in clientes]
 
             ok = 0
             fail = 0
-
-            def _processa(cliente_id: uuid.UUID) -> bool:
-                with SessionLocal() as s:
-                    cliente = s.get(Cliente, cliente_id)
-                    return coletar_criativos_meta(
-                        cliente, since, until, session_factory=SessionLocal
-                    )
-
             with ThreadPoolExecutor(max_workers=settings.etl_threads) as pool:
-                futures = {pool.submit(_processa, cid): cid for cid in clientes_ids}
+                futures = []
+                for cliente in clientes:
+                    futures.append(pool.submit(coletar_criativos_meta, cliente, since, until))
+                    futures.append(pool.submit(coletar_criativos_google, cliente, since, until))
                 for f in as_completed(futures):
                     if f.result():
                         ok += 1
                     else:
                         fail += 1
 
-            resumo = {"ok": ok, "fail": fail, "total": len(clientes_ids)}
+            resumo = {"ok": ok, "fail": fail, "total": len(futures)}
             log.info("criativos_finalizado", extra=resumo)
             return resumo
     except LockTaken:

@@ -823,6 +823,26 @@ def test_coletar_google_gaql_exception_retorna_false(cliente_google, TS):
         ).all() == []
 
 
+def test_run_collect_criativos_invoca_google(cliente_google, TS):
+    import etl.collect_criativos as cc
+
+    chamados_google = []
+
+    def fake_google(cliente, since, until, session_factory=cc.SessionLocal):
+        chamados_google.append(cliente.id)
+        return True
+
+    with patch.object(cc, "coletar_criativos_meta", return_value=True), \
+         patch.object(cc, "coletar_criativos_google", side_effect=fake_google), \
+         patch.object(cc, "SessionLocal", TS), \
+         patch.object(cc, "advisory_lock"):
+        resumo = cc.run_collect_criativos(incremental=True)
+
+    assert cliente_google in chamados_google
+    assert resumo["total"] >= 1
+    assert "ok" in resumo and "fail" in resumo
+
+
 def test_run_collect_criativos_exige_exatamente_um_modo():
     from etl.collect_criativos import run_collect_criativos
 
