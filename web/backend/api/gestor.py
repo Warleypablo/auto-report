@@ -420,6 +420,7 @@ def sync_gestores_from_clickup(
                     c.id,
                     c.nome,
                     c.gestor,
+                    c.gestor_travado,
                     LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(c.nome),
                         'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
                         'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
@@ -438,12 +439,12 @@ def sync_gestores_from_clickup(
                 FROM staging.cup_clientes cc
             ),
             cliente_matched AS (
-                SELECT cn.id, cn.gestor, cup.subtask_ids
+                SELECT cn.id, cn.gestor, cn.gestor_travado, cup.subtask_ids
                 FROM cliente_norm cn
                 JOIN cup_norm cup ON cn.nome_norm = cup.nome_norm
             ),
             subtasks_explodidas AS (
-                SELECT cm.id AS cliente_id, cm.gestor, TRIM(s.subtask_id) AS subtask_id
+                SELECT cm.id AS cliente_id, cm.gestor, cm.gestor_travado, TRIM(s.subtask_id) AS subtask_id
                 FROM cliente_matched cm
                 CROSS JOIN LATERAL UNNEST(STRING_TO_ARRAY(cm.subtask_ids, ';')) AS s(subtask_id)
                 WHERE COALESCE(cm.subtask_ids, '') <> ''
@@ -452,6 +453,7 @@ def sync_gestores_from_clickup(
                 SELECT DISTINCT ON (se.cliente_id)
                     se.cliente_id,
                     se.gestor AS gestor_atual,
+                    se.gestor_travado AS gestor_travado,
                     ct.responsavel AS novo_gestor
                 FROM subtasks_explodidas se
                 JOIN staging.cup_contratos ct ON TRIM(ct.id_subtask) = se.subtask_id
@@ -465,7 +467,8 @@ def sync_gestores_from_clickup(
                 (SELECT COUNT(*) FROM performance_resp WHERE novo_gestor IS NOT NULL AND TRIM(novo_gestor) <> '') AS com_responsavel,
                 (SELECT COUNT(*) FROM performance_resp pr
                   WHERE pr.novo_gestor IS NOT NULL AND TRIM(pr.novo_gestor) <> ''
-                    AND pr.gestor_atual IS DISTINCT FROM pr.novo_gestor) AS a_atualizar
+                    AND pr.gestor_atual IS DISTINCT FROM pr.novo_gestor
+                    AND pr.gestor_travado = false) AS a_atualizar
         """)
     ).mappings().one()
 
@@ -518,6 +521,7 @@ def sync_gestores_from_clickup(
                 atualizado_em = NOW()
             FROM performance_resp pr
             WHERE c.id = pr.cliente_id
+              AND c.gestor_travado = false
               AND (c.gestor IS DISTINCT FROM pr.novo_gestor)
         """)
     )
@@ -531,6 +535,7 @@ def sync_gestores_from_clickup(
 
     return {
         "atualizados": result.rowcount,
+        "a_atualizar": counts["a_atualizar"],
         "total_ativos": counts["total_ativos"],
         "com_match_nome": counts["com_match_nome"],
         "com_contrato_performance": counts["com_contrato_performance"],
