@@ -155,3 +155,51 @@ def test_upsert_criativo_preserva_thumb_status_existente(TS, cliente_id):
         )
         assert cri.thumb_status == ThumbStatus.OK
         assert cri.nome == "X2"
+
+
+import httpx
+import respx
+
+
+@respx.mock
+def test_meta_insights_diarios_parseia_linhas_por_dia():
+    from etl.collect_criativos import _meta_insights_diarios
+
+    payload = {
+        "data": [
+            {
+                "ad_id": "ad-1", "ad_name": "Criativo A", "date_start": "2026-05-01",
+                "spend": "10.50", "impressions": "1000", "clicks": "15", "reach": "800",
+                "actions": [{"action_type": "omni_purchase", "value": "3"}],
+                "action_values": [{"action_type": "omni_purchase", "value": "120.00"}],
+                "video_3_sec_watched_actions": [{"value": "250"}],
+            },
+            {
+                "ad_id": "ad-1", "ad_name": "Criativo A", "date_start": "2026-05-02",
+                "spend": "5.00", "impressions": "400", "clicks": "4", "reach": "390",
+                "actions": [], "action_values": [],
+            },
+        ]
+    }
+    respx.get(url__regex=r"https://graph\.facebook\.com/.*/insights").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+
+    linhas = _meta_insights_diarios("act_999", date(2026, 5, 1), date(2026, 5, 2))
+
+    assert len(linhas) == 2
+    d1 = next(l for l in linhas if l["dia"] == date(2026, 5, 1))
+    assert d1["ad_id"] == "ad-1"
+    assert d1["ad_name"] == "Criativo A"
+    assert d1["investimento"] == Decimal("10.50")
+    assert d1["faturamento"] == Decimal("120.00")
+    assert d1["conversoes"] == Decimal("3")
+    assert d1["impressoes"] == 1000
+    assert d1["clicks"] == 15
+    assert d1["reach"] == 800
+    assert d1["video_3s"] == 250
+
+    d2 = next(l for l in linhas if l["dia"] == date(2026, 5, 2))
+    assert d2["faturamento"] == Decimal("0")
+    assert d2["conversoes"] == Decimal("0")
+    assert d2["video_3s"] is None      # sem campo de vídeo → None

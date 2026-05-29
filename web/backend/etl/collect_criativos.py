@@ -17,9 +17,23 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+import json
+
+import httpx
+
+from config.settings import ACCESS_TOKEN_META_SYSTEM
+from core.categorias.ecommerce.campaign_facebook_gather import (
+    _extract_purchase_metrics,
+    _video_3s_views_from_row,
+)
 from models import AdInsight, Criativo, CriativoThumb, RedeAnuncio, ThumbStatus
 
 log = logging.getLogger(__name__)
+
+META_API_VERSION = "v23.0"
+TIMEOUT = 30
+_BATCH_SIZE = 50
+_ATTR_WINDOW = ["7d_click"]
 
 RETROACAO_DIAS = 3
 
@@ -107,3 +121,59 @@ def upsert_criativo(
         },
     )
     session.execute(stmt)
+
+
+def _meta_insights_diarios(ad_account_id: str, since: date, until: date) -> list[dict]:
+    """Chama /act_{id}/insights level=ad time_increment=1 e devolve uma lista de
+    dicts normalizados, um por (ad_id, dia). Reusa o parsing de actions/
+    action_values/video_3s do core (campaign_facebook_gather)."""
+    acct_path = f"act_{ad_account_id.removeprefix('act_')}"
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{acct_path}/insights"
+    params = {
+        "level": "ad",
+        "time_increment": 1,
+        "time_range": json.dumps(
+            {"since": since.strftime("%Y-%m-%d"), "until": until.strftime("%Y-%m-%d")},
+            separators=(",", ":"),
+        ),
+        "fields": (
+            "ad_id,ad_name,spend,impressions,clicks,reach,"
+            "actions,action_values,video_3_sec_watched_actions"
+        ),
+        "action_attribution_windows": json.dumps(_ATTR_WINDOW, separators=(",", ":")),
+        "action_report_time": "conversion",
+        "limit": 5000,
+        "access_token": ACCESS_TOKEN_META_SYSTEM,
+    }
+
+    linhas: list[dict] = []
+    next_url: str | None = url
+    next_params: dict | None = params
+    while next_url:
+        resp = httpx.get(next_url, params=next_params, timeout=TIMEOUT,
+                         follow_redirects=True)
+        resp.raise_for_status()
+        body = resp.json()
+        for row in body.get("data", []):
+            ad_id = row.get("ad_id")
+            if not ad_id:
+                continue
+            conv, fat = _extract_purchase_metrics(
+                row.get("actions") or [], row.get("action_values") or []
+            )
+            linhas.append({
+                "ad_id": ad_id,
+                "ad_name": row.get("ad_name"),
+                "dia": date.fromisoformat(row["date_start"]),
+                "investimento": Decimal(str(row.get("spend") or "0")),
+                "faturamento": Decimal(str(fat or 0)),
+                "conversoes": Decimal(str(conv or 0)),
+                "impressoes": int(row.get("impressions") or 0),
+                "clicks": int(row.get("clicks") or 0),
+                "reach": int(row["reach"]) if row.get("reach") is not None else None,
+                "video_3s": _video_3s_views_from_row(row),
+            })
+        paging = body.get("paging", {}) or {}
+        next_url = paging.get("next")
+        next_params = None  # o link "next" já vem com todos os params/cursor
+    return linhas
