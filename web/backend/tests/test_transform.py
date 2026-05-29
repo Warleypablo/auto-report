@@ -74,10 +74,12 @@ class TestParseMetric:
 
 class TestMapHandlerDados:
     def test_mapeia_metricas_destaque(self):
+        # Destaque usa os placeholders MENSAIS ({{fat_mes}}/{{inv_mes}}); o ROAS
+        # de destaque é DERIVADO de fat/inv (o {{roas}} do handler é semanal e
+        # fica 0 antes do fechamento — ver commit fa3545f).
         entrada = {
-            "{{fat_sem}}": "R$ 100.000,00",
-            "{{inv_sem}}": "R$ 15.000,00",
-            "{{roas}}": "6,7x",
+            "{{fat_mes}}": "R$ 100.000,00",
+            "{{inv_mes}}": "R$ 15.000,00",
             "{{cpa}}": "R$ 85,50",
             "{{vendas}}": "50",
             "{{fat_face}}": "R$ 40.000,00",
@@ -86,11 +88,25 @@ class TestMapHandlerDados:
         resultado = map_handler_dados(entrada)
         assert resultado["faturamento"] == Decimal("100000")
         assert resultado["investimento"] == Decimal("15000")
-        assert resultado["roas"] == Decimal("6.7")
+        assert resultado["roas"] == Decimal("6.6667")  # 100000 / 15000, derivado
         assert resultado["cpa"] == Decimal("85.50")
         assert resultado["vendas"] == 50
         assert resultado["metricas_detalhadas"]["meta"]["faturamento"] == Decimal("40000")
         assert resultado["metricas_detalhadas"]["meta"]["roas"] == Decimal("5.5")
+
+    def test_consolida_destaque_somando_fontes_quando_painel_ausente(self):
+        # Sem {{fat_mes}}/{{inv_mes}}, o destaque cai no fallback que soma as
+        # fontes Meta + Google (resgata clientes com painel mensal desatualizado).
+        entrada = {
+            "{{fat_face}}": "R$ 40.000,00",
+            "{{inv_face}}": "R$ 5.000,00",
+            "{{fat_goog}}": "R$ 10.000,00",
+            "{{inv_goog}}": "R$ 2.000,00",
+        }
+        resultado = map_handler_dados(entrada)
+        assert resultado["faturamento"] == Decimal("50000")  # 40000 + 10000
+        assert resultado["investimento"] == Decimal("7000")  # 5000 + 2000
+        assert resultado["roas"] == Decimal("7.1429")  # 50000 / 7000, derivado
 
     def test_ignora_chave_desconhecida(self):
         entrada = {"{{chave_inexistente}}": "valor qualquer"}
