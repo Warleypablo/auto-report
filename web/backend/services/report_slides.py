@@ -83,7 +83,6 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
     from config import settings as core_settings  # type: ignore
     from core import (  # type: ignore
         basic_placeholders,
-        periodo as periodo_mod,
         slide_filler,
         template_manager,
     )
