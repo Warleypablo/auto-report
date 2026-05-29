@@ -247,3 +247,89 @@ def test_faixa_investimento_por_cliente(db):
         items, total = _run(s, admin, cli_inv_min=100)
     assert {it.cliente_slug for it in items} == {"ecom"}
     assert total == 2
+
+
+def test_paginacao_total_e_limit(db):
+    TS = db
+    with TS() as s:
+        admin = _admin(s)
+        c = _cliente(s, slug="multi")
+        for i in range(5):
+            ad = f"AD{i}"
+            _criativo(s, cliente=c, rede=RedeAnuncio.META, ad_id=ad)
+            _insight(s, cliente=c, rede=RedeAnuncio.META, ad_id=ad, dia=date(2026, 5, 1),
+                     investimento=10 * (i + 1), faturamento=100 * (i + 1),
+                     impressoes=100, clicks=5)
+        s.commit()
+        admin_id = admin.id
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        items, total = _run(s, admin, order_by="faturamento", limit=2, offset=0)
+    assert total == 5
+    assert len(items) == 2
+    # ordenado por faturamento DESC: AD4 (500), AD3 (400)
+    assert [it.ad_id for it in items] == ["AD4", "AD3"]
+
+
+def test_paginacao_offset(db):
+    TS = db
+    with TS() as s:
+        admin = _admin(s)
+        c = _cliente(s, slug="multi2")
+        for i in range(5):
+            ad = f"AD{i}"
+            _criativo(s, cliente=c, rede=RedeAnuncio.META, ad_id=ad)
+            _insight(s, cliente=c, rede=RedeAnuncio.META, ad_id=ad, dia=date(2026, 5, 1),
+                     investimento=10, faturamento=100 * (i + 1), impressoes=100, clicks=5)
+        s.commit()
+        admin_id = admin.id
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        items, total = _run(s, admin, order_by="faturamento", limit=2, offset=2)
+    assert total == 5
+    # DESC: AD4,AD3,[AD2,AD1],AD0 → offset 2 pega AD2, AD1
+    assert [it.ad_id for it in items] == ["AD2", "AD1"]
+
+
+def test_order_by_investimento(db):
+    TS = db
+    with TS() as s:
+        admin = _admin(s)
+        c = _cliente(s, slug="ord")
+        _criativo(s, cliente=c, rede=RedeAnuncio.META, ad_id="LO")
+        _criativo(s, cliente=c, rede=RedeAnuncio.META, ad_id="HI")
+        _insight(s, cliente=c, rede=RedeAnuncio.META, ad_id="LO", dia=date(2026, 5, 1),
+                 investimento=10, faturamento=10, impressoes=100, clicks=5)
+        _insight(s, cliente=c, rede=RedeAnuncio.META, ad_id="HI", dia=date(2026, 5, 1),
+                 investimento=999, faturamento=10, impressoes=100, clicks=5)
+        s.commit()
+        admin_id = admin.id
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        items, _ = _run(s, admin, order_by="investimento")
+    assert [it.ad_id for it in items] == ["HI", "LO"]
+
+
+def test_escopo_gestor_so_ve_seus_clientes(db):
+    TS = db
+    with TS() as s:
+        c1 = _cliente(s, slug="meu")
+        c2 = _cliente(s, slug="alheio")
+        gestor = Usuario(email=f"g-{uuid.uuid4().hex[:8]}@x.com", nome="G",
+                         senha_hash="x", is_admin=False, ativo=True)
+        s.add(gestor)
+        s.flush()
+        s.add(UsuarioCliente(usuario_id=gestor.id, cliente_id=c1.id))
+        _criativo(s, cliente=c1, rede=RedeAnuncio.META, ad_id="MEU")
+        _criativo(s, cliente=c2, rede=RedeAnuncio.META, ad_id="ALHEIO")
+        _insight(s, cliente=c1, rede=RedeAnuncio.META, ad_id="MEU", dia=date(2026, 5, 1),
+                 investimento=10, faturamento=10, impressoes=100, clicks=5)
+        _insight(s, cliente=c2, rede=RedeAnuncio.META, ad_id="ALHEIO", dia=date(2026, 5, 1),
+                 investimento=10, faturamento=10, impressoes=100, clicks=5)
+        s.commit()
+        gestor_id = gestor.id
+    with TS() as s:
+        gestor = s.get(Usuario, gestor_id)
+        items, total = _run(s, gestor)
+    assert total == 1
+    assert items[0].ad_id == "MEU"
