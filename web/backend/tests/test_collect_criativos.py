@@ -74,3 +74,84 @@ def test_upsert_ad_insight_insere_e_atualiza_sem_duplicar(TS, cliente_id):
         assert rows[0].investimento == Decimal("99.00")
         assert rows[0].faturamento == Decimal("123.00")
         assert rows[0].dia == date(2026, 5, 1)
+
+
+def test_upsert_criativo_insere_metadados_e_expande_janela(TS, cliente_id):
+    from etl.collect_criativos import upsert_criativo
+
+    with TS() as s:
+        upsert_criativo(
+            s,
+            cliente_id=cliente_id,
+            rede=RedeAnuncio.META,
+            ad_id="ad-9",
+            nome="Criativo BF",
+            tipo="video",
+            preview_link="https://fb.com/preview/9",
+            dia=date(2026, 5, 10),
+        )
+        s.commit()
+
+    # dia anterior expande primeiro_dia; dia posterior expande ultimo_dia
+    with TS() as s:
+        upsert_criativo(
+            s, cliente_id=cliente_id, rede=RedeAnuncio.META, ad_id="ad-9",
+            nome="Criativo BF", tipo="video",
+            preview_link="https://fb.com/preview/9", dia=date(2026, 5, 5),
+        )
+        upsert_criativo(
+            s, cliente_id=cliente_id, rede=RedeAnuncio.META, ad_id="ad-9",
+            nome="Criativo BF v2", tipo="video",
+            preview_link="https://fb.com/preview/9", dia=date(2026, 5, 20),
+        )
+        s.commit()
+
+    with TS() as s:
+        rows = s.scalars(
+            select(Criativo).where(
+                Criativo.cliente_id == cliente_id, Criativo.ad_id == "ad-9"
+            )
+        ).all()
+        assert len(rows) == 1
+        cri = rows[0]
+        assert cri.nome == "Criativo BF v2"      # metadado atualizado
+        assert cri.tipo == "video"
+        assert cri.preview_link == "https://fb.com/preview/9"
+        assert cri.thumb_status == ThumbStatus.PENDENTE  # default no insert
+        assert cri.primeiro_dia == date(2026, 5, 5)      # LEAST expandiu p/ trás
+        assert cri.ultimo_dia == date(2026, 5, 20)       # GREATEST expandiu p/ frente
+
+
+def test_upsert_criativo_preserva_thumb_status_existente(TS, cliente_id):
+    from etl.collect_criativos import upsert_criativo
+
+    with TS() as s:
+        upsert_criativo(
+            s, cliente_id=cliente_id, rede=RedeAnuncio.META, ad_id="ad-7",
+            nome="X", tipo="image", preview_link=None, dia=date(2026, 5, 1),
+        )
+        s.commit()
+        cri = s.scalar(
+            select(Criativo).where(
+                Criativo.cliente_id == cliente_id, Criativo.ad_id == "ad-7"
+            )
+        )
+        cri.thumb_status = ThumbStatus.OK
+        s.commit()
+
+    # re-upsert (novo dia) NÃO deve resetar thumb_status para PENDENTE
+    with TS() as s:
+        upsert_criativo(
+            s, cliente_id=cliente_id, rede=RedeAnuncio.META, ad_id="ad-7",
+            nome="X2", tipo="image", preview_link=None, dia=date(2026, 5, 2),
+        )
+        s.commit()
+
+    with TS() as s:
+        cri = s.scalar(
+            select(Criativo).where(
+                Criativo.cliente_id == cliente_id, Criativo.ad_id == "ad-7"
+            )
+        )
+        assert cri.thumb_status == ThumbStatus.OK
+        assert cri.nome == "X2"

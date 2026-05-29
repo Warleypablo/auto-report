@@ -67,3 +67,43 @@ def upsert_ad_insight(
         },
     )
     session.execute(stmt)
+
+
+def upsert_criativo(
+    session: Session,
+    *,
+    cliente_id: uuid.UUID,
+    rede: RedeAnuncio,
+    ad_id: str,
+    nome: str | None,
+    tipo: str | None,
+    preview_link: str | None,
+    dia: date,
+) -> None:
+    """Upsert idempotente da dimensão (constraint uq_criativo_cliente_rede_ad).
+    No conflito: atualiza nome/tipo/preview_link, expande primeiro_dia (LEAST)
+    e ultimo_dia (GREATEST), e PRESERVA thumb_status (gerenciado pela coleta de
+    thumb, não pelo upsert de metadados)."""
+    payload = dict(
+        cliente_id=cliente_id,
+        rede=rede,
+        ad_id=ad_id,
+        nome=nome,
+        tipo=tipo,
+        preview_link=preview_link,
+        primeiro_dia=dia,
+        ultimo_dia=dia,
+    )
+    stmt = insert(Criativo).values(**payload)
+    col = Criativo.__table__.c
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_criativo_cliente_rede_ad",
+        set_={
+            "nome": stmt.excluded.nome,
+            "tipo": stmt.excluded.tipo,
+            "preview_link": stmt.excluded.preview_link,
+            "primeiro_dia": func.least(col.primeiro_dia, stmt.excluded.primeiro_dia),
+            "ultimo_dia": func.greatest(col.ultimo_dia, stmt.excluded.ultimo_dia),
+        },
+    )
+    session.execute(stmt)
