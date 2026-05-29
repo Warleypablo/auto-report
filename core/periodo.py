@@ -42,6 +42,8 @@ __all__ = [
     "FREQUENCIA_DEFAULT",
     "periodo_referencia",
     "ultima_semana_completa",
+    "semana_de",
+    "semana_vigente",
     "ultimo_mes_completo",
 ]
 
@@ -129,6 +131,19 @@ def ultima_semana_completa(*, today: date | None = None) -> Periodo:
     return Periodo(inicio=inicio, fim=fim, fim_plus_1=fim_plus_1)
 
 
+def semana_de(dia: date) -> Periodo:
+    """Semana útil (segunda→sexta) que contém ``dia``."""
+    inicio = dia - timedelta(days=dia.weekday())   # segunda
+    fim = inicio + timedelta(days=4)               # sexta
+    fim_plus_1 = fim + timedelta(days=1)           # sábado (útil p/ nomes de arquivo)
+    return Periodo(inicio=inicio, fim=fim, fim_plus_1=fim_plus_1)
+
+
+def semana_vigente(*, today: date | None = None) -> Periodo:
+    """Semana útil (seg→sex) corrente — a que contém hoje."""
+    return semana_de(today or date.today())
+
+
 def ultimo_mes_completo(*, today: date | None = None) -> Periodo:
     """Retorna o **mês civil completo** imediatamente anterior ao mês corrente.
 
@@ -176,4 +191,4 @@ def periodo_referencia(*, today: date | None = None, frequencia: str | Frequenci
 
     if freq is Frequencia.MENSAL:
         return ultimo_mes_completo(today=today)
-    return ultima_semana_completa(today=today)
+    return semana_vigente(today=today)
