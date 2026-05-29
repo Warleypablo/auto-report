@@ -112,6 +112,7 @@ class TriggerRequest(BaseModel):
     slug: str
     mes: str  # YYYY-MM
     frequencia: Literal["MENSAL", "SEMANAL"] = "MENSAL"
+    semana_inicio: str | None = None  # YYYY-MM-DD (qualquer dia da semana); só usado quando frequencia=SEMANAL
 
 
 class TriggerResponse(BaseModel):
