@@ -27,6 +27,10 @@ async function handler(
   };
   if (token) headers["authorization"] = `Bearer ${token}`;
 
+  // Forward If-None-Match so the backend can respond with 304 when applicable.
+  const ifNoneMatch = req.headers.get("if-none-match");
+  if (ifNoneMatch) headers["if-none-match"] = ifNoneMatch;
+
   let body: string | undefined;
   if (req.method !== "GET" && req.method !== "DELETE") {
     body = await req.text().catch(() => undefined);
@@ -39,16 +43,40 @@ async function handler(
     cache: "no-store",
   });
 
+  const status = backendRes.status;
   const contentType = backendRes.headers.get("content-type") ?? "";
-  if (backendRes.status === 204 || !contentType.includes("application/json")) {
-    return new NextResponse(null, { status: backendRes.status });
+
+  // 204 No Content and 304 Not Modified: no body to forward.
+  if (status === 204 || status === 304) {
+    const resHeaders: Record<string, string> = {};
+    const etag = backendRes.headers.get("etag");
+    if (etag) resHeaders["ETag"] = etag;
+    return new NextResponse(null, { status, headers: resHeaders });
   }
 
-  const data = await backendRes.json().catch(() => ({}));
-  return NextResponse.json(data, {
-    status: backendRes.status,
-    headers: { "Cache-Control": "no-store" },
-  });
+  // JSON responses: parse and re-serialise (existing behaviour).
+  if (contentType.includes("application/json")) {
+    const data = await backendRes.json().catch(() => ({}));
+    return NextResponse.json(data, {
+      status,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  // Binary / non-JSON responses (e.g. image/jpeg for thumb endpoints):
+  // stream the raw body with relevant headers preserved.
+  const buffer = await backendRes.arrayBuffer();
+  const resHeaders: Record<string, string> = {
+    "Content-Type": contentType || "application/octet-stream",
+  };
+  const cacheControl = backendRes.headers.get("cache-control");
+  if (cacheControl) resHeaders["Cache-Control"] = cacheControl;
+  const etag = backendRes.headers.get("etag");
+  if (etag) resHeaders["ETag"] = etag;
+  const contentLength = backendRes.headers.get("content-length");
+  if (contentLength) resHeaders["Content-Length"] = contentLength;
+
+  return new NextResponse(buffer, { status, headers: resHeaders });
 }
 
 export { handler as GET, handler as POST, handler as PATCH, handler as DELETE };
