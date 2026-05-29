@@ -36,7 +36,10 @@ class AdInsight(Base):
     cliente_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    rede: Mapped[RedeAnuncio] = mapped_column(Enum(RedeAnuncio, name="rede_anuncio"), nullable=False)
+    rede: Mapped[RedeAnuncio] = mapped_column(
+        Enum(RedeAnuncio, name="rede_anuncio", values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+    )
     ad_id: Mapped[str] = mapped_column(String, nullable=False)
     dia: Mapped[date] = mapped_column(Date, nullable=False)
 

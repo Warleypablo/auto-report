@@ -45,13 +45,18 @@ class Criativo(Base):
     cliente_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    rede: Mapped[RedeAnuncio] = mapped_column(Enum(RedeAnuncio, name="rede_anuncio"), nullable=False)
+    rede: Mapped[RedeAnuncio] = mapped_column(
+        Enum(RedeAnuncio, name="rede_anuncio", values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+    )
     ad_id: Mapped[str] = mapped_column(String, nullable=False)
     nome: Mapped[str | None] = mapped_column(String, nullable=True)
     tipo: Mapped[str | None] = mapped_column(String, nullable=True)
     preview_link: Mapped[str | None] = mapped_column(Text, nullable=True)
     thumb_status: Mapped[ThumbStatus] = mapped_column(
-        Enum(ThumbStatus, name="thumb_status"), nullable=False, default=ThumbStatus.PENDENTE
+        Enum(ThumbStatus, name="thumb_status", values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=ThumbStatus.PENDENTE,
     )
     primeiro_dia: Mapped[date | None] = mapped_column(Date, nullable=True)
     ultimo_dia: Mapped[date | None] = mapped_column(Date, nullable=True)
