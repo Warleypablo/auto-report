@@ -88,7 +88,8 @@ def test_upsert_criativo_insere_metadados_e_expande_janela(TS, cliente_id):
             nome="Criativo BF",
             tipo="video",
             preview_link="https://fb.com/preview/9",
-            dia=date(2026, 5, 10),
+            primeiro_dia=date(2026, 5, 10),
+            ultimo_dia=date(2026, 5, 10),
         )
         s.commit()
 
@@ -97,12 +98,14 @@ def test_upsert_criativo_insere_metadados_e_expande_janela(TS, cliente_id):
         upsert_criativo(
             s, cliente_id=cliente_id, rede=RedeAnuncio.META, ad_id="ad-9",
             nome="Criativo BF", tipo="video",
-            preview_link="https://fb.com/preview/9", dia=date(2026, 5, 5),
+            preview_link="https://fb.com/preview/9",
+            primeiro_dia=date(2026, 5, 5), ultimo_dia=date(2026, 5, 5),
         )
         upsert_criativo(
             s, cliente_id=cliente_id, rede=RedeAnuncio.META, ad_id="ad-9",
             nome="Criativo BF v2", tipo="video",
-            preview_link="https://fb.com/preview/9", dia=date(2026, 5, 20),
+            preview_link="https://fb.com/preview/9",
+            primeiro_dia=date(2026, 5, 20), ultimo_dia=date(2026, 5, 20),
         )
         s.commit()
 
@@ -128,7 +131,8 @@ def test_upsert_criativo_preserva_thumb_status_existente(TS, cliente_id):
     with TS() as s:
         upsert_criativo(
             s, cliente_id=cliente_id, rede=RedeAnuncio.META, ad_id="ad-7",
-            nome="X", tipo="image", preview_link=None, dia=date(2026, 5, 1),
+            nome="X", tipo="image", preview_link=None,
+            primeiro_dia=date(2026, 5, 1), ultimo_dia=date(2026, 5, 1),
         )
         s.commit()
         cri = s.scalar(
@@ -143,7 +147,8 @@ def test_upsert_criativo_preserva_thumb_status_existente(TS, cliente_id):
     with TS() as s:
         upsert_criativo(
             s, cliente_id=cliente_id, rede=RedeAnuncio.META, ad_id="ad-7",
-            nome="X2", tipo="image", preview_link=None, dia=date(2026, 5, 2),
+            nome="X2", tipo="image", preview_link=None,
+            primeiro_dia=date(2026, 5, 2), ultimo_dia=date(2026, 5, 2),
         )
         s.commit()
 
@@ -611,6 +616,34 @@ def test_run_collect_criativos_ignora_cliente_ativo_sem_id_meta_ads(TS):
             if c:
                 s.delete(c)
                 s.commit()
+
+
+def test_coletar_google_sem_id_retorna_true_sem_chamar_api():
+    from etl.collect_criativos import coletar_criativos_google
+
+    cliente = MagicMock()
+    cliente.id_google_ads = None
+    cliente.nome = "Sem Google"
+
+    with patch("etl.collect_criativos._get_google_ads_service") as p:
+        ok = coletar_criativos_google(cliente, date(2026, 1, 1), date(2026, 1, 31))
+
+    assert ok is True
+    p.assert_not_called()
+
+
+def test_coletar_google_id_zero_retorna_true_sem_chamar_api():
+    from etl.collect_criativos import coletar_criativos_google
+
+    cliente = MagicMock()
+    cliente.id_google_ads = "0"
+    cliente.nome = "Google Off"
+
+    with patch("etl.collect_criativos._get_google_ads_service") as p:
+        ok = coletar_criativos_google(cliente, date(2026, 1, 1), date(2026, 1, 31))
+
+    assert ok is True
+    p.assert_not_called()
 
 
 def test_run_collect_criativos_exige_exatamente_um_modo():

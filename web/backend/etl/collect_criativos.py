@@ -103,35 +103,45 @@ def upsert_criativo(
     nome: str | None,
     tipo: str | None,
     preview_link: str | None,
-    dia: date,
-) -> None:
+    primeiro_dia: date,
+    ultimo_dia: date,
+    thumb_status: ThumbStatus | None = None,
+) -> Criativo:
     """Upsert idempotente da dimensão (constraint uq_criativo_cliente_rede_ad).
     No conflito: atualiza nome/tipo/preview_link, expande primeiro_dia (LEAST)
-    e ultimo_dia (GREATEST), e PRESERVA thumb_status (gerenciado pela coleta de
-    thumb, não pelo upsert de metadados)."""
-    payload = dict(
+    e ultimo_dia (GREATEST). Se thumb_status for fornecido, também o atualiza;
+    caso contrário PRESERVA o valor existente (gerenciado pela coleta de thumb).
+    Retorna a instância Criativo (com id preenchido)."""
+    payload: dict = dict(
         cliente_id=cliente_id,
         rede=rede,
         ad_id=ad_id,
         nome=nome,
         tipo=tipo,
         preview_link=preview_link,
-        primeiro_dia=dia,
-        ultimo_dia=dia,
+        primeiro_dia=primeiro_dia,
+        ultimo_dia=ultimo_dia,
     )
+    if thumb_status is not None:
+        payload["thumb_status"] = thumb_status
+
     stmt = insert(Criativo).values(**payload)
     col = Criativo.__table__.c
+    on_conflict_set: dict = {
+        "nome": stmt.excluded.nome,
+        "tipo": stmt.excluded.tipo,
+        "preview_link": stmt.excluded.preview_link,
+        "primeiro_dia": func.least(col.primeiro_dia, stmt.excluded.primeiro_dia),
+        "ultimo_dia": func.greatest(col.ultimo_dia, stmt.excluded.ultimo_dia),
+    }
+    if thumb_status is not None:
+        on_conflict_set["thumb_status"] = stmt.excluded.thumb_status
     stmt = stmt.on_conflict_do_update(
         constraint="uq_criativo_cliente_rede_ad",
-        set_={
-            "nome": stmt.excluded.nome,
-            "tipo": stmt.excluded.tipo,
-            "preview_link": stmt.excluded.preview_link,
-            "primeiro_dia": func.least(col.primeiro_dia, stmt.excluded.primeiro_dia),
-            "ultimo_dia": func.greatest(col.ultimo_dia, stmt.excluded.ultimo_dia),
-        },
+        set_=on_conflict_set,
     )
-    session.execute(stmt)
+    stmt = stmt.returning(Criativo)
+    return session.scalars(stmt).one()
 
 
 def _get_google_ads_service():
@@ -344,7 +354,8 @@ def coletar_criativos_meta(
                 nome=l["ad_name"],
                 tipo=None,
                 preview_link=None,
-                dia=l["dia"],
+                primeiro_dia=l["dia"],
+                ultimo_dia=l["dia"],
             )
         session.commit()
 
@@ -365,7 +376,8 @@ def coletar_criativos_meta(
                 nome=meta.get("nome"),
                 tipo=meta.get("tipo"),
                 preview_link=meta.get("preview_link"),
-                dia=until,
+                primeiro_dia=until,
+                ultimo_dia=until,
             )
             session.flush()
             criativo = session.scalar(
@@ -396,6 +408,22 @@ def coletar_criativos_meta(
     finally:
         if own:
             session.close()
+
+
+def coletar_criativos_google(
+    cliente: Cliente,
+    since: date,
+    until: date,
+    session_factory: Callable[[], Session] = SessionLocal,
+) -> bool:
+    """Coleta ad_group_ad com segments.date via GAQL + thumb + deep-link.
+    Search ads -> thumb_status = SEM_IMAGEM. Faz upsert em ad_insights e
+    criativos (rede=GOOGLE). Retorna True em sucesso, False em falha de API."""
+    customer_id = getattr(cliente, "id_google_ads", None)
+    if not customer_id or customer_id == "0":
+        log.info("collect_criativos_google skip sem id: %s", cliente.nome)
+        return True
+    raise NotImplementedError  # corpo implementado na Task 6
 
 
 def _janela_backfill(backfill_meses: int, hoje: date) -> tuple[date, date]:
