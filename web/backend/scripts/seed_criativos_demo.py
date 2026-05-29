@@ -24,6 +24,7 @@ from PIL import Image, ImageDraw  # noqa: E402
 from sqlalchemy import select, text  # noqa: E402
 
 from db import SessionLocal  # noqa: E402
+from etl.thumbnails import fetch_e_redimensionar  # noqa: E402
 from models import AdInsight, Cliente, Criativo, CriativoThumb, RedeAnuncio, ThumbStatus  # noqa: E402
 
 _CORES = [
@@ -100,13 +101,15 @@ def main() -> None:
                 s.add(cr)
                 s.flush()
                 if tem_img:
-                    s.add(
-                        CriativoThumb(
-                            criativo_id=cr.id,
-                            conteudo=_thumb_jpeg(_CORES[(ci + di) % len(_CORES)], cr.nome),
-                            mime="image/jpeg",
+                    # Baixa uma foto real (determinística por ad_id) pelo MESMO
+                    # pipeline de rehospedagem da produção; cai pra cor sólida se falhar.
+                    try:
+                        conteudo, mime = fetch_e_redimensionar(
+                            f"https://picsum.photos/seed/{ad_id}/600/600"
                         )
-                    )
+                    except Exception:
+                        conteudo, mime = _thumb_jpeg(_CORES[(ci + di) % len(_CORES)], cr.nome), "image/jpeg"
+                    s.add(CriativoThumb(criativo_id=cr.id, conteudo=conteudo, mime=mime))
                 n_cri += 1
 
                 base_inv = Decimal(50 + 30 * di + 20 * ci)
