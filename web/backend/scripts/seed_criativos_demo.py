@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -56,10 +57,8 @@ def _thumb_jpeg(cor: tuple[int, int, int], rotulo: str) -> bytes:
 
 def main() -> None:
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 8
-    # Para N grande (demo de escala / "mostra todos") usa thumb de cor sólida em vez
-    # de baixar centenas de fotos reais (lento). Fotos reais só para N pequeno (showcase).
-    usar_fotos = n <= 10
     hoje = date.today()
+    thumbs_tasks: list = []  # (criativo_id, ad_id, cor_fallback, rotulo) — baixadas em paralelo no fim
     with SessionLocal() as s:
         # limpa qualquer demo anterior (idempotente)
         s.execute(text("DELETE FROM ad_insights WHERE ad_id LIKE 'demo-%'"))
@@ -111,18 +110,7 @@ def main() -> None:
                 s.add(cr)
                 s.flush()
                 if tem_img:
-                    if usar_fotos:
-                        # Foto real (determinística por ad_id) pelo MESMO pipeline de
-                        # rehospedagem da produção; cai pra cor sólida se falhar.
-                        try:
-                            conteudo, mime = fetch_e_redimensionar(
-                                f"https://picsum.photos/seed/{ad_id}/600/600"
-                            )
-                        except Exception:
-                            conteudo, mime = _thumb_jpeg(_CORES[(ci + di) % len(_CORES)], cr.nome), "image/jpeg"
-                    else:
-                        conteudo, mime = _thumb_jpeg(_CORES[(ci + di) % len(_CORES)], cr.nome), "image/jpeg"
-                    s.add(CriativoThumb(criativo_id=cr.id, conteudo=conteudo, mime=mime))
+                    thumbs_tasks.append((cr.id, ad_id, _CORES[(ci + di) % len(_CORES)], cr.nome))
                 n_cri += 1
 
                 base_inv = Decimal(50 + 30 * di + 20 * ci)
@@ -150,9 +138,24 @@ def main() -> None:
                         )
                     )
                     n_ins += 1
+        s.commit()  # criativos + ad_insights persistidos (ids válidos p/ as thumbs)
+
+        # Baixa as thumbs em PARALELO (determinísticas por ad_id) pelo mesmo pipeline
+        # de rehospedagem da produção; cai pra cor sólida se algum download falhar.
+        def _baixar(task):
+            cid, ad_id_, cor, rotulo = task
+            try:
+                conteudo, mime = fetch_e_redimensionar(f"https://picsum.photos/seed/{ad_id_}/600/600")
+            except Exception:
+                conteudo, mime = _thumb_jpeg(cor, rotulo), "image/jpeg"
+            return cid, conteudo, mime
+
+        with ThreadPoolExecutor(max_workers=12) as ex:
+            for cid, conteudo, mime in ex.map(_baixar, thumbs_tasks):
+                s.add(CriativoThumb(criativo_id=cid, conteudo=conteudo, mime=mime))
         s.commit()
 
-    print(f"Seed demo concluído: {len(slugs)} clientes, {n_cri} criativos, {n_ins} ad_insights.")
+    print(f"Seed demo concluído: {len(slugs)} clientes, {n_cri} criativos, {n_ins} ad_insights, {len(thumbs_tasks)} thumbs.")
     print("Clientes semeados:", ", ".join(slugs))
     print("Período (escalonado, 3 coortes):", (hoje - timedelta(days=89)).isoformat(), "→", hoje.isoformat())
     print("Para limpar: DELETE FROM ad_insights/criativo_thumbs/criativos WHERE ad_id LIKE 'demo-%'")
