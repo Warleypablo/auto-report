@@ -80,6 +80,13 @@ def main() -> None:
             eh_lead = cliente.categoria.name.startswith("LEAD")
             for di, (rede, tipo, tem_img) in enumerate(_DEFS):
                 ad_id = f"demo-{cliente.slug}-{rede.lower()}-{di}"
+                # 3 coortes escalonadas em 90 dias para que os filtros de período
+                # mostrem QUANTIDADES diferentes de criativos:
+                #   cohort 0 (recente) [hoje-29, hoje] · 1 (médio) [hoje-59, hoje-30]
+                #   · 2 (antigo) [hoje-89, hoje-60]
+                cohort = (ci + di) % 3
+                win_fim = hoje - timedelta(days=30 * cohort)
+                win_ini = win_fim - timedelta(days=29)
                 if rede == "META":
                     preview = f"https://www.facebook.com/ads/library/?id=demo{ci}{di}"
                 elif tem_img:
@@ -95,8 +102,8 @@ def main() -> None:
                     tipo=tipo,
                     preview_link=preview,
                     thumb_status=ThumbStatus.OK if tem_img else ThumbStatus.SEM_IMAGEM,
-                    primeiro_dia=hoje - timedelta(days=29),
-                    ultimo_dia=hoje,
+                    primeiro_dia=win_ini,
+                    ultimo_dia=win_fim,
                 )
                 s.add(cr)
                 s.flush()
@@ -115,7 +122,7 @@ def main() -> None:
                 base_inv = Decimal(50 + 30 * di + 20 * ci)
                 roas_alvo = Decimal("0.8") + Decimal(di) * Decimal("0.7")  # 0.8x .. 5.0x
                 for d in range(30):
-                    dia = hoje - timedelta(days=29 - d)
+                    dia = win_ini + timedelta(days=d)
                     inv = (base_inv * (Decimal(1) + Decimal(d % 5) / Decimal(10))).quantize(Decimal("0.01"))
                     fat = (inv * roas_alvo).quantize(Decimal("0.01"))
                     imp = 1000 + 50 * d + 100 * di
@@ -141,7 +148,7 @@ def main() -> None:
 
     print(f"Seed demo concluído: {len(slugs)} clientes, {n_cri} criativos, {n_ins} ad_insights.")
     print("Clientes semeados:", ", ".join(slugs))
-    print("Período:", (hoje - timedelta(days=29)).isoformat(), "→", hoje.isoformat())
+    print("Período (escalonado, 3 coortes):", (hoje - timedelta(days=89)).isoformat(), "→", hoje.isoformat())
     print("Para limpar: DELETE FROM ad_insights/criativo_thumbs/criativos WHERE ad_id LIKE 'demo-%'")
 
 
