@@ -1106,6 +1106,7 @@ type EditForm = {
   nome: string;
   categoria: string;
   gestor: string;
+  gestor_travado: boolean;
   id_google_ads: string;
   id_meta_ads: string;
   id_ga4: string;
@@ -1120,6 +1121,7 @@ function emptyForm(c: ClienteGestor): EditForm {
     nome: c.nome,
     categoria: c.categoria,
     gestor: c.gestor ?? "",
+    gestor_travado: c.gestor_travado,
     id_google_ads: c.id_google_ads ?? "",
     id_meta_ads: c.id_meta_ads ?? "",
     id_ga4: c.id_ga4 ?? "",
@@ -1133,6 +1135,7 @@ function emptyCreateForm(): EditForm {
     nome: "",
     categoria: CATEGORIAS[0],
     gestor: "",
+    gestor_travado: false,
     id_google_ads: "",
     id_meta_ads: "",
     id_ga4: "",
@@ -1308,6 +1311,7 @@ function AbaConfiguracoes({
         nome: editForm.nome || null,
         categoria: editForm.categoria || null,
         gestor: editForm.gestor || null,
+        gestor_travado: editForm.gestor_travado,
         id_google_ads: editForm.id_google_ads || null,
         id_meta_ads: editForm.id_meta_ads || null,
         id_ga4: editForm.id_ga4 || null,
@@ -1675,6 +1679,16 @@ function AbaConfiguracoes({
               </div>
               {renderField("Link Painel de Controle", editForm!.painel_url, (v) => setEditForm((f) => f && { ...f, painel_url: v }))}
               {renderField("Link Pasta", editForm!.pasta_url, (v) => setEditForm((f) => f && { ...f, pasta_url: v }))}
+              <label className="flex items-center gap-2 text-sm text-[var(--ink)]">
+                <input
+                  type="checkbox"
+                  checked={editForm!.gestor_travado}
+                  onChange={(e) => setEditForm((f) => f && { ...f, gestor_travado: e.target.checked })}
+                  className="h-4 w-4 accent-[var(--forest)]"
+                />
+                Travar gestor
+                <span className="text-xs text-[var(--muted)]">(o sync do ClickUp não sobrescreve)</span>
+              </label>
               {saveErr && <p className="text-xs text-[var(--crimson)]">{saveErr}</p>}
               <div className="mt-1 flex gap-3">
                 <button type="submit" disabled={saving} className="flex-1 rounded-md bg-[var(--forest)] py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50">{saving ? "Salvando…" : "Salvar"}</button>
