@@ -28,6 +28,28 @@ import {
   Cell,
 } from "recharts";
 
+// ── ISO Week helpers ──────────────────────────────────────────────────────────
+function isoWeekAtual(d = new Date()): string {
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = (dt.getUTCDay() + 6) % 7;           // 0 = segunda
+  dt.setUTCDate(dt.getUTCDate() - day + 3);        // quinta da semana ISO
+  const week1 = new Date(Date.UTC(dt.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((dt.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getUTCDay() + 6) % 7)) / 7);
+  return `${dt.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function isoWeekParaSegunda(iso: string): string {
+  // "YYYY-Www" -> data da segunda-feira "YYYY-MM-DD"
+  const [y, w] = iso.split("-W").map(Number);
+  const jan4 = new Date(Date.UTC(y, 0, 4));
+  const jan4Day = (jan4.getUTCDay() + 6) % 7;      // 0 = segunda
+  const week1Monday = new Date(jan4);
+  week1Monday.setUTCDate(jan4.getUTCDate() - jan4Day);
+  const monday = new Date(week1Monday);
+  monday.setUTCDate(week1Monday.getUTCDate() + (w - 1) * 7);
+  return monday.toISOString().slice(0, 10);
+}
+
 type Tab = "reportes" | "dashboard" | "configuracoes";
 type ReportesTab = "reportes-clientes" | "reportes-meus";
 type ConfigTab = "config-clientes" | "config-gestores";
@@ -240,6 +262,7 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
   const [frequencia, setFrequencia] = useState<"MENSAL" | "SEMANAL">("MENSAL");
+  const [semana, setSemana] = useState(() => isoWeekAtual());
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState<{ atual: number; total: number; ok: number; erro: number } | null>(null);
   const [dispatched, setDispatched] = useState<DispatchedJob[]>([]);
@@ -305,7 +328,8 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
       const nome = clientes.find((c) => c.slug === slug)?.nome ?? slug;
       const dispatched_at = Date.now();
       try {
-        const { job_id } = await gestorApi.triggerReport(slug, mes, frequencia);
+        const semana_inicio = frequencia === "SEMANAL" ? isoWeekParaSegunda(semana) : undefined;
+        const { job_id } = await gestorApi.triggerReport(slug, mes, frequencia, semana_inicio);
         ok++;
         results.push({ job_id, slug, nome, status: "pending", slides_url: null, erro: null, dispatched_at });
       } catch (e: any) {
@@ -534,15 +558,29 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
           <span className="text-sm font-medium text-[var(--ink)]">
             {selected.size} cliente{selected.size > 1 ? "s" : ""} selecionado{selected.size > 1 ? "s" : ""}
           </span>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-[var(--muted)]">Mês</label>
-            <input
-              type="month"
-              value={mes}
-              onChange={(e) => setMes(e.target.value)}
-              className="rounded border border-[var(--rule-soft)] bg-[var(--paper)] px-2 py-1 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
-            />
-          </div>
+          {frequencia === "MENSAL" ? (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-[var(--muted)]">Mês</label>
+              <input
+                type="month"
+                value={mes}
+                onChange={(e) => setMes(e.target.value)}
+                className="rounded border border-[var(--rule-soft)] bg-[var(--paper)] px-2 py-1 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+              />
+            </div>
+          ) : null}
+          {frequencia === "SEMANAL" ? (
+            <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
+              Semana:
+              <input
+                type="week"
+                value={semana}
+                onChange={(e) => setSemana(e.target.value)}
+                aria-label="Semana de referência"
+                className="rounded border border-[var(--rule-soft)] bg-[var(--paper)] px-2 py-1 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+              />
+            </label>
+          ) : null}
           <button
             onClick={handleGerar}
             disabled={gerando}

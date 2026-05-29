@@ -7,7 +7,7 @@ instead of discarding it.
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 # Garante que a raiz do projeto vem PRIMEIRO no sys.path, mesmo que já esteja
@@ -28,7 +28,43 @@ if _cached_config is not None and not hasattr(_cached_config, "settings"):
     sys.modules.pop("config.settings", None)
 
 
-def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENSAL") -> str:
+def _resolver_periodo_ref(
+    mes: str,
+    frequencia: str,
+    semana_inicio: str | None,
+    *,
+    today: "date | None" = None,
+):
+    """Resolve (periodo_ref, periodo_comp) a partir dos dados do trigger.
+
+    - SEMANAL: semana útil seg–sex escolhida (``semana_inicio``, qualquer dia da
+      semana serve) ou a semana vigente; comparativo = semana anterior.
+    - MENSAL: mês selecionado (via âncora no dia 15 do mês seguinte); comparativo
+      = mês anterior. (Comportamento original preservado.)
+    """
+    from core import periodo as P  # type: ignore
+
+    freq = frequencia.upper()
+    if freq == "SEMANAL":
+        if semana_inicio:
+            ref = P.semana_de(date.fromisoformat(semana_inicio))
+        else:
+            ref = P.semana_vigente(today=today)
+        comp = P.semana_de(ref.inicio - timedelta(days=7))
+        return ref, comp
+
+    # MENSAL — âncora no dia 15 do mês seguinte p/ ultimo_mes_completo devolver o mês escolhido
+    ano, mes_num = int(mes[:4]), int(mes[5:7])
+    proximo = mes_num + 1
+    ano_alvo = ano + (1 if proximo > 12 else 0)
+    proximo = 1 if proximo > 12 else proximo
+    ancora = date(ano_alvo, proximo, 15)
+    ref = P.ultimo_mes_completo(today=ancora)
+    comp = P.ultimo_mes_completo(today=ref.inicio)
+    return ref, comp
+
+
+def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENSAL", semana_inicio: str | None = None) -> str:
     """Generate Google Slides report for one client and return the Drive URL.
 
     Args:
@@ -47,21 +83,12 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
     from config import settings as core_settings  # type: ignore
     from core import (  # type: ignore
         basic_placeholders,
-        periodo as periodo_mod,
         slide_filler,
         template_manager,
     )
     from core.categorias import get_handler  # type: ignore
     from core.leitura_central import fetch_clientes  # type: ignore
     from core.status import set_status  # type: ignore
-
-    # Convert "YYYY-MM" to a `today` in the NEXT month so periodo_referencia
-    # returns the correct month. Example: mes="2026-04" → today=2026-05-15
-    ano, mes_num = int(mes[:4]), int(mes[5:7])
-    proximo = mes_num + 1
-    ano_alvo = ano + (1 if proximo > 12 else 0)
-    proximo = 1 if proximo > 12 else proximo
-    today = date(ano_alvo, proximo, 15)
 
     clientes = fetch_clientes(
         atualizar=False,
@@ -77,8 +104,7 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
     cliente = clientes[0]
     FREQ = frequencia.upper()
 
-    periodo_ref = periodo_mod.periodo_referencia(today=today, frequencia=FREQ)
-    periodo_comp = periodo_mod.periodo_referencia(today=periodo_ref.inicio, frequencia=FREQ)
+    periodo_ref, periodo_comp = _resolver_periodo_ref(mes, FREQ, semana_inicio)
 
     dados = basic_placeholders.montar_placeholders_basicos(cliente, periodo_ref, FREQ=FREQ)
     dados.update(

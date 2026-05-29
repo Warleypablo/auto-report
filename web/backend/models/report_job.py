@@ -30,6 +30,7 @@ class ReportJob(Base):
     )
     mes: Mapped[str] = mapped_column(String(7), nullable=False)  # YYYY-MM
     frequencia: Mapped[str] = mapped_column(String(10), nullable=False, server_default="MENSAL")  # MENSAL | SEMANAL
+    semana_inicio: Mapped[str | None] = mapped_column(String(10), nullable=True)  # YYYY-MM-DD (segunda da semana), só SEMANAL
     status: Mapped[JobStatus] = mapped_column(
         Enum(JobStatus, name="job_status", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
