@@ -502,6 +502,31 @@ def test_get_google_ads_service_usa_cred_manager():
     fake_client.get_service.assert_called_once_with("GoogleAdsService")
 
 
+def test_build_google_query_contem_campos_e_datas():
+    from datetime import date
+
+    from etl.collect_criativos import _build_google_query
+
+    q = _build_google_query(date(2026, 1, 1), date(2026, 1, 31))
+
+    assert "FROM ad_group_ad" in q
+    assert "segments.date BETWEEN '2026-01-01' AND '2026-01-31'" in q
+    for campo in (
+        "ad_group_ad.ad.id",
+        "ad_group_ad.ad.name",
+        "ad_group_ad.ad.type",
+        "ad_group_ad.ad_group",
+        "ad_group_ad.ad.image_ad.image_url",
+        "segments.date",
+        "metrics.cost_micros",
+        "metrics.conversions",
+        "metrics.conversions_value",
+        "metrics.impressions",
+        "metrics.clicks",
+    ):
+        assert campo in q
+
+
 def test_run_collect_criativos_ignora_cliente_ativo_sem_id_meta_ads(TS):
     """Cliente ativo mas com id_meta_ads=None NÃO deve ser processado.
     run_collect_criativos filtra via .isnot(None) na query."""

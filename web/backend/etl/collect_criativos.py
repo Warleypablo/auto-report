@@ -140,6 +140,30 @@ def _get_google_ads_service():
     return client.get_service("GoogleAdsService")
 
 
+_GOOGLE_AD_FIELDS = (
+    "ad_group_ad.ad.id",
+    "ad_group_ad.ad.name",
+    "ad_group_ad.ad.type",
+    "ad_group_ad.ad_group",
+    "ad_group_ad.ad.image_ad.image_url",
+    "segments.date",
+    "metrics.cost_micros",
+    "metrics.conversions",
+    "metrics.conversions_value",
+    "metrics.impressions",
+    "metrics.clicks",
+)
+
+
+def _build_google_query(since: date, until: date) -> str:
+    campos = ", ".join(_GOOGLE_AD_FIELDS)
+    return (
+        f"SELECT {campos} "
+        "FROM ad_group_ad "
+        f"WHERE segments.date BETWEEN '{since.isoformat()}' AND '{until.isoformat()}'"
+    )
+
+
 def _meta_insights_diarios(ad_account_id: str, since: date, until: date) -> list[dict]:
     """Chama /act_{id}/insights level=ad time_increment=1 e devolve uma lista de
     dicts normalizados, um por (ad_id, dia). Reusa o parsing de actions/
