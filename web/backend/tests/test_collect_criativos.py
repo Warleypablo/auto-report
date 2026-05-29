@@ -371,3 +371,29 @@ def test_coletar_criativos_meta_sem_id_retorna_false(TS, cliente_id):
         ok = coletar_criativos_meta(cliente, date(2026, 5, 1), date(2026, 5, 1),
                                     session_factory=TS)
     assert ok is False
+
+
+@respx.mock
+def test_coletar_criativos_meta_thumb_erro_nao_derruba_cliente(TS, cliente_id):
+    from etl.collect_criativos import coletar_criativos_meta
+    with TS() as s:
+        c = s.get(Cliente, cliente_id); c.id_meta_ads = "act_777"; s.commit()
+    insights = {"data": [{"ad_id": "ad-1", "ad_name": "A", "date_start": "2026-05-01",
+        "spend": "10.00", "impressions": "100", "clicks": "2", "reach": "90",
+        "actions": [], "action_values": []}]}
+    meta = {"ad-1": {"id": "ad-1", "name": "A",
+        "creative": {"object_type": "IMAGE", "image_url": "https://cdn.fb.com/bad.jpg"}}}
+    respx.get(url__regex=r"https://graph\.facebook\.com/.*/insights").mock(
+        return_value=httpx.Response(200, json=insights))
+    respx.get(url__regex=r"https://graph\.facebook\.com/v[\d.]+\?.*").mock(
+        return_value=httpx.Response(200, json=meta))
+    respx.get("https://cdn.fb.com/bad.jpg").mock(return_value=httpx.Response(500))  # download falha
+    with TS() as s:
+        cliente = s.get(Cliente, cliente_id)
+        ok = coletar_criativos_meta(cliente, date(2026, 5, 1), date(2026, 5, 1), session_factory=TS)
+    assert ok is True
+    with TS() as s:
+        cri = s.scalar(select(Criativo).where(Criativo.cliente_id == cliente_id))
+        assert cri.thumb_status == ThumbStatus.ERRO
+        assert s.get(CriativoThumb, cri.id) is None
+        assert len(s.scalars(select(AdInsight).where(AdInsight.cliente_id == cliente_id)).all()) == 1
