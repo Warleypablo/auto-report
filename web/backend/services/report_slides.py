@@ -144,7 +144,10 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
     # Gerar o Slides custa ~13s (copiar template + preencher + pós-processar) e
     # produz um artefato que não é mais usado. No modo PDF subimos o PDF direto
     # na pasta de destino do cliente, sem tocar no Slides.
-    if os.getenv("PDF_REPORT_ATIVO", "false").lower() == "true":
+    # PDF é o PADRÃO (default "true"). Para voltar ao Slides, setar
+    # PDF_REPORT_ATIVO=false explicitamente no ambiente.
+    if os.getenv("PDF_REPORT_ATIVO", "true").lower() == "true":
+        _log.info("[PDF] modo PDF ativo p/ %s — gerando PDF (cai p/ Slides só se falhar)", cliente.nome)
         try:
             folder_id = template_manager._dest_folder(
                 cliente,
@@ -153,6 +156,7 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
             )
             pdf_url = _gerar_e_subir_pdf(cliente, dados, periodo_ref, folder_id)
             if pdf_url:
+                _log.info("[PDF] sucesso p/ %s → %s", cliente.nome, pdf_url)
                 set_status(cliente, "GERADO ✅")
                 return pdf_url
             _log.warning("PDF retornou vazio p/ %s — caindo para Slides", cliente.nome)
