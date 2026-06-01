@@ -48,7 +48,7 @@ const MEDAL = ["🥇", "🥈", "🥉"];
 // ── Imagem com fallback ───────────────────────────────────────────────────────
 
 const THUMB_GRADIENTS = [
-  ["#1a3d2e", "#0d2019"],
+  ["#0a2e3d", "#06181f"],
   ["#2a1f4a", "#160f28"],
   ["#1a2f4a", "#0d1a28"],
   ["#3d2a1a", "#22160d"],
@@ -113,8 +113,8 @@ function KpiStrip({ items }: { items: { label: string; value: string; sub?: stri
   return (
     <div className="mb-8 grid grid-cols-4 gap-3">
       {items.map(({ label, value, sub, highlight }) => (
-        <div key={label} className="relative overflow-hidden rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-5 py-5">
-          <div className="absolute left-0 top-3 bottom-3 w-0.5 rounded-full bg-[var(--forest)] opacity-30" />
+        <div key={label} className={`relative overflow-hidden rounded-xl border bg-[var(--paper-soft)] px-5 py-5 ${highlight ? "border-[var(--forest)]/40 shadow-[0_0_28px_-8px_var(--forest)]" : "border-[var(--rule-soft)]"}`}>
+          <div className="absolute left-0 top-3 bottom-3 w-0.5 rounded-full bg-gradient-to-b from-[var(--forest)] to-[var(--forest-deep)]" />
           <p className="mb-2 text-[10px] uppercase tracking-widest text-[var(--muted)]">{label}</p>
           <p className={`font-display text-3xl font-medium leading-none ${highlight ? "text-[var(--forest)]" : "text-[var(--ink)]"}`}>{value}</p>
           {sub && <p className="mt-1.5 text-[10px] text-[var(--muted)]">{sub}</p>}
@@ -145,10 +145,10 @@ function median(arr: number[]): number {
 }
 
 const TIER_SCATTER_COLORS: Record<string, string> = {
-  high: "#34d399",
-  mid: "#facc15",
-  low: "#f87171",
-  none: "#6b7280",
+  high: "var(--forest)",
+  mid: "var(--amber)",
+  low: "var(--crimson)",
+  none: "var(--muted)",
 };
 
 // ── "Ver anúncio" ───────────────────────────────────────────────────────────
@@ -571,7 +571,7 @@ export default function RankingsPage() {
               onClick={() => setFiltros((f) => ({ ...f, rede: r }))}
               className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
                 filtros.rede === r
-                  ? "bg-[var(--ink)] text-[var(--paper)]"
+                  ? "bg-[var(--forest)] text-[var(--on-accent)] shadow-[0_0_16px_-4px_var(--forest)]"
                   : "bg-[var(--paper-soft)] text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]"
               }`}
             >
@@ -587,7 +587,7 @@ export default function RankingsPage() {
               title={v === "scatter" ? "Scatter: investimento × faturamento" : "Ranking por ROAS"}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 view === v
-                  ? "bg-[var(--paper-deep)] text-[var(--ink)]"
+                  ? "bg-[var(--paper-deep)] text-[var(--forest)] ring-1 ring-[var(--forest)]/25"
                   : "text-[var(--muted)] hover:text-[var(--ink)]"
               }`}
             >

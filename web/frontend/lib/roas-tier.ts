@@ -17,14 +17,14 @@ export function roasTier(v: number | null): RoasTier {
 
 export const TIER_TEXT: Record<RoasTier, string> = {
   high: "text-[var(--forest)]",
-  mid: "text-[#f59e0b]",
+  mid: "text-[var(--amber)]",
   low: "text-[var(--crimson)]",
   none: "text-[var(--muted)]",
 };
 
 export const TIER_BAR: Record<RoasTier, string> = {
   high: "bg-[var(--forest)]",
-  mid: "bg-[#f59e0b]",
+  mid: "bg-[var(--amber)]",
   low: "bg-[var(--crimson)]",
   none: "bg-[var(--muted)]",
 };

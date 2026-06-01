@@ -98,7 +98,7 @@ export function FiltrosBar({ state, onChange, gestores, clientes }: Props) {
               onClick={() => toggleChip(c)}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                 active
-                  ? "bg-[var(--ink)] text-[var(--paper)]"
+                  ? "bg-[var(--forest)] text-[var(--on-accent)] shadow-[0_0_14px_-4px_var(--forest)]"
                   : "bg-[var(--paper-soft)] text-[var(--muted)] hover:text-[var(--ink)]"
               }`}
             >
@@ -120,7 +120,7 @@ export function FiltrosBar({ state, onChange, gestores, clientes }: Props) {
               onClick={() => set({ faixaScope: s })}
               className={`rounded-md px-2.5 py-1.5 text-[10px] font-medium transition ${
                 state.faixaScope === s
-                  ? "bg-[var(--paper-deep)] text-[var(--ink)]"
+                  ? "bg-[var(--paper-deep)] text-[var(--forest)] ring-1 ring-[var(--forest)]/25"
                   : "text-[var(--muted)] hover:text-[var(--ink)]"
               }`}
             >
