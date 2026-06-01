@@ -122,6 +122,26 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
     handler = get_handler(cliente.categoria)
     dados.update(handler.coletar_dados(cliente, periodo_ref, periodo_comp))
 
+    # ── Modo PDF: pula o Google Slides (muito mais rápido) ──────────────────
+    # Gerar o Slides custa ~13s (copiar template + preencher + pós-processar) e
+    # produz um artefato que não é mais usado. No modo PDF subimos o PDF direto
+    # na pasta de destino do cliente, sem tocar no Slides.
+    if os.getenv("PDF_REPORT_ATIVO", "false").lower() == "true":
+        try:
+            folder_id = template_manager._dest_folder(
+                cliente,
+                template_manager._parse_id(cliente.pasta_url, "folder"),
+                freq=FREQ,
+            )
+            pdf_url = _gerar_e_subir_pdf(cliente, dados, periodo_ref, folder_id)
+            if pdf_url:
+                set_status(cliente, "GERADO ✅")
+                return pdf_url
+            _log.warning("PDF retornou vazio p/ %s — caindo para Slides", cliente.nome)
+        except Exception:
+            _log.exception("Falha no PDF-only para %s — caindo para Slides", cliente.nome)
+
+    # ── Modo Slides (legado ou fallback se o PDF falhar) ────────────────────
     presentation_id = template_manager.criar_copia(
         cliente, periodo_ref, template_id=handler.template_id, FREQ=FREQ
     )
@@ -129,21 +149,11 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
     handler.pos_processar(presentation_id, dados)
     set_status(cliente, "GERADO ✅")
 
-    slides_url = f"https://docs.google.com/presentation/d/{presentation_id}/edit"
-
-    if os.getenv("PDF_REPORT_ATIVO", "false").lower() == "true":
-        try:
-            pdf_url = _gerar_e_subir_pdf(cliente, dados, periodo_ref, presentation_id)
-            if pdf_url:
-                return pdf_url
-        except Exception:
-            _log.exception("Falha ao gerar/subir PDF para %s — usando Slides", cliente.nome)
-
-    return slides_url
+    return f"https://docs.google.com/presentation/d/{presentation_id}/edit"
 
 
-def _gerar_e_subir_pdf(cliente, dados: dict, periodo_ref, presentation_id: str) -> str | None:
-    """Gera PDF via Playwright e sobe para o Drive na mesma pasta do Slides.
+def _gerar_e_subir_pdf(cliente, dados: dict, periodo_ref, folder_id: str) -> str | None:
+    """Gera PDF via Playwright e sobe para o Drive na pasta informada.
 
     Retorna a URL pública do Drive ou None em caso de falha.
     """
@@ -153,14 +163,6 @@ def _gerar_e_subir_pdf(cliente, dados: dict, periodo_ref, presentation_id: str) 
 
     from googleapiclient.discovery import build as _build
     drive_svc = _build("drive", "v3", credentials=load_oauth(), cache_discovery=False)
-
-    # Descobre a pasta onde o Slides foi salvo
-    file_meta = drive_svc.files().get(
-        fileId=presentation_id,
-        fields="parents",
-        supportsAllDrives=True,
-    ).execute()
-    folder_id = file_meta["parents"][0]
 
     # Gera o PDF
     pdf_bytes = _pdf_gen.gerar_pdf(cliente.categoria, dados)
