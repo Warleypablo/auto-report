@@ -39,6 +39,7 @@ from core import (  # type: ignore
 
 # Novo import: roteador de categorias
 from core.categorias import get_handler
+from core import pdf_generator as _pdf_gen
 
 # Logger global para este módulo (acrescenta info de módulo automaticamente)
 log = get_logger(__name__)
@@ -46,6 +47,25 @@ log = get_logger(__name__)
 # ────────────────────────────────────────────────────────────────────────────────
 # Funções auxiliares
 # ────────────────────────────────────────────────────────────────────────────────
+def _gerar_e_salvar_pdf(cliente, dados: dict, periodo_ref) -> None:
+    """Gera PDF em paralelo ao Slides. Falha silenciosa para não bloquear o fluxo."""
+    if os.getenv("PDF_REPORT_ATIVO", "false").lower() != "true":
+        return
+    try:
+        from datetime import date as _date
+        pdf_bytes = _pdf_gen.gerar_pdf(cliente.categoria, dados)
+        hoje = _date.today()
+        semana = getattr(periodo_ref, "semana", hoje.isocalendar()[1])
+        _pdf_gen.salvar_pdf(
+            pdf_bytes,
+            nome_cliente=cliente.nome,
+            ano=hoje.year,
+            mes=hoje.month,
+            semana=semana,
+        )
+    except Exception as exc:
+        print(f"[PDF] Falha ao gerar PDF para {cliente.nome}: {exc}")
+
 def processar_cliente(cliente, FREQ: str = "SEMANAL") -> None:
     """Executa todas as etapas para um único cliente e
     atualiza a coluna STATUS (AUTO) na Planilha Central.
@@ -74,6 +94,8 @@ def processar_cliente(cliente, FREQ: str = "SEMANAL") -> None:
         step_logger.start("coletar_dados_categoria")
         dados.update(handler.coletar_dados(cliente, periodo_ref, periodo_comp)) # Dados Concentrados
         step_logger.end("coletar_dados_categoria")
+
+        _gerar_e_salvar_pdf(cliente, dados, periodo_ref)
 
         step_logger.start("criar_copia_template")
         presentation_id = template_manager.criar_copia(cliente, periodo_ref, template_id=handler.template_id, FREQ=FREQ)
