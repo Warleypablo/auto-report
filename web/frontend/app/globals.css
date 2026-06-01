@@ -242,3 +242,88 @@ body {
   .stroke-reveal { stroke-dashoffset: 0 !important; }
   .reveal { opacity: 1 !important; transform: none !important; }
 }
+
+/* ===================================================================== */
+/* Painel Gestor — escopo dark "Turbo" (ciano + roxo)                    */
+/* Redefine os tokens só para o subtree /gestor. Independente de .dark.  */
+/* ===================================================================== */
+.gestor-turbo {
+  --paper:       #060612;   /* fundo da página            */
+  --paper-soft:  #0F0F25;   /* cards / sidebar            */
+  --paper-deep:  #0C0C22;   /* superfícies recuadas/hover */
+  --ink:         #F4F6FB;   /* texto principal            */
+  --ink-soft:    #C7CBD9;   /* texto secundário           */
+  --muted:       #8A90A6;   /* texto terciário / eixos    */
+  --rule:        #20203A;   /* divisórias fortes          */
+  --rule-soft:   #1A1A35;   /* bordas de card             */
+  --forest:      #00C8FF;   /* ACENTO PRIMÁRIO (ciano)    */
+  --forest-deep: #7B2FFF;   /* roxo — gradientes/hover    */
+  --amber:       #F5B544;   /* 2ª série / alerta          */
+  --crimson:     #FF5C72;   /* erro / destrutivo (texto)  */
+  --accent:      #00C8FF;
+
+  /* tokens novos de marca */
+  --cyan:        #00C8FF;
+  --purple:      #7B2FFF;
+  --forest-soft: rgba(0, 200, 255, 0.12); /* fundo do estado ativo      */
+  --on-accent:   #04040E;                  /* ink escuro p/ texto sobre acento */
+  --gradient:    linear-gradient(90deg, #00C8FF, #7B2FFF);
+  --glow-cyan:   0 0 0 1px rgba(0,200,255,.12), 0 10px 32px -12px rgba(0,200,255,.45);
+
+  /* elevação re-equilibrada p/ fundo escuro */
+  --elev-sm:     0 1px 2px rgba(0,0,0,.40);
+  --elev-md:     0 4px 18px -6px rgba(0,0,0,.55);
+  --elev-lift:   0 10px 34px -10px rgba(0,0,0,.65), 0 0 24px -14px rgba(0,200,255,.30);
+
+  color-scheme: dark; /* scrollbars / date-picker nativos em dark */
+
+  /* ambient glow ciano/roxo no fundo do painel (substitui o tint do body) */
+  background-image:
+    radial-gradient(1100px 560px at 0% -8%, rgba(0,200,255,.07), transparent 60%),
+    radial-gradient(900px 520px at 100% -12%, rgba(123,47,255,.06), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* KPI card: barra-gradiente ciano→roxo no topo + glow no hover */
+.gestor-turbo .kpi-turbo::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--gradient);
+}
+.gestor-turbo .kpi-turbo {
+  transition: box-shadow .25s ease, transform .25s ease;
+}
+.gestor-turbo .kpi-turbo:hover {
+  box-shadow: var(--glow-cyan);
+}
+
+/* ---- Overrides de decorações globais que dependem de .dark ---- */
+/* Sem isto, ao visitar /gestor em tema CLARO, estas usam a variante light e quebram. */
+
+/* seleção de texto: ciano com ink escuro legível */
+.gestor-turbo ::selection { background: var(--forest); color: #04040E; }
+
+/* seta do <select className="select">: stroke claro/ciano em vez de #1A1916 */
+.gestor-turbo .select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%2300C8FF' stroke-width='1.4'/></svg>");
+}
+.gestor-turbo .select:focus { border-bottom-color: var(--forest); box-shadow: 0 1px 0 0 var(--forest); }
+
+/* sheen do progresso em ciano */
+.gestor-turbo .progress-shimmer {
+  background-image: linear-gradient(100deg, transparent 20%, rgba(0,200,255,0.30) 50%, transparent 80%);
+}
+
+/* mesh-bg e paper-grain caso usados sob o gestor (defensivo, escopado) */
+.gestor-turbo .mesh-bg {
+  background:
+    radial-gradient(700px 500px at 20% 30%, rgba(0,200,255,0.18), transparent 60%),
+    radial-gradient(600px 400px at 80% 70%, rgba(123,47,255,0.14), transparent 55%);
+}
+.gestor-turbo .paper-grain::before {
+  mix-blend-mode: screen;
+  opacity: 0.30;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.0  0 0 0 0 0.78  0 0 0 0 1.0  0 0 0 0.03 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
