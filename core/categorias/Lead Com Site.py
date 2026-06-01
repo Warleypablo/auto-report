@@ -74,45 +74,33 @@ def coletar_dados(cliente, periodo_ref, periodo_comp):
     dict
         Chave = {{PLACEHOLDER}}, Valor = string já formatada (PT‑BR).
     """
-    from utils.logger import StepLogger, get_logger
+    from utils.logger import get_logger
+    from core.parallel_coleta import coletar_em_paralelo
     log = get_logger(__name__)
-    step_logger = StepLogger(log)
     dados: dict = {}
+
+    # Fase 1: GA4 + Facebook + Google em paralelo (independentes entre si).
+    dados.update(coletar_em_paralelo([
+        ("ga4_ref",   lambda: ga4_scraper.coletar_metricas_ga4(cliente, periodo_ref)),
+        ("ga4_comp",  lambda: ga4_scraper.coletar_metricas_ga4(cliente, periodo_comp, sufixo="_comp")),
+        ("fb_ref",    lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref)),
+        ("fb_comp",   lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp")),
+        ("goog_ref",  lambda: google_metrics_gather.coletar_metricas_google(cliente, periodo_ref)),
+        ("goog_comp", lambda: google_metrics_gather.coletar_metricas_google(cliente, periodo_comp, "_comp")),
+    ], timeout=90, log=log))
+
+    # Fase 2: painel DEPENDE das sessões (ses) que vêm do GA4 — roda depois.
+    ses = variacao_dados_comparativos._to_float(dados.get("{{ses}}"))
+    ses_comp = variacao_dados_comparativos._to_float(dados.get("{{ses_comp}}"))
+    dados.update(coletar_em_paralelo([
+        ("painel_ref",  lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_ref, ses)),
+        ("painel_comp", lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_comp, ses_comp, "_comp")),
+    ], timeout=90, log=log))
+
     try:
-        # Sequencial — paralelização foi revertida temporariamente para diagnóstico
-        # do hang em produção (502 / "gerando eternamente"). Cada etapa loga seu tempo.
-        step_logger.start("ga4")
-        dados.update(ga4_scraper.coletar_metricas_ga4(cliente, periodo_ref))
-        dados.update(ga4_scraper.coletar_metricas_ga4(cliente, periodo_comp, sufixo="_comp"))
-        step_logger.end("ga4")
-
-        ses = variacao_dados_comparativos._to_float(dados.get("{{ses}}"))
-        ses_comp = variacao_dados_comparativos._to_float(dados.get("{{ses_comp}}"))
-
-        step_logger.start("painel")
-        dados.update(painel_scraper.coletar_metricas_leads(cliente, periodo_ref, ses))
-        dados.update(painel_scraper.coletar_metricas_leads(cliente, periodo_comp, ses_comp, "_comp"))
-        step_logger.end("painel")
-
-        step_logger.start("facebook")
-        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref))
-        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp"))
-        step_logger.end("facebook")
-
-        step_logger.start("google_ads")
-        dados.update(google_metrics_gather.coletar_metricas_google(cliente, periodo_ref))
-        dados.update(google_metrics_gather.coletar_metricas_google(cliente, periodo_comp, "_comp"))
-        step_logger.end("google_ads")
-
-        step_logger.start("variacoes_percentuais")
         dados.update(variacao_dados_comparativos.calcular_variacoes(dados, _METRIC_VAR_KEYS))
-        step_logger.end("variacoes_percentuais")
-
-        step_logger.start("summary_etapas_coletar_dados")
-        step_logger.summary()
-        step_logger.end("summary_etapas_coletar_dados")
-    except Exception as exc:
-        log.exception("Erro em coletar_dados", extra={"cliente": getattr(cliente, "nome", None)})
+    except Exception:
+        log.exception("Erro nas variações em coletar_dados", extra={"cliente": getattr(cliente, "nome", None)})
     return dados
 
 

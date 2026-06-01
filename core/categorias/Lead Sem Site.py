@@ -63,31 +63,23 @@ def coletar_dados(cliente, periodo_ref, periodo_comp):
     dict
         Chave = {{PLACEHOLDER}}, Valor = string já formatada (PT‑BR).
     """
-    from utils.logger import StepLogger, get_logger
+    from utils.logger import get_logger
+    from core.parallel_coleta import coletar_em_paralelo
     log = get_logger(__name__)
-    step_logger = StepLogger(log)
-    dados: dict = {}
+
+    # Painel + Facebook em paralelo (independentes — painel de Lead Sem Site não
+    # depende de sessões). Resultado idêntico ao sequencial.
+    dados: dict = coletar_em_paralelo([
+        ("painel_ref",  lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_ref)),
+        ("painel_comp", lambda: painel_scraper.coletar_metricas_leads(cliente, periodo_comp, sufixo="_comp")),
+        ("fb_ref",      lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref)),
+        ("fb_comp",     lambda: facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp")),
+    ], timeout=90, log=log)
+
     try:
-        # Sequencial — paralelização revertida para diagnóstico do hang em produção
-        step_logger.start("painel")
-        dados.update(painel_scraper.coletar_metricas_leads(cliente, periodo_ref))
-        dados.update(painel_scraper.coletar_metricas_leads(cliente, periodo_comp, sufixo="_comp"))
-        step_logger.end("painel")
-
-        step_logger.start("facebook")
-        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_ref))
-        dados.update(facebook_metrics_gather.coletar_metricas_facebook(cliente, periodo_comp, "_comp"))
-        step_logger.end("facebook")
-
-        step_logger.start("variacoes_percentuais")
         dados.update(variacao_dados_comparativos.calcular_variacoes(dados, _METRIC_VAR_KEYS))
-        step_logger.end("variacoes_percentuais")
-
-        step_logger.start("summary_etapas_coletar_dados")
-        step_logger.summary()
-        step_logger.end("summary_etapas_coletar_dados")
-    except Exception as exc:
-        log.exception("Erro em coletar_dados", extra={"cliente": getattr(cliente, "nome", None)})
+    except Exception:
+        log.exception("Erro nas variações em coletar_dados", extra={"cliente": getattr(cliente, "nome", None)})
     return dados
 
 
