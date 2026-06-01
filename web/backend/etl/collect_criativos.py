@@ -208,6 +208,53 @@ def _google_thumb_url(ad) -> str | None:
     return None
 
 
+def _primeiro_headline(headlines) -> str | None:
+    """1º AdTextAsset com texto não-vazio da lista (repeated), ou None."""
+    for h in headlines or []:
+        txt = (getattr(h, "text", "") or "").strip()
+        if txt:
+            return txt
+    return None
+
+
+def _google_ad_nome_derivado(ad) -> str | None:
+    """Nome amigável derivado do conteúdo quando ad.name vem vazio.
+
+    O campo ad.name do Google Ads é opcional e quase nunca preenchido (≠ ad_name
+    do Meta). Aqui derivamos um rótulo legível do 1º headline, por tipo:
+    RESPONSIVE_SEARCH_AD -> responsive_search_ad.headlines[].text;
+    EXPANDED_TEXT_AD -> expanded_text_ad.headline_part1. Outros tipos -> None
+    (sem regressão: o front mantém o fallback "Sem nome").
+    """
+    tipo = getattr(getattr(ad, "type_", None), "name", "") or ""
+    if tipo == "RESPONSIVE_SEARCH_AD":
+        rsa = getattr(ad, "responsive_search_ad", None)
+        return _primeiro_headline(getattr(rsa, "headlines", None))
+    if tipo == "EXPANDED_TEXT_AD":
+        eta = getattr(ad, "expanded_text_ad", None)
+        txt = (getattr(eta, "headline_part1", "") or "").strip()
+        return txt or None
+    return None
+
+
+# Campos da 2ª query (metadados de nome). Headlines é repeated e NÃO é selecionável
+# junto com metrics/segments — por isso vai numa query separada e enxuta.
+_GOOGLE_NOME_FIELDS = (
+    "ad_group_ad.ad.id",
+    "ad_group_ad.ad.type",
+    "ad_group_ad.ad.responsive_search_ad.headlines",
+    "ad_group_ad.ad.expanded_text_ad.headline_part1",
+)
+
+
+def _build_google_nome_query(ad_ids) -> str:
+    """GAQL enxuta (sem metrics/segments) p/ derivar nome dos ads sem ad.name,
+    filtrando pelos ad_ids já coletados na query de métricas."""
+    campos = ", ".join(_GOOGLE_NOME_FIELDS)
+    ids = ", ".join(str(a) for a in ad_ids)
+    return f"SELECT {campos} FROM ad_group_ad WHERE ad_group_ad.ad.id IN ({ids})"
+
+
 def _meta_insights_diarios(ad_account_id: str, since: date, until: date) -> list[dict]:
     """Chama /act_{id}/insights level=ad time_increment=1 e devolve uma lista de
     dicts normalizados, um por (ad_id, dia). Reusa o parsing de actions/
@@ -491,6 +538,23 @@ def coletar_criativos_google(
         )
         meta["primeiro_dia"] = min(meta["primeiro_dia"], dia)
         meta["ultimo_dia"] = max(meta["ultimo_dia"], dia)
+
+    # Enriquece nome: ad.name raramente vem preenchido no Google; deriva do 1º
+    # headline via 2ª query enxuta (sem metrics/segments). Degrada sem derrubar a
+    # coleta de métricas se a query de nomes falhar.
+    ad_ids_sem_nome = [aid for aid, m in metas.items() if not m["nome"]]
+    if ad_ids_sem_nome:
+        try:
+            nome_query = _build_google_nome_query(ad_ids_sem_nome)
+            for row in service.search(customer_id=str(customer_id), query=nome_query):
+                ad = row.ad_group_ad.ad
+                nome = _google_ad_nome_derivado(ad)
+                if nome:
+                    metas[str(ad.id)]["nome"] = nome
+        except Exception:
+            log.exception(
+                "collect_criativos_google nome-derivado falhou (%s)", cliente.nome
+            )
 
     session = session_factory()
     own_session = session_factory is SessionLocal
