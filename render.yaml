@@ -6,7 +6,7 @@ services:
     plan: starter  # free tier dorme após inatividade — starter mantém sempre ativo
     region: oregon
     rootDir: .
-    buildCommand: pip install -r web/backend/requirements.txt -r requirements.txt
+    buildCommand: pip install -r web/backend/requirements.txt -r requirements.txt && python -m playwright install chromium
     startCommand: bash scripts/start-backend.sh
     envVars:
       - key: PYTHONPATH
