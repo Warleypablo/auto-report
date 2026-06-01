@@ -389,7 +389,7 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
                 className={[
                   "rounded-md px-3.5 py-1.5 text-xs font-medium transition-all duration-200",
                   frequencia === f
-                    ? "bg-[var(--forest)] text-white shadow-[var(--elev-sm)]"
+                    ? "bg-[var(--forest)] text-[var(--on-accent)] shadow-[0_0_0_1px_var(--forest),0_0_12px_-2px_var(--forest)]"
                     : "text-[var(--muted)] hover:text-[var(--ink)]",
                 ].join(" ")}
               >
@@ -533,7 +533,7 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
                   )}
                   {j.status === "done" && j.slides_url && (
                     <a href={j.slides_url} target="_blank" rel="noopener noreferrer"
-                      className="group/btn inline-flex items-center gap-1 rounded-lg bg-[var(--forest)] px-3.5 py-1.5 text-xs font-medium text-white shadow-[var(--elev-sm)] transition-all duration-200 hover:shadow-[var(--elev-lift)] hover:brightness-110 active:scale-[0.97]">
+                      className="group/btn inline-flex items-center gap-1 rounded-lg bg-[var(--forest)] px-3.5 py-1.5 text-xs font-medium text-[var(--on-accent)] shadow-[var(--elev-sm)] transition-all duration-200 hover:shadow-[var(--elev-lift)] hover:brightness-110 active:scale-[0.97]">
                       Abrir report
                       <span className="transition-transform duration-200 group-hover/btn:translate-x-0.5">→</span>
                     </a>
@@ -572,7 +572,7 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
                         className={[
                           "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-[10px] transition-all duration-150",
                           isSel
-                            ? "border-[var(--forest)] bg-[var(--forest)] text-white shadow-[var(--elev-sm)]"
+                            ? "border-[var(--forest)] bg-[var(--forest)] text-[var(--on-accent)] shadow-[0_0_8px_-1px_var(--forest)]"
                             : "border-[var(--rule-soft)] bg-[var(--paper)] text-transparent hover:border-[var(--forest)] hover:bg-[var(--forest)]/5",
                         ].join(" ")}
                         aria-label={`Selecionar ${c.nome}`}
@@ -583,7 +583,7 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
                         className={[
                           "flex flex-1 items-center justify-between rounded-lg border px-4 py-3 transition-all duration-200",
                           isSel
-                            ? "border-[var(--forest)] bg-[var(--forest)]/[0.06] shadow-[var(--elev-sm)]"
+                            ? "border-[var(--forest)] bg-[var(--forest)]/[0.10] shadow-[0_0_0_1px_var(--forest),var(--elev-sm)]"
                             : "border-[var(--rule-soft)] bg-[var(--paper-soft)] hover:-translate-y-px hover:border-[var(--forest)]/60 hover:shadow-[var(--elev-md)]",
                         ].join(" ")}
                       >
@@ -670,11 +670,11 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
           <button
             onClick={handleGerar}
             disabled={gerando}
-            className="inline-flex items-center gap-2 rounded-lg bg-[var(--forest)] px-5 py-2.5 text-sm font-medium text-white shadow-[var(--elev-md)] transition-all duration-200 hover:shadow-[var(--elev-lift)] hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--forest)] px-5 py-2.5 text-sm font-medium text-[var(--on-accent)] shadow-[var(--elev-md)] transition-all duration-200 hover:shadow-[var(--elev-lift)] hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
           >
             {gerando ? (
               <>
-                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--on-accent)]/30 border-t-[var(--on-accent)]" />
                 Gerando…
               </>
             ) : (
