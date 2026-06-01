@@ -340,3 +340,27 @@ def test_sync_tudo_vincula_e_preenche_gestor(app_with_db):
         c = s.get(Cliente, uuid.UUID(cid))
         assert c.cup_task_id == "cup-zacca"
         assert c.gestor == "Thiago M."
+
+
+def test_automatch_colisao_mesmo_task_resolve_para_um(app_with_db):
+    app, TS = app_with_db
+    _seed_cliente_sem_cup(TS, "Noway Drinks")
+    _seed_cliente_sem_cup(TS, "Noway Drink Co")
+    _seed_cup_cliente(TS, "cup-noway", "Noway Drink")
+    client = TestClient(app)
+
+    body = client.post("/gestor/clickup/automatch?dry_run=false").json()
+
+    # exatamente 1 match propõe cup-noway; o outro cliente vira ambiguo
+    matches_noway = [m for m in body["matches"] if m["task_id"] == "cup-noway"]
+    amb_noway = [a for a in body["ambiguos"]
+                 if any(c["task_id"] == "cup-noway" for c in a["candidatos"])]
+    assert len(matches_noway) == 1
+    assert len(matches_noway) + len(amb_noway) == 2
+    assert body["aplicados"] == 1
+    # no DB, exatamente 1 cliente vinculado ao cup-noway
+    with TS() as s:
+        n = s.execute(
+            text("SELECT COUNT(*) FROM clientes WHERE cup_task_id = 'cup-noway'")
+        ).scalar()
+        assert n == 1

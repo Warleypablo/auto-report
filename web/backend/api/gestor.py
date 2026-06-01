@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import uuid
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
@@ -270,8 +271,6 @@ def patch_cup_task(
 # - os de confiança média viram sugestões (ambiguos) para revisão manual
 # - dry_run=true (default) retorna proposta sem aplicar
 
-from collections import defaultdict
-
 
 @router.post("/clickup/automatch", status_code=200)
 def automatch_clickup(
@@ -318,6 +317,25 @@ def automatch_clickup(
             })
         else:
             sem_candidato.append({"cliente_id": str(c.id), "cliente_nome": c.nome})
+
+    # Resolve colisões: se >1 cliente deu "auto" no MESMO task_id, mantém só o
+    # de maior score em matches (desempate por nome) e manda os demais para
+    # ambiguos — assim matches reflete exatamente o que será aplicado.
+    vencedor_por_task: dict[str, dict] = {}
+    for m in sorted(matches, key=lambda m: (-m["score"], m["cliente_nome"])):
+        atual = vencedor_por_task.get(m["task_id"])
+        if atual is None:
+            vencedor_por_task[m["task_id"]] = m
+        else:
+            ambiguos.append({
+                "cliente_id": m["cliente_id"],
+                "cliente_nome": m["cliente_nome"],
+                "candidatos": [{
+                    "task_id": m["task_id"], "nome": m["cup_nome"], "score": m["score"],
+                }],
+                "motivo": "task_id disputado por outro cliente de maior score",
+            })
+    matches = [m for m in matches if vencedor_por_task.get(m["task_id"]) is m]
 
     aplicados = 0
     if not dry_run and matches:

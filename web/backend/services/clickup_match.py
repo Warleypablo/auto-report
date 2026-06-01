@@ -142,6 +142,6 @@ def responsavel_performance(contratos: list[dict]) -> str | None:
     if not perf:
         return None
     # ordenação estável em dois passos: data desc, depois status asc domina
-    perf.sort(key=lambda c: _data_key(c.get("data_inicio")), reverse=True)
-    perf.sort(key=lambda c: _status_rank(c.get("status")))
+    perf = sorted(perf, key=lambda c: _data_key(c.get("data_inicio")), reverse=True)
+    perf = sorted(perf, key=lambda c: _status_rank(c.get("status")))
     return perf[0]["responsavel"].strip()
