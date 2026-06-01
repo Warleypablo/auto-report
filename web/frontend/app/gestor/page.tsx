@@ -87,13 +87,17 @@ function mesLabel(mes: string): string {
 // ── Status badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: JobInfo["status"] }) {
   const map: Record<JobInfo["status"], { label: string; cls: string }> = {
-    done:    { label: "Concluído", cls: "text-[var(--forest)]" },
-    error:   { label: "Erro",      cls: "text-[var(--crimson)]" },
-    running: { label: "Gerando…",  cls: "text-[var(--amber)]" },
-    pending: { label: "Na fila",   cls: "text-[var(--muted)]" },
+    done:    { label: "Concluído", cls: "border-[var(--forest)]/30 bg-[var(--forest)]/12 text-[var(--forest)]" },
+    error:   { label: "Erro",      cls: "border-[var(--crimson)]/30 bg-[var(--crimson)]/12 text-[var(--crimson)]" },
+    running: { label: "Gerando…",  cls: "border-[var(--amber)]/30 bg-[var(--amber)]/12 text-[var(--amber)]" },
+    pending: { label: "Na fila",   cls: "border-[var(--rule-soft)] bg-[var(--paper-deep)] text-[var(--muted)]" },
   };
   const { label, cls } = map[status];
-  return <span className={`text-xs ${cls}`}>{label}</span>;
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}>
+      {label}
+    </span>
+  );
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -748,7 +752,7 @@ function AbaMeusReports({ jobs, loading }: { jobs: JobInfo[]; loading: boolean }
                   <td className="px-3 py-2.5 text-right">
                     {j.status === "done" && j.slides_url && (
                       <a href={j.slides_url} target="_blank" rel="noopener noreferrer"
-                        className="rounded-md bg-[var(--forest)] px-3 py-1 text-xs font-medium text-white transition hover:opacity-90">
+                        className="rounded-md bg-[var(--forest)] px-3 py-1 text-xs font-medium text-[var(--on-accent)] transition hover:shadow-[0_0_12px_-2px_var(--forest)] hover:brightness-110">
                         Abrir →
                       </a>
                     )}
@@ -1343,7 +1347,7 @@ function GestorSelect({
                   }}
                   className={[
                     "block w-full px-3 py-2 text-left text-sm transition hover:bg-[var(--paper-soft)]",
-                    value === g.nome ? "font-medium text-[var(--forest)]" : "text-[var(--ink)]",
+                    value === g.nome ? "border-l-2 border-[var(--forest)] bg-[var(--forest)]/10 font-medium text-[var(--forest)]" : "border-l-2 border-transparent text-[var(--ink)]",
                   ].join(" ")}
                 >
                   {g.nome}
@@ -1609,7 +1613,7 @@ function AbaConfiguracoes({
           <span className="eyebrow text-xs text-[var(--muted)]">{clientes.length} cliente{clientes.length !== 1 ? "s" : ""}</span>
           <button
             onClick={() => { setCriando(true); setCriarForm(emptyCreateForm()); setCreateErr(null); }}
-            className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+            className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] transition hover:shadow-[0_0_16px_-4px_var(--forest)] hover:brightness-110"
           >
             + Adicionar cliente
           </button>
@@ -1685,7 +1689,7 @@ function AbaConfiguracoes({
           <button onClick={handleNormalizar} disabled={normalizing} className="rounded-md border border-[var(--rule-soft)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:border-[var(--forest)] hover:text-[var(--forest)] disabled:opacity-50">
             {normalizing ? "Normalizando…" : "Normalizar capitalização"}
           </button>
-          <button onClick={() => { setAddingGestor(true); setSaveGestorErr(null); }} className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90">
+          <button onClick={() => { setAddingGestor(true); setSaveGestorErr(null); }} className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] transition hover:opacity-90">
             + Adicionar gestor
           </button>
         </div>
@@ -1704,7 +1708,7 @@ function AbaConfiguracoes({
               <input type="text" value={newGestorSquad} onChange={(e) => setNewGestorSquad(e.target.value)} placeholder="Ex: Growth"
                 className="rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]" />
             </label>
-            <button type="submit" disabled={savingGestor || !newGestorNome.trim()} className="rounded-md bg-[var(--forest)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50">
+            <button type="submit" disabled={savingGestor || !newGestorNome.trim()} className="rounded-md bg-[var(--forest)] px-4 py-2 text-sm font-medium text-[var(--on-accent)] transition hover:opacity-90 disabled:opacity-50">
               {savingGestor ? "Adicionando…" : "Adicionar"}
             </button>
             <button type="button" onClick={() => { setAddingGestor(false); setSaveGestorErr(null); setNewGestorNome(""); setNewGestorSquad(""); }}
@@ -1741,7 +1745,7 @@ function AbaConfiguracoes({
                             className="flex-1 rounded-md border border-[var(--forest)] bg-[var(--paper)] px-3 py-1.5 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]" />
                           {renameGestorErr && <span className="text-xs text-[var(--crimson)]">{renameGestorErr}</span>}
                           <button type="submit" disabled={renamingGestor || !novoNomeGestor.trim()}
-                            className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50">
+                            className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] transition hover:opacity-90 disabled:opacity-50">
                             {renamingGestor ? "Salvando…" : "Salvar"}
                           </button>
                           <button type="button" onClick={() => { setRenomeandoGestor(null); setRenameGestorErr(null); }}
@@ -1817,7 +1821,7 @@ function AbaConfiguracoes({
               </label>
               {saveErr && <p className="text-xs text-[var(--crimson)]">{saveErr}</p>}
               <div className="mt-1 flex gap-3">
-                <button type="submit" disabled={saving} className="flex-1 rounded-md bg-[var(--forest)] py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50">{saving ? "Salvando…" : "Salvar"}</button>
+                <button type="submit" disabled={saving} className="flex-1 rounded-md bg-[var(--forest)] py-2 text-sm font-medium text-[var(--on-accent)] transition hover:opacity-90 disabled:opacity-50">{saving ? "Salvando…" : "Salvar"}</button>
                 <button type="button" onClick={() => setEditando(null)} className="flex-1 rounded-md border border-[var(--rule-soft)] py-2 text-sm text-[var(--muted)] transition hover:border-[var(--ink)] hover:text-[var(--ink)]">Cancelar</button>
               </div>
             </form>
@@ -1849,7 +1853,7 @@ function AbaConfiguracoes({
               {renderField("Link Pasta", criarForm.pasta_url, (v) => setCriarForm((f) => ({ ...f, pasta_url: v })))}
               {createErr && <p className="text-xs text-[var(--crimson)]">{createErr}</p>}
               <div className="mt-1 flex gap-3">
-                <button type="submit" disabled={creating || !criarForm.nome.trim()} className="flex-1 rounded-md bg-[var(--forest)] py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50">{creating ? "Criando…" : "Criar cliente"}</button>
+                <button type="submit" disabled={creating || !criarForm.nome.trim()} className="flex-1 rounded-md bg-[var(--forest)] py-2 text-sm font-medium text-[var(--on-accent)] transition hover:opacity-90 disabled:opacity-50">{creating ? "Criando…" : "Criar cliente"}</button>
                 <button type="button" onClick={() => setCriando(false)} className="flex-1 rounded-md border border-[var(--rule-soft)] py-2 text-sm text-[var(--muted)] transition hover:border-[var(--ink)] hover:text-[var(--ink)]">Cancelar</button>
               </div>
             </form>
@@ -1866,7 +1870,7 @@ function AbaConfiguracoes({
             </p>
             {deleteErr && <p className="mt-2 text-xs text-[var(--crimson)]">{deleteErr}</p>}
             <div className="mt-4 flex gap-3">
-              <button onClick={handleDesativar} disabled={deleting} className="flex-1 rounded-md bg-[var(--crimson,#c0392b)] py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50">{deleting ? "Desativando…" : "Desativar"}</button>
+              <button onClick={handleDesativar} disabled={deleting} className="flex-1 rounded-md bg-[var(--crimson)] py-2 text-sm font-medium text-[var(--on-accent)] transition hover:brightness-110 disabled:opacity-50">{deleting ? "Desativando…" : "Desativar"}</button>
               <button onClick={() => setDeletando(null)} className="flex-1 rounded-md border border-[var(--rule-soft)] py-2 text-sm text-[var(--muted)] transition hover:border-[var(--ink)] hover:text-[var(--ink)]">Cancelar</button>
             </div>
           </div>
