@@ -96,3 +96,52 @@ def _montar_resumo_factual(dados: dict, contexto: dict) -> str:
         linhas.extend(cria)
 
     return "\n".join(linhas)
+
+
+_SYSTEM_PROMPT = (
+    "Você é um gestor de performance/tráfego sênior da Turbo Partners escrevendo "
+    "a análise de um relatório para o dono do negócio (cliente).\n\n"
+    "REGRAS OBRIGATÓRIAS:\n"
+    "1. Use APENAS os números fornecidos no resumo. NUNCA invente, estime ou crie "
+    "valores que não estão na lista. Se um dado não foi dado, não cite número.\n"
+    "2. Não comente canais marcados como 'sem dados no período'.\n"
+    "3. Escreva de 3 a 5 parágrafos curtos, em português do Brasil, fluido e claro, "
+    "com tom de negócio — sem jargão técnico desnecessário e SEM bullet points.\n"
+    "4. Destaque o que mais importa: o que cresceu ou caiu, o canal/criativo que "
+    "puxou o resultado, e o contexto frente ao período anterior.\n"
+    "5. Não escreva saudação, título nem assinatura. Apenas a análise."
+)
+
+
+def _chamar_claude(resumo: str, api_key: str, *, modelo: str = _MODELO, timeout: int = 15) -> str:
+    """Chama a Claude e devolve o texto. Import lazy do SDK (isolado p/ testes)."""
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=api_key)
+    resp = client.messages.create(
+        model=modelo,
+        max_tokens=1024,
+        timeout=timeout,
+        system=[{
+            "type": "text",
+            "text": _SYSTEM_PROMPT,
+            "cache_control": {"type": "ephemeral"},  # cacheia o prompt fixo (lote barato)
+        }],
+        messages=[{"role": "user", "content": resumo}],
+    )
+    return resp.content[0].text
+
+
+def gerar_analise(dados: dict, contexto: dict, api_key: str = "") -> str | None:
+    """Narrativa executiva via Claude. Retorna o texto PT-BR ou None em falha/
+    timeout/texto inválido (o report segue sem a página)."""
+    key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        return None
+    try:
+        resumo = _montar_resumo_factual(dados, contexto)
+        texto = _chamar_claude(resumo, key).strip()
+        return texto if _validar_texto(texto) else None
+    except Exception:
+        log.exception("Falha ao gerar análise de IA (%s)", contexto.get("cliente"))
+        return None

@@ -54,3 +54,43 @@ class TestMontarResumoFactual:
         import re
         nums = re.findall(r"\d[\d.,]*", resumo)
         assert "100" in resumo
+
+
+from unittest.mock import patch
+
+
+_DADOS = {"{{fat_face}}": "R$ 23.575", "{{roas_face}}": "8,4", "{{inv_face}}": "R$ 221"}
+_CTX = {"cliente": "Piknik", "categoria": "E-commerce", "freq": "Semanal", "periodo": "26/05 a 30/05/2026"}
+
+
+class TestGerarAnalise:
+    def test_sem_key_retorna_none(self, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        from core.ai_insights import gerar_analise
+        assert gerar_analise(_DADOS, _CTX, api_key="") is None
+
+    def test_texto_valido_retorna_texto(self):
+        from core import ai_insights
+        bom = "A análise da semana. " * 30  # > 400 chars
+        with patch.object(ai_insights, "_chamar_claude", return_value=bom):
+            out = ai_insights.gerar_analise(_DADOS, _CTX, api_key="sk-test")
+        assert out == bom.strip()
+
+    def test_texto_invalido_retorna_none(self):
+        from core import ai_insights
+        with patch.object(ai_insights, "_chamar_claude", return_value="curto"):
+            assert ai_insights.gerar_analise(_DADOS, _CTX, api_key="sk-test") is None
+
+    def test_excecao_na_api_retorna_none(self):
+        from core import ai_insights
+        with patch.object(ai_insights, "_chamar_claude", side_effect=RuntimeError("api down")):
+            assert ai_insights.gerar_analise(_DADOS, _CTX, api_key="sk-test") is None
+
+    def test_usa_key_do_env_se_nao_passada(self, monkeypatch):
+        from core import ai_insights
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-env")
+        bom = "Texto bom da análise. " * 30
+        with patch.object(ai_insights, "_chamar_claude", return_value=bom) as m:
+            ai_insights.gerar_analise(_DADOS, _CTX)
+        # _chamar_claude recebeu a key do env
+        assert m.call_args.args[1] == "sk-env" or m.call_args.kwargs.get("api_key") == "sk-env"
