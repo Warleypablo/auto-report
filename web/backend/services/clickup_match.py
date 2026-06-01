@@ -66,6 +66,11 @@ def score(nome_a: str, nome_b: str) -> float:
 
     base = max(fuzz.token_set_ratio(a, b), fuzz.token_sort_ratio(a, b)) / 100.0
 
+    # Risco residual conhecido: um token líder curto e GENÉRICO ("Bella" em
+    # "Bella Vista") é estruturalmente igual a um distintivo ("Zacca" em
+    # "Zacca Brasil"), então um nome de 1 palavra genérico pode pontuar alto.
+    # Não há separação estrutural; a defesa é a revisão humana (automatch é
+    # dry_run por padrão + tela de preview antes de aplicar vínculo).
     # Boost para containment de prefixo (nomes colados/abreviados já validados
     # pelo guarda de token): 'atriumvix' contém 'atrium', 'zaccabrasil' contém
     # 'zacca'. Sem espaços, prefixo do lado mais curto (>=5 chars).
@@ -121,7 +126,7 @@ def _status_rank(status: str | None) -> int:
     return _STATUS_PRIORIDADE.get((status or "").strip().lower(), 3)
 
 
-def _data_key(d) -> _date:
+def _data_key(d: object) -> _date:
     return d if isinstance(d, _date) else _date.min
 
 

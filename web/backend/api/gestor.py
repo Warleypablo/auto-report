@@ -270,8 +270,6 @@ def patch_cup_task(
 # - só aplica match se houver candidato ÚNICO (sem ambiguidade)
 # - dry_run=true (default) retorna proposta sem aplicar
 
-import re
-import unicodedata
 from collections import defaultdict
 
 
