@@ -1,12 +1,13 @@
-{% macro bar_chart(chart_id, dados_list, label="Faturamento diário", labels=None,
-                   v_atual=None, v_ant=None, lbl_atual="Semana atual", lbl_ant="Semana anterior",
-                   fmt_atual=None, fmt_ant=None) %}
+{% macro bar_chart(chart_id, dados_list, label="Faturamento diário",
+                   labels=None, v_atual=None, v_ant=None,
+                   lbl_atual="Semana atual", lbl_ant="Semana anterior",
+                   fmt_atual="", fmt_ant="") %}
 {% set _labels = labels if labels else ["Seg","Ter","Qua","Qui","Sex"] %}
+
+{% if dados_list %}
+{# ── Chart.js com dados diários ── #}
 <div class="chart-wrap">
   <div class="chart-title">{{ label }}</div>
-
-  {% if dados_list %}
-  {# ── Chart.js com dados diários ── #}
   <canvas id="{{ chart_id }}" style="max-height:90px;"></canvas>
   <script>
     _chartsToRender++;
@@ -37,36 +38,35 @@
       });
     })();
   </script>
+</div>
 
-  {% elif v_atual is not none and v_ant is not none %}
-  {# ── Barras de comparação CSS (atual vs anterior) ── #}
-  {% set _max = v_atual if v_atual > v_ant else v_ant %}
-  {% set _pct_atual = ((v_atual / _max) * 100) | int if _max > 0 else 0 %}
-  {% set _pct_ant   = ((v_ant   / _max) * 100) | int if _max > 0 else 0 %}
-  <div style="padding:4px 0;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <div style="width:90px;font-size:8px;color:var(--t-faint);text-align:right;flex-shrink:0;">{{ lbl_atual }}</div>
-      <div style="flex:1;background:var(--bg-card);border-radius:3px;height:22px;overflow:hidden;">
-        <div style="width:{{ _pct_atual }}%;height:100%;background:linear-gradient(to right,#00C8FF,#7B2FFF);border-radius:3px;display:flex;align-items:center;padding-left:8px;">
-          <span style="font-size:9px;font-weight:700;color:#fff;white-space:nowrap;">{{ fmt_atual if fmt_atual else "" }}</span>
+{% elif v_atual is not none and v_ant is not none and v_atual > 0 %}
+{# ── Barras de comparação CSS (atual vs anterior) ── #}
+{% set _max = v_atual if v_atual > v_ant else v_ant %}
+{% set _pct_atual = ((v_atual / _max) * 100) | int if _max > 0 else 0 %}
+{% set _pct_ant   = ((v_ant   / _max) * 100) | int if _max > 0 else 0 %}
+<div class="chart-wrap">
+  <div class="chart-title">{{ label }}</div>
+  <div style="display:flex;flex-direction:column;gap:10px;padding:6px 0;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:80px;font-size:7px;color:var(--t-faint);text-align:right;flex-shrink:0;text-transform:uppercase;letter-spacing:1px;">{{ lbl_atual }}</div>
+      <div style="flex:1;background:var(--bg-card);border-radius:3px;height:24px;overflow:hidden;">
+        <div style="width:{{ _pct_atual }}%;height:100%;background:linear-gradient(to right,#00C8FF,#7B2FFF);border-radius:3px;display:flex;align-items:center;padding-left:8px;min-width:2px;">
+          {% if fmt_atual %}<span style="font-size:9px;font-weight:700;color:#fff;white-space:nowrap;">{{ fmt_atual }}</span>{% endif %}
         </div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:90px;font-size:8px;color:var(--t-faint);text-align:right;flex-shrink:0;">{{ lbl_ant }}</div>
-      <div style="flex:1;background:var(--bg-card);border-radius:3px;height:22px;overflow:hidden;">
-        <div style="width:{{ _pct_ant }}%;height:100%;background:rgba(123,47,255,0.45);border-radius:3px;display:flex;align-items:center;padding-left:8px;">
-          <span style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.7);white-space:nowrap;">{{ fmt_ant if fmt_ant else "" }}</span>
+      <div style="width:80px;font-size:7px;color:var(--t-faint);text-align:right;flex-shrink:0;text-transform:uppercase;letter-spacing:1px;">{{ lbl_ant }}</div>
+      <div style="flex:1;background:var(--bg-card);border-radius:3px;height:24px;overflow:hidden;">
+        <div style="width:{{ _pct_ant }}%;height:100%;background:rgba(123,47,255,0.45);border-radius:3px;display:flex;align-items:center;padding-left:8px;min-width:2px;">
+          {% if fmt_ant %}<span style="font-size:9px;font-weight:600;color:rgba(255,255,255,.7);white-space:nowrap;">{{ fmt_ant }}</span>{% endif %}
         </div>
       </div>
     </div>
   </div>
-
-  {% else %}
-  {# ── Sem dados ── #}
-  <div style="color:var(--t-ghost);font-size:9px;text-align:center;padding:10px 0;letter-spacing:1px;text-transform:uppercase;">
-    Sem dados para o período
-  </div>
-  {% endif %}
 </div>
+
+{% endif %}
+{# quando não tem dados nem comparação → não renderiza nada (sem caixa vazia) #}
 {% endmacro %}

@@ -2,11 +2,12 @@
 core/pdf_generator.py
 
 Geração de PDF via Playwright + Jinja2.
-Substitui Google Slides como output do report_generator.
 """
 from __future__ import annotations
 
+import base64
 import re
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,9 @@ _TEMPLATE_MAP: dict[str, str] = {
     "Lead Com Site": "lead_com_site.html",
     "Lead Sem Site": "lead_sem_site.html",
 }
+
+# Valores que o handler usa como "sem dado"
+_EMPTY_VALUES = {"", "—", "-", "__NO_IMAGE__", "0", "0,00", "R$ 0,00"}
 
 
 def _get_env() -> Environment:
@@ -37,45 +41,58 @@ def _get_env() -> Environment:
 def _extract_number(v: str) -> float | None:
     """Extrai valor numérico de string PT-BR formatada.
     'R$ 23.575,00' → 23575.0 | 'R$ 180.000' → 180000.0
-    '106,74' → 106.74 | '+51,7%' → 51.7
+    '106,74' → 106.74 | '+51,7%' → 51.7 | '-' → None
     """
     if not isinstance(v, str):
         return None
     s = v.strip()
-    if not s or s == "—":
+    if not s or s in _EMPTY_VALUES:
         return None
-    # Remove prefixos/sufixos não numéricos
     s = re.sub(r"[R$\s%↑↓+]", "", s).strip()
-    if not s or s == "-":
+    if not s or s in {"-", "–", "—"}:
         return None
     if "," in s:
-        # PT-BR: ponto = milhar, vírgula = decimal → "23.575,00" → 23575.0
         s = s.replace(".", "").replace(",", ".")
     elif "." in s:
-        # PT-BR sem vírgula: "180.000" → todos os pontos são milhares
         parts = s.split(".")
         if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
-            # todos os grupos após o primeiro têm 3 dígitos → são separadores de milhar
             s = s.replace(".", "")
-        # else: ponto decimal normal (ex: "3.14") — mantém como está
     try:
         return float(s)
     except ValueError:
         return None
 
 
+def _fetch_image_b64(url: str, timeout: int = 6) -> str:
+    """Busca imagem remota e retorna data URI base64 para embutir no HTML.
+    Retorna string vazia se falhar (URL expirada, sem acesso, etc.).
+    """
+    if not url or url in _EMPTY_VALUES or not url.startswith("http"):
+        return ""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read()
+            ct = resp.headers.get_content_type() or "image/jpeg"
+            return f"data:{ct};base64,{base64.b64encode(data).decode()}"
+    except Exception:
+        return ""
+
+
 def normalizar_dados(dados: dict[str, str]) -> dict[str, Any]:
     """
     Converte placeholders do handler em contexto Jinja2.
     {"{{PERIODO_INICIO}}": "26/05"} → {"periodo_inicio": "26/05"}
-    Também adiciona variante _n com valor numérico (ex: fat_face_n = 23575.0).
+    Adiciona variante _n com valor numérico.
     Lowercaseia todas as chaves.
     """
     result: dict[str, Any] = {}
     for k, v in dados.items():
         clean = re.sub(r"[{}]", "", k).strip().lower()
-        result[clean] = v
-        num = _extract_number(v)
+        # Normaliza "-" (vazio do handler) para "—"
+        valor = "—" if v in {"-", "__NO_IMAGE__"} else v
+        result[clean] = valor
+        num = _extract_number(valor)
         if num is not None:
             result[clean + "_n"] = num
     return result
@@ -92,13 +109,13 @@ def selecionar_template(categoria: str) -> str:
 def delta_class(valor: str) -> str:
     """Retorna 'up', 'down' ou 'neutral' para uso como classe CSS."""
     s = str(valor).strip()
-    if not s or s == "—":
+    if not s or s in {"—", "-"}:
         return "neutral"
     if s.startswith("-") or s.startswith("↓"):
         return "down"
     if s.startswith("+") or s.startswith("↑"):
         try:
-            num_str = re.sub(r"[↑↓+%,\s]", "", s).replace(",", ".")
+            num_str = re.sub(r"[↑↓+%\s]", "", s).replace(",", ".")
             return "up" if float(num_str) > 0 else "down"
         except ValueError:
             return "up"
@@ -126,7 +143,7 @@ def html_para_pdf(html: str) -> bytes:
                 timeout=10_000,
             )
         except Exception:
-            pass  # sem gráficos ou timeout — continua
+            pass
         pdf_bytes = page.pdf(
             format="A4",
             print_background=True,
@@ -134,6 +151,41 @@ def html_para_pdf(html: str) -> bytes:
         )
         browser.close()
     return pdf_bytes
+
+
+def _extrair_ads(ctx: dict, prefixo: str, max_n: int = 3) -> list[dict]:
+    """Extrai lista de ads REAIS do contexto normalizado.
+
+    Ignora slots de preenchimento (nome = "—" ou vazio).
+    Pré-busca imagens como base64 para evitar expiração de URLs.
+    """
+    ads = []
+    for i in range(1, 21):
+        if len(ads) >= max_n:
+            break
+        nome = ctx.get(f"nome_{prefixo}{i}", "")
+        if not nome or nome == "—":
+            continue  # slot vazio de preenchimento
+
+        img_url = ctx.get(f"img_{prefixo}{i}", "")
+        img_b64 = _fetch_image_b64(img_url) if img_url and img_url != "—" else ""
+
+        def _val(key: str) -> str:
+            v = ctx.get(f"{key}_{prefixo}{i}", "—")
+            return "—" if v in {"—", "-", ""} else v
+
+        ads.append({
+            "pos":  i,
+            "nome": nome,
+            "img":  img_b64,
+            "roas": _val("roas"),
+            "conv": _val("conv"),
+            "fat":  _val("fat"),
+            "inv":  _val("inv"),
+            "cpa":  _val("cpa"),
+            "ctr":  _val("ctr"),
+        })
+    return ads
 
 
 def gerar_pdf(
@@ -157,35 +209,9 @@ def gerar_pdf(
     ctx = normalizar_dados(dados)
     if dados_diarios:
         ctx["dados_diarios"] = dados_diarios
-    ctx["ads_meta"] = _extrair_ads(ctx, prefixo="adf", max_n=5)
-    ctx["ads_google"] = _extrair_ads(ctx, prefixo="adg", max_n=5)
+    ctx["ads_meta"]   = _extrair_ads(ctx, prefixo="adf", max_n=3)
+    ctx["ads_google"] = _extrair_ads(ctx, prefixo="adg", max_n=3)
     return html_para_pdf(renderizar_html(categoria, ctx))
-
-
-def _extrair_ads(ctx: dict, prefixo: str, max_n: int = 5) -> list[dict]:
-    """Extrai lista de ads do contexto normalizado.
-    prefixo='adf' usa nome_adf1, img_adf1, roas_adf1, etc.
-    prefixo='adg' usa nome_adg1, roas_adg1, etc.
-    """
-    ads = []
-    for i in range(1, 21):
-        if len(ads) >= max_n:
-            break
-        nome = ctx.get(f"nome_{prefixo}{i}", "")
-        if not nome or nome == "—":
-            continue
-        ads.append({
-            "pos":  i,
-            "nome": nome,
-            "img":  ctx.get(f"img_{prefixo}{i}", ""),
-            "roas": ctx.get(f"roas_{prefixo}{i}", "—"),
-            "conv": ctx.get(f"conv_{prefixo}{i}", "—"),
-            "fat":  ctx.get(f"fat_{prefixo}{i}", "—"),
-            "inv":  ctx.get(f"inv_{prefixo}{i}", "—"),
-            "cpa":  ctx.get(f"cpa_{prefixo}{i}", "—"),
-            "ctr":  ctx.get(f"ctr_{prefixo}{i}", "—"),
-        })
-    return ads
 
 
 def salvar_pdf(
