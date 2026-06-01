@@ -169,7 +169,9 @@ def _get_creatives_thumbnail_urls(ad_ids: List[str]) -> Dict[str, str]:
         url = f"https://graph.facebook.com/{META_API_VERSION}"
         params = {
             "ids": ids_param,
-            "fields": "creative{thumbnail_url}",
+            # image_url = imagem em resolução cheia (preferida); thumbnail_url
+            # (~64px) é fallback p/ criativos de vídeo/carrossel sem image_url.
+            "fields": "creative{image_url,thumbnail_url}",
             "access_token": ACCESS_TOKEN_META_SYSTEM,
         }
         try:
@@ -178,7 +180,7 @@ def _get_creatives_thumbnail_urls(ad_ids: List[str]) -> Dict[str, str]:
             data: Dict[str, dict] = resp.json()
             for ad_id, ad_obj in data.items():
                 creative = ad_obj.get("creative") or {}
-                thumb_url = creative.get("thumbnail_url")
+                thumb_url = creative.get("image_url") or creative.get("thumbnail_url")
                 if thumb_url:
                     thumbs[ad_id] = thumb_url
         except Exception as exc:  # noqa: BLE001

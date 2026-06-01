@@ -1,72 +1,30 @@
-{% macro bar_chart(chart_id, dados_list, label="Faturamento diário",
+{% macro bar_chart(chart_id, dados_list, label="Comparativo",
                    labels=None, v_atual=None, v_ant=None,
-                   lbl_atual="Semana atual", lbl_ant="Semana anterior",
+                   lbl_atual="Atual", lbl_ant="Anterior",
                    fmt_atual="", fmt_ant="") %}
-{% set _labels = labels if labels else ["Seg","Ter","Qua","Qui","Sex"] %}
-
-{% if dados_list %}
-{# ── Chart.js com dados diários ── #}
 <div class="chart-wrap">
   <div class="chart-title">{{ label }}</div>
-  <canvas id="{{ chart_id }}" style="max-height:90px;"></canvas>
-  <script>
-    _chartsToRender++;
-    (function(){
-      var ctx = document.getElementById('{{ chart_id }}').getContext('2d');
-      new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: {{ _labels | tojson }},
-          datasets: [{
-            data: {{ dados_list | tojson }},
-            backgroundColor: 'rgba(0,200,255,0.55)',
-            borderColor: '#00C8FF',
-            borderWidth: 1,
-            borderRadius: 4,
-          }]
-        },
-        options: {
-          responsive: true,
-          animation: { onComplete: _chartDone },
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { grid: { color: '#111130' }, ticks: { color: '#4B5563', font: { size: 7 } } },
-            y: { grid: { color: '#111130' }, ticks: { color: '#4B5563', font: { size: 7 },
-                 callback: function(v){ return v >= 1000 ? 'R$'+(v/1000).toFixed(0)+'k' : v; } } }
-          }
-        }
-      });
-    })();
-  </script>
-</div>
-
-{% elif v_atual is not none and v_ant is not none and v_atual > 0 %}
-{# ── Barras de comparação CSS (atual vs anterior) ── #}
-{% set _max = v_atual if v_atual > v_ant else v_ant %}
-{% set _pct_atual = ((v_atual / _max) * 100) | int if _max > 0 else 0 %}
-{% set _pct_ant   = ((v_ant   / _max) * 100) | int if _max > 0 else 0 %}
-<div class="chart-wrap">
-  <div class="chart-title">{{ label }}</div>
-  <div style="display:flex;flex-direction:column;gap:10px;padding:6px 0;">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:80px;font-size:7px;color:var(--t-faint);text-align:right;flex-shrink:0;text-transform:uppercase;letter-spacing:1px;">{{ lbl_atual }}</div>
-      <div style="flex:1;background:var(--bg-card);border-radius:3px;height:24px;overflow:hidden;">
-        <div style="width:{{ _pct_atual }}%;height:100%;background:linear-gradient(to right,#00C8FF,#7B2FFF);border-radius:3px;display:flex;align-items:center;padding-left:8px;min-width:2px;">
-          {% if fmt_atual %}<span style="font-size:9px;font-weight:700;color:#fff;white-space:nowrap;">{{ fmt_atual }}</span>{% endif %}
-        </div>
-      </div>
+  {% if v_atual is not none and v_ant is not none and v_atual > 0 %}
+  {# ── Colunas verticais atual vs anterior — preenchem a altura disponível ── #}
+  {% set _max = v_atual if v_atual > v_ant else v_ant %}
+  {% set _pct_atual = ((v_atual / _max) * 100) | round | int if _max > 0 else 0 %}
+  {% set _pct_ant   = ((v_ant   / _max) * 100) | round | int if _max > 0 else 0 %}
+  <div class="cmp">
+    <div class="cmp-col">
+      <div class="cmp-val" style="color:var(--cyan);">{{ fmt_atual }}</div>
+      <div class="cmp-track"><div class="cmp-bar atual" style="height:{{ _pct_atual if _pct_atual >= 4 else 4 }}%;"></div></div>
+      <div class="cmp-lbl" style="color:var(--t-muted);">{{ lbl_atual }}</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:80px;font-size:7px;color:var(--t-faint);text-align:right;flex-shrink:0;text-transform:uppercase;letter-spacing:1px;">{{ lbl_ant }}</div>
-      <div style="flex:1;background:var(--bg-card);border-radius:3px;height:24px;overflow:hidden;">
-        <div style="width:{{ _pct_ant }}%;height:100%;background:rgba(123,47,255,0.45);border-radius:3px;display:flex;align-items:center;padding-left:8px;min-width:2px;">
-          {% if fmt_ant %}<span style="font-size:9px;font-weight:600;color:rgba(255,255,255,.7);white-space:nowrap;">{{ fmt_ant }}</span>{% endif %}
-        </div>
-      </div>
+    <div class="cmp-col">
+      <div class="cmp-val" style="color:var(--t-faint);">{{ fmt_ant }}</div>
+      <div class="cmp-track"><div class="cmp-bar ant" style="height:{{ _pct_ant if _pct_ant >= 4 else 4 }}%;"></div></div>
+      <div class="cmp-lbl">{{ lbl_ant }}</div>
     </div>
   </div>
+  {% else %}
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;">
+    <span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--t-ghost);">Primeiro período · sem base de comparação</span>
+  </div>
+  {% endif %}
 </div>
-
-{% endif %}
-{# quando não tem dados nem comparação → não renderiza nada (sem caixa vazia) #}
 {% endmacro %}

@@ -162,7 +162,7 @@ def _get_creatives_thumbnail_urls(ad_ids: List[str]) -> Dict[str, str]:
         url = f"https://graph.facebook.com/{META_API_VERSION}"
         params = {
             "ids": ",".join(chunk),
-            "fields": "creative{thumbnail_url}",
+            "fields": "creative{image_url,thumbnail_url}",
             "access_token": ACCESS_TOKEN_META_SYSTEM,
         }
         try:

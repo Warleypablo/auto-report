@@ -130,20 +130,17 @@ def renderizar_html(categoria: str, ctx: dict[str, Any]) -> str:
 
 
 def html_para_pdf(html: str) -> bytes:
-    """Renderiza HTML em headless Chromium e exporta PDF A4."""
+    """Renderiza HTML em headless Chromium e exporta PDF A4.
+
+    Fonte Inter embutida (base64) e sem deps de CDN → set_content não espera rede.
+    """
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
-        page.set_content(html, wait_until="networkidle")
-        try:
-            page.wait_for_function(
-                "typeof chartsReady === 'function' && chartsReady()",
-                timeout=10_000,
-            )
-        except Exception:
-            pass
+        # wait_until="load": sem recursos de rede (fonte embutida, sem Chart.js CDN)
+        page.set_content(html, wait_until="load")
         pdf_bytes = page.pdf(
             format="A4",
             print_background=True,
@@ -159,6 +156,11 @@ def _extrair_ads(ctx: dict, prefixo: str, max_n: int = 3) -> list[dict]:
     Ignora slots de preenchimento (nome = "—" ou vazio).
     Pré-busca imagens como base64 para evitar expiração de URLs.
     """
+    def _val(i: int, key: str) -> str:
+        v = ctx.get(f"{key}_{prefixo}{i}", "—")
+        return "—" if v in {"—", "-", ""} else v
+
+    # 1) Seleciona slots com ad real (sem buscar imagem ainda)
     ads = []
     for i in range(1, 21):
         if len(ads) >= max_n:
@@ -166,26 +168,46 @@ def _extrair_ads(ctx: dict, prefixo: str, max_n: int = 3) -> list[dict]:
         nome = ctx.get(f"nome_{prefixo}{i}", "")
         if not nome or nome == "—":
             continue  # slot vazio de preenchimento
-
-        img_url = ctx.get(f"img_{prefixo}{i}", "")
-        img_b64 = _fetch_image_b64(img_url) if img_url and img_url != "—" else ""
-
-        def _val(key: str) -> str:
-            v = ctx.get(f"{key}_{prefixo}{i}", "—")
-            return "—" if v in {"—", "-", ""} else v
-
         ads.append({
-            "pos":  i,
-            "nome": nome,
-            "img":  img_b64,
-            "roas": _val("roas"),
-            "conv": _val("conv"),
-            "fat":  _val("fat"),
-            "inv":  _val("inv"),
-            "cpa":  _val("cpa"),
-            "ctr":  _val("ctr"),
+            "pos": i, "nome": nome,
+            "img_url": ctx.get(f"img_{prefixo}{i}", ""),
+            "roas": _val(i, "roas"), "conv": _val(i, "conv"),
+            "fat": _val(i, "fat"),   "cpa": _val(i, "cpa"),
+            "lead": _val(i, "lead"), "cpl": _val(i, "cpl"),
+            "inv": _val(i, "inv"),   "ctr": _val(i, "ctr"),
+            "imp": _val(i, "imp"),
         })
+
+    # 2) Busca thumbnails em paralelo (não serializa N round-trips de rede)
+    urls = [a["img_url"] for a in ads if a["img_url"] and a["img_url"] != "—"]
+    if urls:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(6, len(urls))) as ex:
+            b64_map = dict(zip(urls, ex.map(_fetch_image_b64, urls)))
+    else:
+        b64_map = {}
+    for a in ads:
+        a["img"] = b64_map.get(a["img_url"], "")
+        del a["img_url"]
     return ads
+
+
+def _detectar_plataformas(ctx: dict, ads_meta: list, ads_google: list) -> dict:
+    """Detecta quais plataformas têm dados reais para decidir quais páginas renderizar.
+
+    Reconhece chaves de E-commerce (fat_face, ses_ga, vendas) e de Lead
+    (lead_face, ses, lead_sem) — o dict é unificado.
+    """
+    def tem(*chaves: str) -> bool:
+        return any(ctx.get(k, "—") not in {"—", "", None, "0"} for k in chaves)
+
+    return {
+        "has_meta":      tem("fat_face", "roas_face", "inv_face", "lead_face", "cpl_face"),
+        "has_google":    tem("fat_goog", "roas_goog", "inv_goog", "lead_goog", "cpl_goog"),
+        "has_ga4":       tem("ses_ga", "ses_eng_ga", "taxa_eng_ga", "ses", "user_ga"),
+        "has_painel":    tem("fat_sem", "vendas", "roas", "tck_med", "lead_sem", "cpl"),
+        "has_criativos": len(ads_meta) > 0,
+    }
 
 
 def gerar_pdf(
@@ -209,8 +231,11 @@ def gerar_pdf(
     ctx = normalizar_dados(dados)
     if dados_diarios:
         ctx["dados_diarios"] = dados_diarios
-    ctx["ads_meta"]   = _extrair_ads(ctx, prefixo="adf", max_n=3)
-    ctx["ads_google"] = _extrair_ads(ctx, prefixo="adg", max_n=3)
+    ads_meta   = _extrair_ads(ctx, prefixo="adf", max_n=3)
+    ads_google = _extrair_ads(ctx, prefixo="adg", max_n=3)
+    ctx["ads_meta"]   = ads_meta
+    ctx["ads_google"] = ads_google
+    ctx.update(_detectar_plataformas(ctx, ads_meta, ads_google))
     return html_para_pdf(renderizar_html(categoria, ctx))
 
 

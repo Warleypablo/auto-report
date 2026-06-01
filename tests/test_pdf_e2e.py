@@ -8,7 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
 from core.pdf_generator import (
-    normalizar_dados, _extract_number, _extrair_ads, gerar_pdf, salvar_pdf
+    normalizar_dados, _extract_number, _extrair_ads,
+    _detectar_plataformas, gerar_pdf, salvar_pdf
 )
 
 # ── Formato exato que o handler retorna ────────────────────────────────────
@@ -285,3 +286,146 @@ class TestGerarPdfE2E:
         caminho = salvar_pdf(pdf, "Marca Teste", 2026, 5, 22)
         assert caminho.exists()
         assert caminho.stat().st_size > 100_000
+
+
+# ── Dados do cenário Piknik real (só Meta, sem Painel/GA4/Google) ──────────
+DADOS_PIKNIK_REAL = {
+    "{{PERIODO_INICIO}}":      "25/05/2026",
+    "{{PERIODO_FIM}}":         "29/05/2026",
+    "{{PERIODO_INICIO_comp}}": "18/05/2026",
+    "{{PERIODO_FIM_comp}}":    "22/05/2026",
+    "{{freq}}":    "Semanal",
+    "{{cliente}}": "Piknik",
+    # Painel interno: sem dados
+    "{{fat_sem}}":  "-",
+    "{{roas}}":     "-",
+    "{{inv_sem}}":  "-",
+    "{{vendas}}":   "-",
+    "{{tck_med}}":  "-",
+    # Meta Ads: tem dados reais
+    "{{fat_face}}":      "R$ 1.422,36",
+    "{{fat_face_comp}}": "R$ 800,00",
+    "{{var_fat_face}}":  "+77,8%",
+    "{{roas_face}}":     "7,09",
+    "{{roas_face_comp}}": "4,50",
+    "{{var_roas_face}}": "+57,6%",
+    "{{inv_face}}":      "R$ 200,73",
+    "{{inv_face_comp}}": "R$ 177,78",
+    "{{var_inv_face}}":  "+12,9%",
+    "{{vendas_face}}":   "14",
+    "{{vendas_face_comp}}": "8",
+    "{{var_vendas_face}}": "+75,0%",
+    "{{cpa_face}}":      "R$ 14,34",
+    "{{cpa_face_comp}}": "R$ 22,22",
+    "{{var_cpa_face}}":  "-35,5%",
+    # Google Ads: sem dados
+    "{{fat_goog}}":  "-",
+    "{{roas_goog}}": "-",
+    "{{inv_goog}}":  "-",
+    # GA4: sem dados
+    "{{ses_ga}}": "-",
+    # Criativos: sem imagens reais (slots com placeholder)
+    "{{nome_adf1}}": "-",
+    "{{img_adf1}}":  "__NO_IMAGE__",
+    "{{roas_adf1}}": "-",
+    "{{conv_adf1}}": "-",
+    "{{fat_adf1}}":  "-",
+    "{{inv_adf1}}":  "-",
+    "{{cpa_adf1}}":  "-",
+}
+
+
+class TestDetectarPlataformas:
+    def test_piknik_so_tem_meta(self):
+        ctx = normalizar_dados(DADOS_PIKNIK_REAL)
+        ads_meta = _extrair_ads(ctx, "adf", 3)
+        plat = _detectar_plataformas(ctx, ads_meta, [])
+        assert plat["has_meta"]    is True
+        assert plat["has_google"]  is False
+        assert plat["has_ga4"]     is False
+        assert plat["has_painel"]  is False
+        assert plat["has_criativos"] is False
+
+    def test_dados_completos_tem_todas_plataformas(self):
+        ctx = normalizar_dados(DADOS_HANDLER_REAL)
+        ads_meta = _extrair_ads(ctx, "adf", 3)
+        plat = _detectar_plataformas(ctx, ads_meta, [])
+        assert plat["has_meta"]      is True
+        assert plat["has_ga4"]       is True
+        assert plat["has_painel"]    is True
+        assert plat["has_criativos"] is True
+
+
+class TestPaginasCondicionais:
+    def test_piknik_pdf_valido(self):
+        """Cliente com só Meta: PDF válido, sem quebrar."""
+        pdf = gerar_pdf("E-commerce", DADOS_PIKNIK_REAL)
+        assert pdf[:4] == b"%PDF"
+        assert len(pdf) > 50_000
+
+    def test_piknik_pdf_sem_paginas_vazias(self):
+        """PDF do Piknik deve ter 4 págs: Capa + Resumo + Meta + Contra-capa."""
+        import fitz  # PyMuPDF — se não tiver, instalar: pip install pymupdf
+        pdf = gerar_pdf("E-commerce", DADOS_PIKNIK_REAL)
+        try:
+            doc = fitz.open(stream=pdf, filetype="pdf")
+            assert doc.page_count == 4, f"Esperado 4 págs, encontrado {doc.page_count}"
+            # Pág 3 deve ser Meta Ads
+            texto_p3 = doc[2].get_text()
+            assert "Meta Ads" in texto_p3 or "Faturamento" in texto_p3
+        except ImportError:
+            pytest.skip("PyMuPDF não instalado — verificação de contagem de páginas ignorada")
+
+    def test_pdf_completo_mais_paginas_que_parcial(self):
+        """Report com todas as plataformas deve ter mais páginas que um parcial."""
+        pdf_completo = gerar_pdf("E-commerce", DADOS_HANDLER_REAL)
+        pdf_parcial  = gerar_pdf("E-commerce", DADOS_PIKNIK_REAL)
+        assert len(pdf_completo) > len(pdf_parcial)
+
+    def test_pdf_piknik_abaixo_4mb(self):
+        pdf = gerar_pdf("E-commerce", DADOS_PIKNIK_REAL)
+        assert len(pdf) < 4 * 1024 * 1024
+
+
+# ── Regressões: performance (sem rede) + detecção de plataforma Lead ──
+DADOS_LEAD_REAL = {
+    "{{PERIODO_INICIO}}": "26/05/2026", "{{PERIODO_FIM}}": "30/05/2026",
+    "{{freq}}": "Semanal", "{{cliente}}": "Lead Teste",
+    # Painel de leads
+    "{{lead_sem}}": "184", "{{lead_sem_comp}}": "162", "{{var_lead_sem}}": "+13,6%",
+    "{{cpl}}": "R$ 18,50", "{{inv_sem}}": "R$ 3.404,00",
+    # Meta (lead)
+    "{{lead_face}}": "120", "{{lead_face_comp}}": "100", "{{var_lead_face}}": "+20,0%",
+    "{{cpl_face}}": "R$ 16,00", "{{inv_face}}": "R$ 1.920,00",
+    # Sem Google, sem GA4
+    "{{lead_goog}}": "-", "{{ses}}": "-",
+}
+
+
+class TestSemRede:
+    """O HTML renderizado não pode depender de CDN/Google Fonts (perf + offline)."""
+    def test_html_sem_google_fonts_nem_chartjs(self):
+        from core.pdf_generator import renderizar_html, normalizar_dados, _extrair_ads, _detectar_plataformas
+        ctx = normalizar_dados(DADOS_HANDLER_REAL)
+        ctx["ads_meta"] = _extrair_ads(ctx, "adf", 3); ctx["ads_google"] = []
+        ctx.update(_detectar_plataformas(ctx, ctx["ads_meta"], []))
+        html = renderizar_html("E-commerce", ctx)
+        assert "fonts.googleapis.com" not in html, "Google Fonts via rede ainda presente"
+        assert "cdn.jsdelivr.net" not in html and "chart.js" not in html.lower(), "Chart.js CDN ainda presente"
+        assert "@font-face" in html and "base64" in html, "Fonte Inter não está embutida"
+
+
+class TestDeteccaoLead:
+    def test_lead_com_meta_e_painel_sem_google_ga4(self):
+        from core.pdf_generator import normalizar_dados, _extrair_ads, _detectar_plataformas
+        ctx = normalizar_dados(DADOS_LEAD_REAL)
+        plat = _detectar_plataformas(ctx, _extrair_ads(ctx, "adf", 3), [])
+        assert plat["has_meta"] is True
+        assert plat["has_painel"] is True
+        assert plat["has_google"] is False
+        assert plat["has_ga4"] is False
+
+    def test_lead_com_site_pdf_valido(self):
+        from core.pdf_generator import gerar_pdf
+        pdf = gerar_pdf("Lead Com Site", DADOS_LEAD_REAL)
+        assert pdf[:4] == b"%PDF" and len(pdf) > 50_000

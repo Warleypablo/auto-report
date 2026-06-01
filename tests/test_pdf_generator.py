@@ -10,11 +10,18 @@ class TestNormalizarDados:
     def test_strip_double_braces(self):
         from core.pdf_generator import normalizar_dados
         dados = {"{{fat_sem}}": "R$ 100,00", "{{roas}}": "4,2"}
-        assert normalizar_dados(dados) == {"fat_sem": "R$ 100,00", "roas": "4,2"}
+        out = normalizar_dados(dados)
+        # Chaves de string preservadas (sem braces, lowercase)
+        assert out["fat_sem"] == "R$ 100,00"
+        assert out["roas"] == "4,2"
+        # Variantes numéricas _n são adicionadas automaticamente
+        assert out["fat_sem_n"] == pytest.approx(100.0)
+        assert out["roas_n"] == pytest.approx(4.2)
 
     def test_chave_sem_braces_passa_intacta(self):
         from core.pdf_generator import normalizar_dados
-        assert normalizar_dados({"fat_sem": "R$ 100,00"}) == {"fat_sem": "R$ 100,00"}
+        out = normalizar_dados({"fat_sem": "R$ 100,00"})
+        assert out["fat_sem"] == "R$ 100,00"
 
     def test_dict_vazio(self):
         from core.pdf_generator import normalizar_dados
@@ -22,8 +29,9 @@ class TestNormalizarDados:
 
     def test_sufixo_comp_preservado(self):
         from core.pdf_generator import normalizar_dados
-        dados = {"{{fat_sem_comp}}": "R$ 80,00"}
-        assert normalizar_dados(dados) == {"fat_sem_comp": "R$ 80,00"}
+        out = normalizar_dados({"{{fat_sem_comp}}": "R$ 80,00"})
+        assert out["fat_sem_comp"] == "R$ 80,00"
+        assert out["fat_sem_comp_n"] == pytest.approx(80.0)
 
 
 class TestSelecionarTemplate:
