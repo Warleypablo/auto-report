@@ -21,7 +21,7 @@ from models.snapshot import Frequencia as SnapFrequencia
 from models.cliente import Categoria as CatEnum
 from models.criativo import Criativo, CriativoThumb, ThumbStatus
 from services.criativos import agregar_criativos
-from services.clickup_match import normalizar as _normalize_nome, responsavel_performance
+from services.clickup_match import responsavel_performance
 from models.report_job import JobStatus
 from etl.cliente_publico import slugify
 from schemas import (
@@ -265,9 +265,9 @@ def patch_cup_task(
 
 
 # ── POST /gestor/clickup/automatch ─────────────────────────────────────────
-# Tenta vincular clientes sem cup_task_id usando matching tolerante:
-# - normaliza nome (lower, sem acentos, sem sufixos jurídicos, sem pontuação)
-# - só aplica match se houver candidato ÚNICO (sem ambiguidade)
+# Vincula clientes sem cup_task_id por PROXIMIDADE de nome (services.clickup_match):
+# - auto-aplica só matches de alta confiança e sem ambiguidade (classificar == "auto")
+# - os de confiança média viram sugestões (ambiguos) para revisão manual
 # - dry_run=true (default) retorna proposta sem aplicar
 
 from collections import defaultdict
@@ -321,7 +321,13 @@ def automatch_clickup(
 
     aplicados = 0
     if not dry_run and matches:
+        usados_nesta_run: set[str] = set()
         for m in matches:
+            # Evita que dois clientes da mesma execução reivindiquem o mesmo
+            # task_id (autoflush=False não materializa o UPDATE anterior antes
+            # do próximo SELECT, então o ja_usado abaixo não o veria).
+            if m["task_id"] in usados_nesta_run:
+                continue
             ja_usado = session.execute(
                 select(Cliente.id).where(Cliente.cup_task_id == m["task_id"])
             ).scalar_one_or_none()
@@ -332,6 +338,7 @@ def automatch_clickup(
                 .where(Cliente.id == uuid.UUID(m["cliente_id"]))
                 .values(cup_task_id=m["task_id"])
             )
+            usados_nesta_run.add(m["task_id"])
             aplicados += 1
         session.commit()
         _log.info("automatch: aplicados=%d (de %d propostos)", aplicados, len(matches))

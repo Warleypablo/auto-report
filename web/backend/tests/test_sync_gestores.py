@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 
 import pytest
@@ -293,15 +294,15 @@ def test_automatch_auto_aplica_match_forte(app_with_db):
     prev = client.post("/gestor/clickup/automatch?dry_run=true")
     assert prev.status_code == 200, prev.text
     body = prev.json()
-    assert any(m["cliente_nome"] == "Noway Drinks" and m["task_id"] == "cup-noway"
-               for m in body["matches"])
-    assert body["matches"][0]["score"] >= 0.90
+    noway = next(m for m in body["matches"] if m["cliente_nome"] == "Noway Drinks")
+    assert noway["task_id"] == "cup-noway"
+    assert noway["score"] >= 0.90
 
     apply = client.post("/gestor/clickup/automatch?dry_run=false")
     assert apply.status_code == 200, apply.text
     assert apply.json()["aplicados"] >= 1
     with TS() as s:
-        assert s.get(Cliente, __import__("uuid").UUID(cid)).cup_task_id == "cup-noway"
+        assert s.get(Cliente, uuid.UUID(cid)).cup_task_id == "cup-noway"
 
 
 def test_automatch_nao_aplica_lixo(app_with_db):
@@ -312,4 +313,4 @@ def test_automatch_nao_aplica_lixo(app_with_db):
     body = client.post("/gestor/clickup/automatch?dry_run=false").json()
     assert all(m["cliente_nome"] != "Nomã" for m in body["matches"])
     with TS() as s:
-        assert s.get(Cliente, __import__("uuid").UUID(cid)).cup_task_id is None
+        assert s.get(Cliente, uuid.UUID(cid)).cup_task_id is None
