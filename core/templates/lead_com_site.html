@@ -5,6 +5,7 @@
 {% from "partials/_bar_chart.html"      import bar_chart %}
 {% from "partials/_page_footer.html"    import page_footer %}
 {% from "partials/_criativos.html"      import criativos_page %}
+{% from "partials/_ai_insights.html"    import ai_insights_page %}
 
 {% set p_ini  = periodo_inicio      if periodo_inicio      is defined else "" %}
 {% set p_fim  = periodo_fim         if periodo_fim         is defined else "" %}
@@ -15,6 +16,7 @@
 
 {% set ns = namespace(pag=2) %}
 {% set ns.pag_resumo = 2 %}
+{% if ai_analise is defined and ai_analise %}{% set ns.pag = ns.pag + 1 %}{% set ns.pag_ai = ns.pag %}{% endif %}
 {% if has_meta %}{% set ns.pag = ns.pag + 1 %}{% set ns.pag_meta = ns.pag %}{% endif %}
 {% if has_criativos %}{% set ns.pag = ns.pag + 1 %}{% set ns.pag_criativos = ns.pag %}{% endif %}
 {% if has_google %}{% set ns.pag = ns.pag + 1 %}{% set ns.pag_google = ns.pag %}{% endif %}
@@ -91,6 +93,11 @@
   </div>
   {{ page_footer(ns.pag_resumo, total_pags) }}
 </div>
+
+{# ═══════════ ANÁLISE DE IA (condicional) ═══════════ #}
+{% if ai_analise is defined and ai_analise %}
+  {{ ai_insights_page(ai_analise, ns.pag_ai, total_pags) }}
+{% endif %}
 
 {# ═══════════ META ADS ═══════════ #}
 {% if has_meta %}
