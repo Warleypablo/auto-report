@@ -37,9 +37,10 @@ def _get_env() -> Environment:
 def normalizar_dados(dados: dict[str, str]) -> dict[str, Any]:
     """
     Converte placeholders do handler em contexto Jinja2.
-    {"{{fat_sem}}": "R$ 100,00"} → {"fat_sem": "R$ 100,00"}
+    {"{{PERIODO_INICIO}}": "26/05"} → {"periodo_inicio": "26/05"}
+    Lowercaseia todas as chaves para uniformidade.
     """
-    return {re.sub(r"[{}]", "", k).strip(): v for k, v in dados.items()}
+    return {re.sub(r"[{}]", "", k).strip().lower(): v for k, v in dados.items()}
 
 
 def selecionar_template(categoria: str) -> str:
