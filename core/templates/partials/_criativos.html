@@ -1,0 +1,71 @@
+{% macro criativos_page(ads, pagina, total_pags) %}
+{% if ads and ads | length > 0 %}
+<div class="page">
+  <div class="glow-tr"></div>
+
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+    <div style="background:linear-gradient(135deg,#1877F2,#0D5FBF);width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;">f</div>
+    <div>
+      <div style="font-size:15px;font-weight:800;color:var(--t-primary);">Melhores Criativos</div>
+      <div style="font-size:8px;color:var(--t-faint);text-transform:uppercase;letter-spacing:1px;">Meta Ads · Top {{ ads | length }}</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat({{ ads | length }}, 1fr);gap:12px;flex:1;">
+    {% for ad in ads %}
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
+
+      {# Imagem #}
+      {% if ad.img and ad.img != "—" %}
+      <div style="width:100%;aspect-ratio:1/1;overflow:hidden;background:var(--bg-card-2);">
+        <img src="{{ ad.img }}" alt="{{ ad.nome }}"
+             style="width:100%;height:100%;object-fit:cover;"
+             onerror="this.parentElement.innerHTML='<div style=&quot;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;&quot;>🖼️</div>'">
+      </div>
+      {% else %}
+      <div style="width:100%;aspect-ratio:1/1;background:var(--bg-card-2);display:flex;align-items:center;justify-content:center;">
+        <span style="font-size:28px;">🖼️</span>
+      </div>
+      {% endif %}
+
+      {# Métricas #}
+      <div style="padding:10px;flex:1;display:flex;flex-direction:column;gap:5px;">
+        <div style="font-size:8px;font-weight:700;color:var(--t-muted);line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
+          {{ ad.nome }}
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:3px;">
+          <div style="background:var(--bg-card-2);border-radius:5px;padding:5px 6px;">
+            <div style="font-size:6px;color:var(--t-ghost);text-transform:uppercase;letter-spacing:1px;font-weight:600;">ROAS</div>
+            <div style="font-size:13px;font-weight:900;color:var(--cyan);">{{ ad.roas }}</div>
+          </div>
+          <div style="background:var(--bg-card-2);border-radius:5px;padding:5px 6px;">
+            <div style="font-size:6px;color:var(--t-ghost);text-transform:uppercase;letter-spacing:1px;font-weight:600;">CONV.</div>
+            <div style="font-size:13px;font-weight:900;color:var(--t-primary);">{{ ad.conv }}</div>
+          </div>
+          <div style="background:var(--bg-card-2);border-radius:5px;padding:5px 6px;">
+            <div style="font-size:6px;color:var(--t-ghost);text-transform:uppercase;letter-spacing:1px;font-weight:600;">FAT.</div>
+            <div style="font-size:10px;font-weight:800;color:var(--t-secondary);">{{ ad.fat }}</div>
+          </div>
+          <div style="background:var(--bg-card-2);border-radius:5px;padding:5px 6px;">
+            <div style="font-size:6px;color:var(--t-ghost);text-transform:uppercase;letter-spacing:1px;font-weight:600;">CPA</div>
+            <div style="font-size:10px;font-weight:800;color:var(--t-secondary);">{{ ad.cpa }}</div>
+          </div>
+        </div>
+
+        <div style="background:var(--bg-card-2);border-radius:5px;padding:5px 6px;">
+          <div style="font-size:6px;color:var(--t-ghost);text-transform:uppercase;letter-spacing:1px;font-weight:600;">INVESTIMENTO</div>
+          <div style="font-size:10px;font-weight:800;color:var(--t-secondary);">{{ ad.inv }}</div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="page-footer" style="margin-top:10px;">
+    <div class="page-footer-brand">Turbo Partners</div>
+    <div class="page-footer-num">{{ pagina }} / {{ total_pags }}</div>
+  </div>
+</div>
+{% endif %}
+{% endmacro %}

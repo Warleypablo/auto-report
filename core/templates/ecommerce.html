@@ -4,17 +4,27 @@
 {% from "partials/_channel_header.html" import channel_header %}
 {% from "partials/_bar_chart.html"      import bar_chart %}
 {% from "partials/_page_footer.html"    import page_footer %}
+{% from "partials/_criativos.html"      import criativos_page %}
 
-{% set total_pags = 7 %}
-{% set dd = dados_diarios if dados_diarios is defined else {} %}
-
-{# Helpers de período — basic_placeholders retorna PERIODO_INICIO/FIM em uppercase,
-   normalizar_dados() faz lowercase, então aqui usamos periodo_inicio/periodo_fim #}
+{# Helpers de período #}
 {% set p_ini  = periodo_inicio if periodo_inicio is defined else "" %}
 {% set p_fim  = periodo_fim    if periodo_fim    is defined else "" %}
 {% set p_ini2 = periodo_inicio_comp if periodo_inicio_comp is defined else "" %}
 {% set p_fim2 = periodo_fim_comp    if periodo_fim_comp    is defined else "" %}
 {% set periodo_str = (p_ini + " – " + p_fim) if p_ini else (periodo if periodo is defined else "") %}
+
+{# Verifica se tem criativos (ads_meta vem pré-processado do pdf_generator.py) #}
+{% set tem_criativos = ads_meta is defined and ads_meta | length > 0 %}
+{% set total_pags = 8 if tem_criativos else 7 %}
+{% set pag_meta    = 3 %}
+{% set pag_cria    = 4 if tem_criativos else None %}
+{% set pag_google  = 5 if tem_criativos else 4 %}
+{% set pag_ga4     = 6 if tem_criativos else 5 %}
+{% set pag_painel  = 7 if tem_criativos else 6 %}
+{% set pag_contra  = 8 if tem_criativos else 7 %}
+
+{% set dd = dados_diarios if dados_diarios is defined else {} %}
+{% set ctx = {} %}
 
 {% block content %}
 
@@ -48,23 +58,17 @@
       <div class="card-sm">
         <div class="kpi-sm-label">Faturamento</div>
         <div class="kpi-sm-value">{{ fat_sem if fat_sem is defined else "—" }}</div>
-        {% if var_fat_sem is defined and var_fat_sem %}
-        <div class="kpi-sm-delta {{ var_fat_sem | delta_class }}">{{ var_fat_sem }}</div>
-        {% endif %}
+        {% if var_fat_sem is defined and var_fat_sem %}<div class="kpi-sm-delta {{ var_fat_sem | delta_class }}">{{ var_fat_sem }}</div>{% endif %}
       </div>
       <div class="card-sm">
         <div class="kpi-sm-label">ROAS</div>
         <div class="kpi-sm-value">{{ roas if roas is defined else "—" }}</div>
-        {% if var_roas is defined and var_roas %}
-        <div class="kpi-sm-delta {{ var_roas | delta_class }}">{{ var_roas }}</div>
-        {% endif %}
+        {% if var_roas is defined and var_roas %}<div class="kpi-sm-delta {{ var_roas | delta_class }}">{{ var_roas }}</div>{% endif %}
       </div>
       <div class="card-sm">
         <div class="kpi-sm-label">Investimento</div>
         <div class="kpi-sm-value">{{ inv_sem if inv_sem is defined else "—" }}</div>
-        {% if var_inv_sem is defined and var_inv_sem %}
-        <div class="kpi-sm-delta {{ var_inv_sem | delta_class }}">{{ var_inv_sem }}</div>
-        {% endif %}
+        {% if var_inv_sem is defined and var_inv_sem %}<div class="kpi-sm-delta {{ var_inv_sem | delta_class }}">{{ var_inv_sem }}</div>{% endif %}
       </div>
     </div>
   </div>
@@ -78,10 +82,7 @@
 {# ═══════════════════════ PÁG 2 — RESUMO EXECUTIVO ═══════════════════════ #}
 <div class="page">
   <div class="glow-tr"></div>
-
-  <div style="font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--cyan);margin-bottom:14px;">
-    Resumo Executivo
-  </div>
+  <div style="font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--cyan);margin-bottom:14px;">Resumo Executivo</div>
 
   <div class="card" style="margin-bottom:10px;">
     <div class="accent-line-top"></div>
@@ -110,9 +111,7 @@
         A semana registrou crescimento de {{ var_fat_sem }} no faturamento atribuído, atingindo {{ fat_sem if fat_sem is defined else "" }}. As campanhas seguem em aceleração.
       {% else %}
         A semana registrou faturamento de {{ fat_sem if fat_sem is defined else "—" }}.
-        {% if var_fat_sem is defined and var_fat_sem %}
-        Retração de {{ var_fat_sem }} vs. semana anterior — campanhas em fase de otimização.
-        {% endif %}
+        {% if var_fat_sem is defined and var_fat_sem %} Retração de {{ var_fat_sem }} vs. semana anterior.{% endif %}
       {% endif %}
     </div>
   </div>
@@ -123,13 +122,9 @@
 {# ═══════════════════════ PÁG 3 — META ADS ═══════════════════════ #}
 <div class="page">
   <div class="glow-tr"></div>
-
-  {{ channel_header(
-      "Meta Ads",
+  {{ channel_header("Meta Ads",
       '<span style="background:linear-gradient(135deg,#1877F2,#0D5FBF);width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;">f</span>',
-      periodo_str,
-      (p_ini2 + " – " + p_fim2) if p_ini2 else ""
-  ) }}
+      periodo_str, (p_ini2 + " – " + p_fim2) if p_ini2 else "") }}
 
   <div class="row" style="margin-bottom:10px;">
     {{ big_kpi("Faturamento Atribuído",
@@ -148,21 +143,26 @@
     {{ small_kpi("CPA", cpa_face if cpa_face is defined else "—", var_cpa_face if var_cpa_face is defined else None) }}
   </div>
 
-  {{ bar_chart("chart_meta", dd.get("meta_ads") if dd else None, "Faturamento diário · Meta Ads") }}
+  {{ bar_chart("chart_meta", dd.get("meta_ads") if dd else None, "Faturamento · atual vs anterior",
+      v_atual=fat_face_n if fat_face_n is defined else (fat_sem_n if fat_sem_n is defined else none),
+      v_ant=fat_face_comp_n if fat_face_comp_n is defined else (fat_sem_comp_n if fat_sem_comp_n is defined else none),
+      fmt_atual=fat_face if fat_face is defined else (fat_sem if fat_sem is defined else ""),
+      fmt_ant=fat_face_comp if fat_face_comp is defined else (fat_sem_comp if fat_sem_comp is defined else "")) }}
 
-  {{ page_footer(3, total_pags) }}
+  {{ page_footer(pag_meta, total_pags) }}
 </div>
 
-{# ═══════════════════════ PÁG 4 — GOOGLE ADS ═══════════════════════ #}
+{# ═══════════════════════ PÁG 4 — MELHORES CRIATIVOS (condicional) ═══════════════════════ #}
+{% if tem_criativos %}
+  {{ criativos_page(ads_meta, pag_cria, total_pags) }}
+{% endif %}
+
+{# ═══════════════════════ PÁG — GOOGLE ADS ═══════════════════════ #}
 <div class="page">
   <div class="glow-tr"></div>
-
-  {{ channel_header(
-      "Google Ads",
+  {{ channel_header("Google Ads",
       '<span style="background:linear-gradient(135deg,#EA4335,#FBBC05);width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:#fff;">G</span>',
-      periodo_str,
-      (p_ini2 + " – " + p_fim2) if p_ini2 else ""
-  ) }}
+      periodo_str, (p_ini2 + " – " + p_fim2) if p_ini2 else "") }}
 
   <div class="row" style="margin-bottom:10px;">
     {{ big_kpi("Faturamento Atribuído", fat_goog if fat_goog is defined else "—", var_fat_goog if var_fat_goog is defined else None) }}
@@ -175,21 +175,21 @@
     {{ small_kpi("CPA", cpa_goog if cpa_goog is defined else "—", var_cpa_goog if var_cpa_goog is defined else None) }}
   </div>
 
-  {{ bar_chart("chart_google", dd.get("google_ads") if dd else None, "Faturamento diário · Google Ads") }}
+  {{ bar_chart("chart_google", dd.get("google_ads") if dd else None, "Faturamento · atual vs anterior",
+      v_atual=fat_goog_n if fat_goog_n is defined else none,
+      v_ant=fat_goog_comp_n if fat_goog_comp_n is defined else none,
+      fmt_atual=fat_goog if fat_goog is defined else "",
+      fmt_ant=fat_goog_comp if fat_goog_comp is defined else "") }}
 
-  {{ page_footer(4, total_pags) }}
+  {{ page_footer(pag_google, total_pags) }}
 </div>
 
-{# ═══════════════════════ PÁG 5 — GA4 ═══════════════════════ #}
+{# ═══════════════════════ PÁG — GA4 ═══════════════════════ #}
 <div class="page">
   <div class="glow-tr"></div>
-
-  {{ channel_header(
-      "GA4 — Analytics",
+  {{ channel_header("GA4 — Analytics",
       '<span style="background:linear-gradient(135deg,#F9AB00,#E37400);width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:#fff;">◆</span>',
-      periodo_str,
-      (p_ini2 + " – " + p_fim2) if p_ini2 else ""
-  ) }}
+      periodo_str, (p_ini2 + " – " + p_fim2) if p_ini2 else "") }}
 
   <div class="row" style="margin-bottom:10px;">
     {{ big_kpi("Sessões", ses_ga if ses_ga is defined else "—", var_ses_ga if var_ses_ga is defined else None) }}
@@ -202,22 +202,22 @@
     {{ small_kpi("Taxa de Conversão", taxa_conv if taxa_conv is defined else "—", var_taxa_conv if var_taxa_conv is defined else None) }}
   </div>
 
-  {{ bar_chart("chart_ga4", dd.get("ga4") if dd else None, "Sessões diárias · GA4") }}
+  {{ bar_chart("chart_ga4", dd.get("ga4") if dd else None, "Sessões · atual vs anterior",
+      v_atual=ses_ga_n if ses_ga_n is defined else none,
+      v_ant=ses_ga_comp_n if ses_ga_comp_n is defined else none,
+      fmt_atual=ses_ga if ses_ga is defined else "",
+      fmt_ant=ses_ga_comp if ses_ga_comp is defined else "") }}
 
-  {{ page_footer(5, total_pags) }}
+  {{ page_footer(pag_ga4, total_pags) }}
 </div>
 
-{# ═══════════════════════ PÁG 6 — PAINEL INTERNO ═══════════════════════ #}
+{# ═══════════════════════ PÁG — PAINEL INTERNO ═══════════════════════ #}
 <div class="page">
   <div class="glow-tr"></div>
-
-  {{ channel_header(
-      "Painel de Negócio",
+  {{ channel_header("Painel de Negócio",
       '<span style="background:linear-gradient(135deg,#00C8FF,#7B2FFF);width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;">📊</span>',
-      periodo_str,
-      (p_ini2 + " – " + p_fim2) if p_ini2 else "",
-      "Negócio · " + (freq if freq is defined else "Semanal")
-  ) }}
+      periodo_str, (p_ini2 + " – " + p_fim2) if p_ini2 else "",
+      "Negócio · " + (freq if freq is defined else "Semanal")) }}
 
   <div class="row" style="margin-bottom:10px;">
     {{ big_kpi("Faturamento Atribuído", fat_sem if fat_sem is defined else "—", var_fat_sem if var_fat_sem is defined else None) }}
@@ -233,35 +233,27 @@
     {{ small_kpi("Meta Invest.", meta_inv if meta_inv is defined else "—") }}
   </div>
 
-  {{ bar_chart("chart_painel", dd.get("painel") if dd else None, "Faturamento diário") }}
+  {{ bar_chart("chart_painel", dd.get("painel") if dd else None, "Faturamento · atual vs anterior",
+      v_atual=fat_sem_n if fat_sem_n is defined else none,
+      v_ant=fat_sem_comp_n if fat_sem_comp_n is defined else none,
+      fmt_atual=fat_sem if fat_sem is defined else "",
+      fmt_ant=fat_sem_comp if fat_sem_comp is defined else "") }}
 
-  {{ page_footer(6, total_pags) }}
+  {{ page_footer(pag_painel, total_pags) }}
 </div>
 
-{# ═══════════════════════ PÁG 7 — CONTRA-CAPA ═══════════════════════ #}
+{# ═══════════════════════ PÁG — CONTRA-CAPA ═══════════════════════ #}
 <div class="page" style="justify-content:center;align-items:center;gap:20px;">
-  <div class="glow-tr"></div>
-  <div class="glow-bl"></div>
-
+  <div class="glow-tr"></div><div class="glow-bl"></div>
   <div style="width:50px;height:2px;background:linear-gradient(to right,var(--cyan),var(--purple));border-radius:1px;"></div>
-
   <div style="text-align:center;">
-    <div style="font-size:22px;font-weight:900;letter-spacing:4px;text-transform:uppercase;color:var(--t-primary);">
-      Turbo<br>Partners
-    </div>
-    <div style="font-size:9px;color:var(--t-faint);letter-spacing:3px;text-transform:uppercase;margin-top:6px;">
-      Performance · Tech · Growth
-    </div>
+    <div style="font-size:22px;font-weight:900;letter-spacing:4px;text-transform:uppercase;color:var(--t-primary);">Turbo<br>Partners</div>
+    <div style="font-size:9px;color:var(--t-faint);letter-spacing:3px;text-transform:uppercase;margin-top:6px;">Performance · Tech · Growth</div>
   </div>
-
   <div style="width:50px;height:2px;background:linear-gradient(to right,var(--cyan),var(--purple));border-radius:1px;"></div>
-
   <div style="text-align:center;font-size:11px;color:var(--t-ghost);line-height:2;">
-    contato@turbopartners.com.br<br>
-    turbopartners.com.br<br>
-    @turbo.partners
+    contato@turbopartners.com.br<br>turbopartners.com.br<br>@turbo.partners
   </div>
-
   {% if proximo_report is defined %}
   <div style="background:rgba(0,200,255,0.06);border:1px solid rgba(0,200,255,0.2);border-radius:10px;padding:14px 24px;text-align:center;">
     <div style="font-size:9px;color:var(--cyan);font-weight:700;letter-spacing:2px;text-transform:uppercase;">Próximo Report</div>

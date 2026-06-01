@@ -34,13 +34,51 @@ def _get_env() -> Environment:
     return _jinja_env
 
 
+def _extract_number(v: str) -> float | None:
+    """Extrai valor numérico de string PT-BR formatada.
+    'R$ 23.575,00' → 23575.0 | 'R$ 180.000' → 180000.0
+    '106,74' → 106.74 | '+51,7%' → 51.7
+    """
+    if not isinstance(v, str):
+        return None
+    s = v.strip()
+    if not s or s == "—":
+        return None
+    # Remove prefixos/sufixos não numéricos
+    s = re.sub(r"[R$\s%↑↓+]", "", s).strip()
+    if not s or s == "-":
+        return None
+    if "," in s:
+        # PT-BR: ponto = milhar, vírgula = decimal → "23.575,00" → 23575.0
+        s = s.replace(".", "").replace(",", ".")
+    elif "." in s:
+        # PT-BR sem vírgula: "180.000" → todos os pontos são milhares
+        parts = s.split(".")
+        if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
+            # todos os grupos após o primeiro têm 3 dígitos → são separadores de milhar
+            s = s.replace(".", "")
+        # else: ponto decimal normal (ex: "3.14") — mantém como está
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 def normalizar_dados(dados: dict[str, str]) -> dict[str, Any]:
     """
     Converte placeholders do handler em contexto Jinja2.
     {"{{PERIODO_INICIO}}": "26/05"} → {"periodo_inicio": "26/05"}
-    Lowercaseia todas as chaves para uniformidade.
+    Também adiciona variante _n com valor numérico (ex: fat_face_n = 23575.0).
+    Lowercaseia todas as chaves.
     """
-    return {re.sub(r"[{}]", "", k).strip().lower(): v for k, v in dados.items()}
+    result: dict[str, Any] = {}
+    for k, v in dados.items():
+        clean = re.sub(r"[{}]", "", k).strip().lower()
+        result[clean] = v
+        num = _extract_number(v)
+        if num is not None:
+            result[clean + "_n"] = num
+    return result
 
 
 def selecionar_template(categoria: str) -> str:
@@ -119,7 +157,35 @@ def gerar_pdf(
     ctx = normalizar_dados(dados)
     if dados_diarios:
         ctx["dados_diarios"] = dados_diarios
+    ctx["ads_meta"] = _extrair_ads(ctx, prefixo="adf", max_n=5)
+    ctx["ads_google"] = _extrair_ads(ctx, prefixo="adg", max_n=5)
     return html_para_pdf(renderizar_html(categoria, ctx))
+
+
+def _extrair_ads(ctx: dict, prefixo: str, max_n: int = 5) -> list[dict]:
+    """Extrai lista de ads do contexto normalizado.
+    prefixo='adf' usa nome_adf1, img_adf1, roas_adf1, etc.
+    prefixo='adg' usa nome_adg1, roas_adg1, etc.
+    """
+    ads = []
+    for i in range(1, 21):
+        if len(ads) >= max_n:
+            break
+        nome = ctx.get(f"nome_{prefixo}{i}", "")
+        if not nome or nome == "—":
+            continue
+        ads.append({
+            "pos":  i,
+            "nome": nome,
+            "img":  ctx.get(f"img_{prefixo}{i}", ""),
+            "roas": ctx.get(f"roas_{prefixo}{i}", "—"),
+            "conv": ctx.get(f"conv_{prefixo}{i}", "—"),
+            "fat":  ctx.get(f"fat_{prefixo}{i}", "—"),
+            "inv":  ctx.get(f"inv_{prefixo}{i}", "—"),
+            "cpa":  ctx.get(f"cpa_{prefixo}{i}", "—"),
+            "ctr":  ctx.get(f"ctr_{prefixo}{i}", "—"),
+        })
+    return ads
 
 
 def salvar_pdf(
