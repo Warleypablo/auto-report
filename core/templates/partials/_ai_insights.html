@@ -1,0 +1,26 @@
+{% macro ai_insights_page(texto, pagina, total_pags) %}
+{% if texto %}
+<div class="page">
+  <div class="glow-tr"></div>
+  <div class="section-eyebrow" style="margin-bottom:4px;">Análise da Semana</div>
+
+  <div class="fill" style="justify-content:flex-start;">
+    <div style="font-size:13px;line-height:1.85;color:var(--t-secondary);max-width:62ch;">
+      {% for paragrafo in texto.split("\n") if paragrafo.strip() %}
+      <p style="margin-bottom:14px;">{{ paragrafo.strip() }}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:10px;">
+    <div style="width:5px;height:5px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--purple));"></div>
+    <span style="font-size:8px;color:var(--t-ghost);letter-spacing:1.5px;text-transform:uppercase;">Gerado por IA · Turbo Partners</span>
+  </div>
+
+  <div class="page-footer">
+    <div class="page-footer-brand">Turbo Partners</div>
+    <div class="page-footer-num">{{ pagina }} / {{ total_pags }}</div>
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
