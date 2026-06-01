@@ -688,6 +688,21 @@ def _gaql_row(*, ad_id, ad_group_id, ad_type, day, cost_micros, conversions,
     return row
 
 
+def _text_asset(text):
+    a = MagicMock()
+    a.text = text
+    return a
+
+
+def _gaql_nome_row(*, ad_id, ad_type, headlines=()):
+    """Linha da 2ª query (metadados de nome): traz headlines do RSA, sem metrics."""
+    row = MagicMock()
+    row.ad_group_ad.ad.id = int(ad_id)
+    row.ad_group_ad.ad.type_.name = ad_type
+    row.ad_group_ad.ad.responsive_search_ad.headlines = [_text_asset(h) for h in headlines]
+    return row
+
+
 def test_coletar_google_persiste_insights_criativos_e_thumb(cliente_google, TS):
     from etl.collect_criativos import coletar_criativos_google
 
@@ -800,6 +815,107 @@ def test_coletar_google_idempotente(cliente_google, TS):
         ).all()
         # uma thumb por criativo (PK = criativo_id, dedup por anuncio)
         assert len(thumbs) == 1
+
+
+def test_google_ad_nome_derivado_rsa_usa_primeiro_headline_nao_vazio():
+    from etl.collect_criativos import _google_ad_nome_derivado
+
+    ad = MagicMock()
+    ad.type_.name = "RESPONSIVE_SEARCH_AD"
+    ad.responsive_search_ad.headlines = [
+        _text_asset(""), _text_asset("Óculos com 50% OFF"), _text_asset("Frete grátis"),
+    ]
+    assert _google_ad_nome_derivado(ad) == "Óculos com 50% OFF"
+
+
+def test_google_ad_nome_derivado_tipo_sem_headline_retorna_none():
+    from etl.collect_criativos import _google_ad_nome_derivado
+
+    ad = MagicMock()
+    ad.type_.name = "SHOPPING_PRODUCT_AD"  # tipo sem nome/headline derivável
+    assert _google_ad_nome_derivado(ad) is None
+
+
+def test_build_google_nome_query_filtra_por_ad_ids_sem_metrics():
+    from etl.collect_criativos import _build_google_nome_query
+
+    q = _build_google_nome_query(["111", "222"])
+
+    assert "FROM ad_group_ad" in q
+    assert "ad_group_ad.ad.id IN (111, 222)" in q
+    assert "ad_group_ad.ad.type" in q
+    assert "ad_group_ad.ad.responsive_search_ad.headlines" in q
+    # repeated field não convive com metrics/segments → 2ª query precisa ser "limpa"
+    assert "metrics." not in q
+    assert "segments." not in q
+
+
+def test_coletar_google_deriva_nome_de_headline_quando_ad_name_vazio(cliente_google, TS):
+    from etl.collect_criativos import coletar_criativos_google
+
+    metric_rows = [
+        _gaql_row(ad_id="777", ad_group_id="555", ad_type="RESPONSIVE_SEARCH_AD",
+                  day="2026-01-01", cost_micros=1_000_000, conversions=1.0,
+                  conv_value=50.0, impressions=300, clicks=5, name=""),  # sem nome
+    ]
+    nome_rows = [
+        _gaql_nome_row(ad_id="777", ad_type="RESPONSIVE_SEARCH_AD",
+                       headlines=["Promo Óculos", "Frete grátis"]),
+    ]
+
+    def fake_search(*, customer_id, query):
+        if "responsive_search_ad.headlines" in query:
+            return nome_rows          # 2ª query (nomes)
+        return metric_rows            # 1ª query (métricas)
+
+    fake_service = MagicMock()
+    fake_service.search.side_effect = fake_search
+
+    with patch("etl.collect_criativos._get_google_ads_service", return_value=fake_service):
+        ok = coletar_criativos_google(
+            s_cliente(TS, cliente_google), date(2026, 1, 1), date(2026, 1, 31),
+            session_factory=TS,
+        )
+
+    assert ok is True
+    with TS() as s:
+        cri = s.scalar(select(Criativo).where(Criativo.cliente_id == cliente_google))
+        assert cri.nome == "Promo Óculos"      # derivado do 1º headline
+        assert cri.thumb_status == ThumbStatus.SEM_IMAGEM
+
+
+def test_coletar_google_nome_query_falha_nao_derruba_coleta(cliente_google, TS):
+    """Se a 2ª query (nomes) falhar, métricas e criativos ainda são persistidos
+    (degradação graciosa); o nome só fica None e o front usa o fallback."""
+    from etl.collect_criativos import coletar_criativos_google
+
+    metric_rows = [
+        _gaql_row(ad_id="777", ad_group_id="555", ad_type="RESPONSIVE_SEARCH_AD",
+                  day="2026-01-01", cost_micros=1_000_000, conversions=1.0,
+                  conv_value=50.0, impressions=300, clicks=5, name=""),
+    ]
+
+    def fake_search(*, customer_id, query):
+        if "responsive_search_ad.headlines" in query:
+            raise RuntimeError("repeated field incompatível com a query")
+        return metric_rows
+
+    fake_service = MagicMock()
+    fake_service.search.side_effect = fake_search
+
+    with patch("etl.collect_criativos._get_google_ads_service", return_value=fake_service):
+        ok = coletar_criativos_google(
+            s_cliente(TS, cliente_google), date(2026, 1, 1), date(2026, 1, 31),
+            session_factory=TS,
+        )
+
+    assert ok is True
+    with TS() as s:
+        ins = s.scalars(select(AdInsight).where(AdInsight.cliente_id == cliente_google)).all()
+        assert len(ins) == 1                          # métrica preservada
+        cri = s.scalar(select(Criativo).where(Criativo.cliente_id == cliente_google))
+        assert cri is not None
+        assert cri.nome is None                       # sem nome → fallback no front
 
 
 def test_coletar_google_gaql_exception_retorna_false(cliente_google, TS):
