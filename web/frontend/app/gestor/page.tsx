@@ -380,34 +380,44 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
     <div className="pb-24">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="font-display text-2xl font-medium text-[var(--ink)]">Clientes</h1>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 rounded-md border border-[var(--rule-soft)] p-0.5">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-0.5 rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] p-1 shadow-[var(--elev-sm)]">
             {(["MENSAL", "SEMANAL"] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFrequencia(f)}
-                className={["rounded px-3 py-1 text-xs font-medium transition", frequencia === f ? "bg-[var(--forest)] text-white" : "text-[var(--muted)] hover:text-[var(--ink)]"].join(" ")}
+                className={[
+                  "rounded-md px-3.5 py-1.5 text-xs font-medium transition-all duration-200",
+                  frequencia === f
+                    ? "bg-[var(--forest)] text-white shadow-[var(--elev-sm)]"
+                    : "text-[var(--muted)] hover:text-[var(--ink)]",
+                ].join(" ")}
               >
                 {f === "MENSAL" ? "Mensal" : "Semanal"}
               </button>
             ))}
           </div>
-          <span className="eyebrow text-xs text-[var(--muted)]">{clientes.length} total</span>
+          <span className="font-mono-num text-xs tabular-nums text-[var(--muted)]">
+            <span className="text-[var(--ink)]">{clientes.length}</span> total
+          </span>
         </div>
       </div>
 
-      <div className="mb-4 flex items-center gap-3">
-        <input
-          type="search"
-          placeholder="Buscar cliente ou categoria…"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="flex-1 rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
-        />
+      <div className="mb-5 flex items-center gap-3">
+        <div className="relative flex-1">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--muted)]">⌕</span>
+          <input
+            type="search"
+            placeholder="Buscar cliente ou categoria…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="w-full rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] py-2.5 pl-9 pr-3 text-sm text-[var(--ink)] shadow-[var(--elev-sm)] transition placeholder:text-[var(--muted)] focus:border-[var(--forest)] focus:outline-none focus:ring-2 focus:ring-[var(--forest)]/20"
+          />
+        </div>
         {filtrados.length > 0 && (
           <button
             onClick={toggleAll}
-            className="shrink-0 rounded-md border border-[var(--rule-soft)] px-3 py-2 text-xs text-[var(--muted)] transition hover:border-[var(--forest)] hover:text-[var(--ink)]"
+            className="shrink-0 rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-3.5 py-2.5 text-xs font-medium text-[var(--muted)] shadow-[var(--elev-sm)] transition-all duration-200 hover:border-[var(--forest)] hover:text-[var(--ink)] active:scale-[0.98]"
           >
             {allChecked ? "Desmarcar todos" : "Selecionar todos"}
           </button>
@@ -416,63 +426,120 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
 
       {/* Painel de jobs disparados com polling de status */}
       {dispatched.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)]">
-          <div className="border-b border-[var(--rule-soft)] px-4 py-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-medium text-[var(--ink)]">
-                Reports disparados — {mesLabel(mes)} ({frequencia === "MENSAL" ? "Mensal" : "Semanal"})
-              </p>
-              <button onClick={() => setDispatched([])} className="text-xs text-[var(--muted)] hover:text-[var(--ink)]">✕</button>
+        <div className="reveal mb-6 overflow-hidden rounded-xl border border-[var(--rule-soft)] bg-[var(--paper-soft)] shadow-[var(--elev-md)]">
+          <div className="border-b border-[var(--rule-soft)] px-5 py-4">
+            <div className="mb-3 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="eyebrow mb-1 text-[var(--muted)]">Reports disparados</p>
+                <p className="truncate text-sm font-medium text-[var(--ink)]">
+                  {mesLabel(mes)}
+                  <span className="ml-1.5 text-[var(--muted)]">· {frequencia === "MENSAL" ? "Mensal" : "Semanal"}</span>
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="font-display text-2xl font-medium leading-none text-[var(--ink)] tabular-nums">
+                  {Math.round(progressPercent)}<span className="text-base text-[var(--muted)]">%</span>
+                </span>
+                <button
+                  onClick={() => setDispatched([])}
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-xs text-[var(--muted)] transition hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]"
+                  aria-label="Fechar painel"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             {/* Barra de progresso */}
-            <div className="mb-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--rule-soft)]">
+            <div className="relative mb-3 h-2 w-full overflow-hidden rounded-full bg-[var(--paper-deep)]">
               <div
-                className="h-full bg-[var(--forest)] transition-all duration-300"
+                className="relative h-full rounded-full bg-gradient-to-r from-[var(--forest-deep)] to-[var(--forest)] transition-all duration-500 ease-out"
                 style={{ width: `${progressPercent}%` }}
-              />
+              >
+                {counts.running + counts.pending > 0 && (
+                  <span className="progress-shimmer absolute inset-0 rounded-full" />
+                )}
+              </div>
             </div>
-            {/* Contadores */}
-            <p className="text-[10px] text-[var(--muted)]">
-              <span className="font-medium text-[var(--ink)]">{concluidos}/{totalDispatched}</span> concluídos
-              {counts.running > 0 && <> · <span className="text-[var(--amber)]">{counts.running} gerando</span></>}
-              {counts.pending > 0 && <> · {counts.pending} na fila</>}
-              {counts.done > 0 && <> · <span className="text-[var(--forest)]">{counts.done} ok</span></>}
-              {counts.error > 0 && <> · <span className="text-[var(--crimson)]">{counts.error} erro{counts.error > 1 ? "s" : ""}</span></>}
-            </p>
+            {/* Contadores como pílulas semânticas */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--paper-deep)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--ink)]">
+                <span className="font-mono-num tabular-nums">{concluidos}/{totalDispatched}</span>
+                <span className="text-[var(--muted)]">concluídos</span>
+              </span>
+              {counts.running > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--amber)]/12 px-2.5 py-0.5 text-[11px] font-medium text-[var(--amber)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--amber)] animate-soft-pulse" />
+                  {counts.running} gerando
+                </span>
+              )}
+              {counts.pending > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--paper-deep)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--muted)]">
+                  {counts.pending} na fila
+                </span>
+              )}
+              {counts.done > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--forest)]/12 px-2.5 py-0.5 text-[11px] font-medium text-[var(--forest)]">
+                  <span className="text-[10px]">✓</span>
+                  {counts.done} ok
+                </span>
+              )}
+              {counts.error > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--crimson)]/12 px-2.5 py-0.5 text-[11px] font-medium text-[var(--crimson)]">
+                  <span className="text-[10px]">✗</span>
+                  {counts.error} erro{counts.error > 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
           </div>
           <ul>
             {dispatched.map((j, idx) => {
               const elapsed = j.status === "pending" || j.status === "running"
                 ? formatElapsed(now - j.dispatched_at)
                 : null;
+              const isError = j.status === "error" || j.status === "dispatch_error";
               return (
                 <li
                   key={j.slug}
-                  className={["flex items-center gap-3 px-4 py-3", idx < dispatched.length - 1 ? "border-b border-[var(--rule-soft)]" : ""].join(" ")}
+                  className={[
+                    "group flex items-center gap-3 px-5 py-3 transition-colors duration-150 hover:bg-[var(--paper-deep)]/50",
+                    idx < dispatched.length - 1 ? "border-b border-[var(--rule-soft)]" : "",
+                  ].join(" ")}
                 >
-                  {j.status === "pending" && <span className="w-3 text-center text-xs text-[var(--muted)]">◌</span>}
-                  {j.status === "running" && <div className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[var(--rule-soft)] border-t-[var(--amber)]" />}
-                  {j.status === "done" && <span className="w-3 text-center text-xs text-[var(--forest)]">✓</span>}
-                  {(j.status === "error" || j.status === "dispatch_error") && <span className="w-3 text-center text-xs text-[var(--crimson)]">✗</span>}
-                  <span className="flex-1 text-sm text-[var(--ink)]">{j.nome}</span>
+                  {/* Indicador de status */}
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                    {j.status === "pending" && (
+                      <span className="h-2 w-2 rounded-full bg-[var(--muted)]/50 animate-soft-pulse" />
+                    )}
+                    {j.status === "running" && (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--amber)]/25 border-t-[var(--amber)]" />
+                    )}
+                    {j.status === "done" && (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--forest)]/15 text-[10px] font-bold text-[var(--forest)]">✓</span>
+                    )}
+                    {isError && (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--crimson)]/15 text-[10px] font-bold text-[var(--crimson)]">✗</span>
+                    )}
+                  </span>
+                  <span className="flex-1 truncate text-sm font-medium text-[var(--ink)]">{j.nome}</span>
                   {j.status === "pending" && (
-                    <span className="text-xs text-[var(--muted)]">
-                      Na fila… <span className="opacity-60">({elapsed})</span>
+                    <span className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
+                      Na fila <span className="font-mono-num text-[11px] tabular-nums opacity-70">{elapsed}</span>
                     </span>
                   )}
                   {j.status === "running" && (
-                    <span className="text-xs text-[var(--amber)]">
-                      Gerando… <span className="opacity-60">({elapsed})</span>
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--amber)]">
+                      Gerando <span className="font-mono-num text-[11px] tabular-nums opacity-70">{elapsed}</span>
                     </span>
                   )}
                   {j.status === "done" && j.slides_url && (
                     <a href={j.slides_url} target="_blank" rel="noopener noreferrer"
-                      className="rounded-md bg-[var(--forest)] px-3 py-1 text-xs font-medium text-white transition hover:opacity-90">
-                      Abrir report →
+                      className="group/btn inline-flex items-center gap-1 rounded-lg bg-[var(--forest)] px-3.5 py-1.5 text-xs font-medium text-white shadow-[var(--elev-sm)] transition-all duration-200 hover:shadow-[var(--elev-lift)] hover:brightness-110 active:scale-[0.97]">
+                      Abrir report
+                      <span className="transition-transform duration-200 group-hover/btn:translate-x-0.5">→</span>
                     </a>
                   )}
                   {j.status === "done" && !j.slides_url && <span className="text-xs text-[var(--muted)]">Concluído</span>}
-                  {(j.status === "error" || j.status === "dispatch_error") && (
+                  {isError && (
                     <span className="max-w-[60ch] whitespace-pre-wrap break-words text-right text-xs text-[var(--crimson)]" title={j.erro ?? ""}>
                       {j.erro ?? "Erro desconhecido"}
                     </span>
@@ -491,44 +558,52 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([cat, lista]) => (
             <div key={cat} className="mb-6">
-              <p className="eyebrow mb-2 text-xs text-[var(--muted)]">{cat}</p>
-              <ul className="flex flex-col gap-1">
-                {lista.map((c) => (
-                  <li key={c.slug} className="flex items-center gap-2">
-                    <button
-                      onClick={() => toggle(c.slug)}
-                      className={[
-                        "flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] transition",
-                        selected.has(c.slug)
-                          ? "border-[var(--forest)] bg-[var(--forest)] text-white"
-                          : "border-[var(--rule-soft)] bg-[var(--paper)] text-transparent hover:border-[var(--forest)]",
-                      ].join(" ")}
-                      aria-label={`Selecionar ${c.nome}`}
-                    >
-                      ✓
-                    </button>
-                    <div
-                      className={[
-                        "flex flex-1 items-center justify-between rounded-md border bg-[var(--paper-soft)] px-4 py-3 transition",
-                        selected.has(c.slug)
-                          ? "border-[var(--forest)]"
-                          : "border-[var(--rule-soft)] hover:border-[var(--forest)] hover:bg-[var(--paper-deep)]",
-                      ].join(" ")}
-                    >
-                      <button onClick={() => toggle(c.slug)} className="flex-1 text-left">
-                        <span className="text-sm font-medium text-[var(--ink)]">{c.nome}</span>
-                        <span className="ml-2 text-xs text-[var(--muted)]">{c.categoria}</span>
-                      </button>
-                      <Link
-                        href={`/gestor/${c.slug}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-xs text-[var(--forest)] hover:underline"
+              <div className="mb-2.5 flex items-center gap-2">
+                <p className="eyebrow text-[var(--muted)]">{cat}</p>
+                <span className="font-mono-num text-[10px] tabular-nums text-[var(--muted)]/70">{lista.length}</span>
+              </div>
+              <ul className="flex flex-col gap-2">
+                {lista.map((c) => {
+                  const isSel = selected.has(c.slug);
+                  return (
+                    <li key={c.slug} className="flex items-center gap-2.5">
+                      <button
+                        onClick={() => toggle(c.slug)}
+                        className={[
+                          "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-[10px] transition-all duration-150",
+                          isSel
+                            ? "border-[var(--forest)] bg-[var(--forest)] text-white shadow-[var(--elev-sm)]"
+                            : "border-[var(--rule-soft)] bg-[var(--paper)] text-transparent hover:border-[var(--forest)] hover:bg-[var(--forest)]/5",
+                        ].join(" ")}
+                        aria-label={`Selecionar ${c.nome}`}
                       >
-                        Abrir →
-                      </Link>
-                    </div>
-                  </li>
-                ))}
+                        ✓
+                      </button>
+                      <div
+                        className={[
+                          "flex flex-1 items-center justify-between rounded-lg border px-4 py-3 transition-all duration-200",
+                          isSel
+                            ? "border-[var(--forest)] bg-[var(--forest)]/[0.06] shadow-[var(--elev-sm)]"
+                            : "border-[var(--rule-soft)] bg-[var(--paper-soft)] hover:-translate-y-px hover:border-[var(--forest)]/60 hover:shadow-[var(--elev-md)]",
+                        ].join(" ")}
+                      >
+                        <button onClick={() => toggle(c.slug)} className="flex flex-1 items-center gap-2.5 text-left">
+                          <span className="text-sm font-medium text-[var(--ink)]">{c.nome}</span>
+                          <span className="rounded-full bg-[var(--paper-deep)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">
+                            {c.categoria}
+                          </span>
+                        </button>
+                        <Link
+                          href={`/gestor/${c.slug}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="ml-3 inline-flex items-center gap-0.5 text-xs font-medium text-[var(--forest)] transition hover:gap-1.5 hover:underline"
+                        >
+                          Abrir →
+                        </Link>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))
@@ -536,65 +611,77 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
 
       {/* Barra flutuante de ação em lote */}
       {selected.size > 0 && (
-        <div className="fixed bottom-0 left-56 right-0 z-50 flex flex-col border-t border-[var(--rule-soft)] bg-[var(--paper-soft)] shadow-lg">
+        <div className="reveal fixed bottom-0 left-56 right-0 z-50 flex flex-col border-t border-[var(--rule-soft)] bg-[var(--paper-soft)]/95 shadow-[var(--elev-lift)] backdrop-blur-md">
           {progresso && (
-            <div className="px-8 pt-3">
-              <div className="mb-1 flex items-center justify-between text-xs text-[var(--muted)]">
-                <span>
-                  Disparando reports… {progresso.atual}/{progresso.total}
-                  {progresso.erro > 0 && <span className="ml-2 text-[var(--crimson)]">{progresso.erro} com erro</span>}
+            <div className="px-8 pt-3.5">
+              <div className="mb-1.5 flex items-center justify-between text-xs">
+                <span className="font-medium text-[var(--ink)]">
+                  Disparando reports… <span className="font-mono-num tabular-nums text-[var(--muted)]">{progresso.atual}/{progresso.total}</span>
+                  {progresso.erro > 0 && <span className="ml-2 font-normal text-[var(--crimson)]">{progresso.erro} com erro</span>}
                 </span>
-                <span className="text-[var(--forest)]">{progresso.ok} ok</span>
+                <span className="font-medium text-[var(--forest)]">{progresso.ok} ok</span>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--paper-deep)]">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--paper-deep)]">
                 <div
-                  className="h-full rounded-full bg-[var(--forest)] transition-all duration-300"
+                  className="relative h-full rounded-full bg-gradient-to-r from-[var(--forest-deep)] to-[var(--forest)] transition-all duration-300 ease-out"
                   style={{ width: `${(progresso.atual / progresso.total) * 100}%` }}
-                />
+                >
+                  <span className="progress-shimmer absolute inset-0 rounded-full" />
+                </div>
               </div>
             </div>
           )}
-          <div className="flex items-center gap-4 px-8 py-4">
-          <span className="text-sm font-medium text-[var(--ink)]">
-            {selected.size} cliente{selected.size > 1 ? "s" : ""} selecionado{selected.size > 1 ? "s" : ""}
+          <div className="flex items-center gap-5 px-8 py-4">
+          <span className="flex items-baseline gap-2 text-sm text-[var(--ink)]">
+            <span className="font-display text-2xl font-medium leading-none text-[var(--forest)] tabular-nums">{selected.size}</span>
+            <span className="text-[var(--muted)]">cliente{selected.size > 1 ? "s" : ""} selecionado{selected.size > 1 ? "s" : ""}</span>
           </span>
+          <div className="ml-auto flex items-center gap-4">
           {frequencia === "MENSAL" ? (
             <div className="flex items-center gap-2">
-              <label className="text-xs text-[var(--muted)]">Mês</label>
+              <label className="eyebrow text-[10px] text-[var(--muted)]">Mês</label>
               <input
                 type="month"
                 value={mes}
                 onChange={(e) => setMes(e.target.value)}
-                className="rounded border border-[var(--rule-soft)] bg-[var(--paper)] px-2 py-1 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+                className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-2.5 py-1.5 text-sm text-[var(--ink)] shadow-[var(--elev-sm)] transition focus:border-[var(--forest)] focus:outline-none focus:ring-2 focus:ring-[var(--forest)]/20"
               />
             </div>
           ) : null}
           {frequencia === "SEMANAL" ? (
-            <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
-              Semana:
+            <div className="flex items-center gap-2">
+              <label className="eyebrow text-[10px] text-[var(--muted)]">Semana</label>
               <input
                 type="week"
                 value={semana}
                 onChange={(e) => setSemana(e.target.value)}
                 max={isoWeekAtual()}
                 aria-label="Semana de referência"
-                className="rounded border border-[var(--rule-soft)] bg-[var(--paper)] px-2 py-1 text-sm text-[var(--ink)] focus:outline-none focus:ring-1 focus:ring-[var(--forest)]"
+                className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-2.5 py-1.5 text-sm text-[var(--ink)] shadow-[var(--elev-sm)] transition focus:border-[var(--forest)] focus:outline-none focus:ring-2 focus:ring-[var(--forest)]/20"
               />
-            </label>
+            </div>
           ) : null}
-          <button
-            onClick={handleGerar}
-            disabled={gerando}
-            className="rounded-md bg-[var(--forest)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-          >
-            {gerando ? "Gerando…" : `Gerar ${selected.size} report${selected.size > 1 ? "s" : ""}`}
-          </button>
           <button
             onClick={() => setSelected(new Set())}
             className="text-sm text-[var(--muted)] transition hover:text-[var(--ink)]"
           >
             Limpar
           </button>
+          <button
+            onClick={handleGerar}
+            disabled={gerando}
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--forest)] px-5 py-2.5 text-sm font-medium text-white shadow-[var(--elev-md)] transition-all duration-200 hover:shadow-[var(--elev-lift)] hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+          >
+            {gerando ? (
+              <>
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Gerando…
+              </>
+            ) : (
+              <>Gerar {selected.size} report{selected.size > 1 ? "s" : ""}</>
+            )}
+          </button>
+          </div>
           </div>
         </div>
       )}
