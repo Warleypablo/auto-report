@@ -22,10 +22,10 @@ def test_video_3s_views_returns_none_when_key_absent():
     assert m._video_3s_views_from_row(row) is None
 
 
-def test_video_3s_views_reads_video_3_sec_watched_actions():
+def test_video_3s_views_reads_video_play_actions():
     m = _load_module()
     row = {
-        "video_3_sec_watched_actions": [
+        "video_play_actions": [
             {"action_type": "video_view", "value": "42"},
         ],
     }
@@ -46,7 +46,7 @@ def test_video_3s_views_fallback_to_actions_video_view():
 def test_video_3s_views_sums_multiple_video_actions():
     m = _load_module()
     row = {
-        "video_3_sec_watched_actions": [
+        "video_play_actions": [
             {"action_type": "video_view", "value": "10"},
             {"action_type": "video_view", "value": "20"},
         ],

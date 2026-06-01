@@ -45,9 +45,41 @@ PURCHASE_TYPES = {"omni_purchase", "purchase"}  # cobre contas antigas
 
 _ATTR_WINDOW = ["7d_click"]  # janela única, sem view
 
+# Campo de vídeo que historicamente quebra a request inteira quando inválido
+# para a versão da API. Mantido isolado para o fallback de resiliência abaixo.
+_VIDEO_FIELD = "video_play_actions"
+
 # -----------------------------------------------------------------------------
 # Auxiliares numéricos e de parsing
 # -----------------------------------------------------------------------------
+
+def _insights_get_com_retry(url: str, params: dict) -> List[dict]:
+    """GET nas Meta Insights resiliente ao campo de vídeo.
+
+    Se a request falha com HTTP 400 (campo de vídeo inválido p/ a versão da
+    API), repete UMA vez removendo o campo de ``fields``. Assim os criativos
+    continuam populando (hook_rate vira "-") em vez de cair no caminho de
+    placeholders all-dash. Erros não-400 (ou 400 do retry) são repropagados.
+    """
+    try:
+        resp = requests.get(url, params=params, timeout=TIMEOUT)
+        resp.raise_for_status()
+        return resp.json().get("data", [])
+    except requests.HTTPError as err:
+        status = err.response.status_code if err.response is not None else None
+        fields = params.get("fields", "")
+        if status == 400 and _VIDEO_FIELD in fields:
+            log.warning(
+                "Meta insights 400 com video field, retry sem video: %s",
+                err.response.text if err.response is not None else err,
+            )
+            params_retry = dict(params)
+            partes = [f for f in fields.split(",") if f and f != _VIDEO_FIELD]
+            params_retry["fields"] = ",".join(partes)
+            resp = requests.get(url, params=params_retry, timeout=TIMEOUT)
+            resp.raise_for_status()
+            return resp.json().get("data", [])
+        raise
 
 def _calc_cpa(cost: Optional[float], conv: Optional[int]) -> Optional[float]:
     return None if not cost or not conv else cost / conv
@@ -82,12 +114,13 @@ def _extract_purchase_metrics(actions, action_values):
 def _video_3s_views_from_row(row: dict) -> Optional[int]:
     """Extrai contagem de 3-second video plays do row da Meta Insights API.
 
-    Tenta na ordem: `video_3_sec_watched_actions` (campo dedicado) e
+    Tenta na ordem: `video_play_actions` (campo dedicado, v23.0 — devolve uma
+    lista de action objects `[{"action_type": ..., "value": "123"}]`) e
     `actions[action_type=video_view]` (fallback clássico). Retorna `None`
     quando nenhuma das chaves está presente — sinal de que o anúncio não
     é em vídeo (estático/imagem), distinguindo de "zero views".
     """
-    primary = row.get("video_3_sec_watched_actions")
+    primary = row.get("video_play_actions")
     if primary:
         total = 0
         for item in primary:
@@ -231,7 +264,7 @@ def coletar_metricas_anuncios_meta(
         "fields": (
             "ad_id,ad_name,spend,impressions,"
             "actions,action_values,"
-            "clicks,reach,video_3_sec_watched_actions"
+            "clicks,reach,video_play_actions"
         ),
         # ► BUGFIX · só 7d_click
         "action_attribution_windows": json.dumps(_ATTR_WINDOW, separators=(",", ":")),
@@ -245,9 +278,7 @@ def coletar_metricas_anuncios_meta(
     # Chamada à API                                                         #
     # --------------------------------------------------------------------- #
     try:
-        resp = requests.get(url, params=params, timeout=TIMEOUT)
-        resp.raise_for_status()
-        rows: List[dict] = resp.json().get("data", [])
+        rows: List[dict] = _insights_get_com_retry(url, params)
     except requests.HTTPError as exc:
         err = exc.response.text if exc.response else str(exc)
         log.error("HTTP Meta Ads (%s): %s", cliente.nome, err)

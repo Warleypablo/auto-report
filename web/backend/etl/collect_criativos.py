@@ -46,6 +46,10 @@ TIMEOUT = 30
 _BATCH_SIZE = 50
 _ATTR_WINDOW = ["7d_click"]
 
+# Campo de vídeo que historicamente quebra a request inteira quando inválido
+# para a versão da API. Mantido isolado para o fallback de resiliência abaixo.
+_VIDEO_FIELD = "video_play_actions"
+
 RETROACAO_DIAS = 3
 
 
@@ -219,7 +223,7 @@ def _meta_insights_diarios(ad_account_id: str, since: date, until: date) -> list
         ),
         "fields": (
             "ad_id,ad_name,spend,impressions,clicks,reach,"
-            "actions,action_values,video_3_sec_watched_actions"
+            "actions,action_values,video_play_actions"
         ),
         "action_attribution_windows": json.dumps(_ATTR_WINDOW, separators=(",", ":")),
         "action_report_time": "conversion",
@@ -231,9 +235,26 @@ def _meta_insights_diarios(ad_account_id: str, since: date, until: date) -> list
     next_url: str | None = url
     next_params: dict | None = params
     while next_url:
-        resp = httpx.get(next_url, params=next_params, timeout=TIMEOUT,
-                         follow_redirects=True)
-        resp.raise_for_status()
+        try:
+            resp = httpx.get(next_url, params=next_params, timeout=TIMEOUT,
+                             follow_redirects=True)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as err:
+            # Resiliência: se o campo de vídeo é inválido p/ a versão da API a
+            # request inteira retorna 400. Repete UMA vez sem o campo para que
+            # os criativos continuem populando (video_3s vira None).
+            fields = (next_params or {}).get("fields", "")
+            if (err.response.status_code == 400 and _VIDEO_FIELD in fields):
+                log.warning("Meta insights 400 com video field, retry sem video: %s",
+                            err.response.text)
+                retry_params = dict(next_params or {})
+                partes = [f for f in fields.split(",") if f and f != _VIDEO_FIELD]
+                retry_params["fields"] = ",".join(partes)
+                resp = httpx.get(next_url, params=retry_params, timeout=TIMEOUT,
+                                 follow_redirects=True)
+                resp.raise_for_status()
+            else:
+                raise
         body = resp.json()
         for row in body.get("data", []):
             ad_id = row.get("ad_id")

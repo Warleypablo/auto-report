@@ -177,7 +177,7 @@ def test_meta_insights_diarios_parseia_linhas_por_dia():
                 "spend": "10.50", "impressions": "1000", "clicks": "15", "reach": "800",
                 "actions": [{"action_type": "omni_purchase", "value": "3"}],
                 "action_values": [{"action_type": "omni_purchase", "value": "120.00"}],
-                "video_3_sec_watched_actions": [{"value": "250"}],
+                "video_play_actions": [{"value": "250"}],
             },
             {
                 "ad_id": "ad-1", "ad_name": "Criativo A", "date_start": "2026-05-02",
@@ -275,7 +275,7 @@ def test_coletar_criativos_meta_grava_insights_criativos_e_thumb(TS, cliente_id)
                 "spend": "10.00", "impressions": "1000", "clicks": "15", "reach": "800",
                 "actions": [{"action_type": "omni_purchase", "value": "3"}],
                 "action_values": [{"action_type": "omni_purchase", "value": "120.00"}],
-                "video_3_sec_watched_actions": [{"value": "250"}],
+                "video_play_actions": [{"value": "250"}],
             }
         ]
     }
