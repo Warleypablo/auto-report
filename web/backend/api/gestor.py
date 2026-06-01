@@ -21,6 +21,7 @@ from models.snapshot import Frequencia as SnapFrequencia
 from models.cliente import Categoria as CatEnum
 from models.criativo import Criativo, CriativoThumb, ThumbStatus
 from services.criativos import agregar_criativos
+from services.clickup_match import normalizar as _normalize_nome
 from models.report_job import JobStatus
 from etl.cliente_publico import slugify
 from schemas import (
@@ -272,27 +273,6 @@ def patch_cup_task(
 import re
 import unicodedata
 from collections import defaultdict
-
-
-_SUFIXOS_JURIDICOS_RE = re.compile(
-    r"\s+(ltda|me|mei|epp|eireli|s\.?a\.?|sa|inc\.?|corp\.?)\s*\.?\s*$",
-    re.IGNORECASE,
-)
-
-
-def _normalize_nome(s: str | None) -> str:
-    if not s:
-        return ""
-    # Remove acentos
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
-    s = s.lower().strip()
-    # Remove sufixos jurídicos no fim
-    s = _SUFIXOS_JURIDICOS_RE.sub("", s)
-    # Remove pontuação (mantém alfanumérico + espaço)
-    s = re.sub(r"[^a-z0-9 ]", " ", s)
-    # Colapsa espaços
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
 
 
 @router.post("/clickup/automatch", status_code=200)
