@@ -35,7 +35,9 @@ def app_with_db():
         conn.execute(text("""
             CREATE TABLE staging.cup_contratos (
                 id_subtask text,
+                id_task text,
                 servico text,
+                status text,
                 responsavel text,
                 data_inicio date
             )
@@ -97,9 +99,10 @@ def _seed_cliente(TS, *, nome, gestor, task_id, subtask_id, gestor_travado=False
         )
         s.execute(
             text("INSERT INTO staging.cup_contratos "
-                 "(id_subtask, servico, responsavel, data_inicio) "
-                 "VALUES (:sub, 'Gestão de Performance', :resp, :dt)"),
-            {"sub": subtask_id, "resp": "Novo Gestor", "dt": date(2026, 1, 1)},
+                 "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                 "VALUES (:sub, :task, 'Gestão de Performance', 'ativo', :resp, :dt)"),
+            {"sub": subtask_id, "task": task_id, "resp": "Novo Gestor",
+             "dt": date(2026, 1, 1)},
         )
         s.commit()
         s.refresh(c)
@@ -168,3 +171,74 @@ def test_sync_idempotente(app_with_db):
 
     with TS() as s:
         assert s.get(Cliente, cid).gestor == "Novo Gestor"
+
+
+def _seed_cliente_resp(TS, *, nome, gestor, task_id, resp, status="ativo",
+                       data_inicio=date(2026, 1, 1), cup_task_id=None):
+    """Cliente + contrato com responsável/serviço/status custom. cup_task_id
+    default = task_id; passe '' para simular cliente sem vínculo."""
+    link = task_id if cup_task_id is None else (cup_task_id or None)
+    with TS() as s:
+        c = Cliente(
+            slug=nome.lower().replace(" ", "-"), nome=nome,
+            categoria=Categoria.ECOMMERCE, gestor=gestor,
+            cup_task_id=link, ativo=True,
+        )
+        s.add(c)
+        s.execute(
+            text("INSERT INTO staging.cup_contratos "
+                 "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                 "VALUES (:sub, :task, 'Gestão de Performance', :st, :resp, :dt)"),
+            {"sub": task_id + "-s", "task": task_id, "st": status,
+             "resp": resp, "dt": data_inicio},
+        )
+        s.commit()
+        s.refresh(c)
+        return c.id
+
+
+def test_sync_normaliza_capitalizacao_do_responsavel(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_resp(TS, nome="Loja N", gestor="Rayan Coutinho",
+                             task_id="tn", resp="rayan coutinho")
+    client = TestClient(app)
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Rayan Coutinho"
+
+
+def test_sync_ignora_cliente_sem_vinculo(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_resp(TS, nome="Loja SV", gestor="Velho",
+                             task_id="tsv", resp="Novo Gestor", cup_task_id="")
+    client = TestClient(app)
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    assert r.json()["atualizados"] == 0
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Velho"
+
+
+def test_sync_prefere_contrato_ativo(app_with_db):
+    app, TS = app_with_db
+    with TS() as s:
+        c = Cliente(slug="loja-ac", nome="Loja AC", categoria=Categoria.ECOMMERCE,
+                    gestor="Velho", cup_task_id="tac", ativo=True)
+        s.add(c)
+        for sub, st, resp, dt in [
+            ("tac-1", "cancelado/inativo", "Antigo", date(2026, 5, 1)),
+            ("tac-2", "ativo", "Atual", date(2026, 1, 1)),
+        ]:
+            s.execute(
+                text("INSERT INTO staging.cup_contratos "
+                     "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                     "VALUES (:sub, 'tac', 'Gestão de Performance', :st, :resp, :dt)"),
+                {"sub": sub, "st": st, "resp": resp, "dt": dt},
+            )
+        s.commit(); s.refresh(c); cid = c.id
+    client = TestClient(app)
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Atual"
