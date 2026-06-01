@@ -59,6 +59,26 @@ services:
       - key: APP_ID_META
         sync: false
 
+  # ── Cron: re-sincroniza staging.cup_* a partir do ClickUp (dados_turbo) ──────
+  # Sem isto, a staging que o app lê congela e os gestores ficam velhos.
+  # Antes do 1º deploy, preencher CUP_SOURCE_URL e CUP_DEST_URL no dashboard.
+  - type: cron
+    name: sync-staging-clickup
+    runtime: python
+    plan: starter
+    region: oregon
+    rootDir: .
+    schedule: "0 6 * * *"  # diariamente às 06:00 UTC (~03:00 BRT)
+    buildCommand: pip install -r web/backend/requirements.txt
+    startCommand: cd web/backend && python -m scripts.sync_staging_clickup
+    envVars:
+      - key: PYTHONPATH
+        value: /opt/render/project/src:/opt/render/project/src/web/backend
+      - key: CUP_SOURCE_URL
+        sync: false  # postgresql://USER:PASS@<host>:5432/dados_turbo  (schema "Clickup")
+      - key: CUP_DEST_URL
+        sync: false  # postgresql://USER:PASS@<host>:5432/autoreport
+
   # ── Frontend (Next.js) ───────────────────────────────────────────────────────
   - type: web
     name: autoreport-frontend
