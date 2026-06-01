@@ -110,3 +110,13 @@ def test_responsavel_ignora_responsavel_vazio():
          "responsavel": "   ", "data_inicio": date(2026, 1, 1)},
     ]
     assert responsavel_performance(contratos) is None
+
+
+def test_responsavel_ignora_contrato_cancelado():
+    # Conta encerrada: o único contrato de Performance está cancelado → não há
+    # gestor de performance vigente (não herdar o responsável do contrato morto).
+    contratos = [
+        {"servico": "Performance", "status": "cancelado/inativo",
+         "responsavel": "Gestor que Saiu", "data_inicio": date(2025, 1, 1)},
+    ]
+    assert responsavel_performance(contratos) is None

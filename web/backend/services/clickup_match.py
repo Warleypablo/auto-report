@@ -126,6 +126,13 @@ def _status_rank(status: str | None) -> int:
     return _STATUS_PRIORIDADE.get((status or "").strip().lower(), 3)
 
 
+# Status que significam contrato ENCERRADO: não definem gestor vigente. Uma
+# conta cujo único contrato de Performance está nesses status não tem gestor de
+# performance (não herdar o responsável de um contrato morto — era a origem do
+# gestor que já saiu reaparecendo).
+_STATUS_MORTOS = {"cancelado/inativo", "não usar"}
+
+
 def _data_key(d: object) -> _date:
     return d if isinstance(d, _date) else _date.min
 
@@ -133,11 +140,16 @@ def _data_key(d: object) -> _date:
 def responsavel_performance(contratos: list[dict]) -> str | None:
     """Dado os contratos de um cliente (cada um {'servico','status',
     'responsavel','data_inicio'}), escolhe o contrato de Performance vigente
-    mais recente e retorna o responsável (ou None)."""
+    mais recente e retorna o responsável (ou None).
+
+    Contratos com status encerrado (`_STATUS_MORTOS`) são ignorados: conta sem
+    nenhum contrato de Performance vivo não tem gestor de performance.
+    """
     perf = [
         c for c in contratos
         if "performance" in (c.get("servico") or "").lower()
         and (c.get("responsavel") or "").strip()
+        and (c.get("status") or "").strip().lower() not in _STATUS_MORTOS
     ]
     if not perf:
         return None
