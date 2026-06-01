@@ -142,7 +142,7 @@ function AgentAvatar({ pulsing = false }: { pulsing?: boolean }) {
         <span className="absolute -inset-1.5 animate-ping rounded-xl bg-[var(--forest)] opacity-[0.12]" />
       )}
       <div
-        className="flex h-9 w-9 items-center justify-center rounded-xl text-base text-white transition-all duration-500"
+        className="flex h-9 w-9 items-center justify-center rounded-xl text-base text-[var(--on-accent)] transition-all duration-500"
         style={{
           background: "var(--forest)",
           boxShadow: pulsing
@@ -328,7 +328,7 @@ export default function TurboMaxPage() {
             <div className="flex items-center gap-4">
               <div className="relative">
                 <div
-                  className="flex h-11 w-11 items-center justify-center rounded-xl text-xl text-white"
+                  className="flex h-11 w-11 items-center justify-center rounded-xl text-xl text-[var(--on-accent)]"
                   style={{
                     background: "var(--forest)",
                     boxShadow: loading
@@ -432,7 +432,7 @@ export default function TurboMaxPage() {
                 /* User bubble */
                 <div key={i} className="flex justify-end">
                   <div
-                    className="max-w-[78%] rounded-2xl rounded-tr-sm px-4 py-3 text-white"
+                    className="max-w-[78%] rounded-2xl rounded-tr-sm px-4 py-3 text-[var(--on-accent)]"
                     style={{
                       background: "var(--forest)",
                       boxShadow: "0 2px 12px rgba(0,200,255,0.25)",
@@ -501,7 +501,7 @@ export default function TurboMaxPage() {
                   onClick={sendMessage}
                   disabled={loading || !input.trim()}
                   title="Enviar (Ctrl+Enter)"
-                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-white transition hover:opacity-90 disabled:opacity-30"
+                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-[var(--on-accent)] transition hover:opacity-90 disabled:opacity-30"
                   style={{ background: "var(--forest)" }}
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
