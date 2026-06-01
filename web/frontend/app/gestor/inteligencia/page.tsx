@@ -15,9 +15,9 @@ function mesLabel(mes: string): string {
 }
 
 const SEV_CONFIG = {
-  critico:      { label: "Crítico",      dot: "bg-[var(--crimson)]", text: "text-[var(--crimson)]",  badge: "bg-red-50 text-[var(--crimson)]" },
-  atencao:      { label: "Atenção",      dot: "bg-[#f59e0b]",        text: "text-[#f59e0b]",         badge: "bg-amber-50 text-[#b45309]" },
-  oportunidade: { label: "Oportunidade", dot: "bg-[var(--forest)]",  text: "text-[var(--forest)]",   badge: "bg-green-50 text-[var(--forest)]" },
+  critico:      { label: "Crítico",      dot: "bg-[var(--crimson)]", text: "text-[var(--crimson)]", badge: "border border-[var(--crimson)]/30 bg-[var(--crimson)]/15 text-[var(--crimson)]" },
+  atencao:      { label: "Atenção",      dot: "bg-[var(--amber)]",   text: "text-[var(--amber)]",   badge: "border border-[var(--amber)]/30 bg-[var(--amber)]/15 text-[var(--amber)]" },
+  oportunidade: { label: "Oportunidade", dot: "bg-[var(--forest)]",  text: "text-[var(--forest)]",  badge: "border border-[var(--forest)]/30 bg-[var(--forest)]/15 text-[var(--forest)]" },
 } as const;
 
 function SeveridadeBadge({ sev }: { sev: InteligenciaAlerta["severidade"] }) {
@@ -126,17 +126,17 @@ export default function InteligenciaPage() {
       {!loading && data && alertas.length > 0 && (
         <div className="mb-6 flex gap-3">
           {n_critico > 0 && (
-            <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-[var(--crimson)]">
+            <span className="rounded-full border border-[var(--crimson)]/30 bg-[var(--crimson)]/15 px-3 py-1 text-xs font-medium text-[var(--crimson)]">
               {n_critico} crítico{n_critico > 1 ? "s" : ""}
             </span>
           )}
           {n_atencao > 0 && (
-            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-[#b45309]">
+            <span className="rounded-full border border-[var(--amber)]/30 bg-[var(--amber)]/15 px-3 py-1 text-xs font-medium text-[var(--amber)]">
               {n_atencao} atenção
             </span>
           )}
           {n_oportunidade > 0 && (
-            <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-[var(--forest)]">
+            <span className="rounded-full border border-[var(--forest)]/30 bg-[var(--forest)]/15 px-3 py-1 text-xs font-medium text-[var(--forest)]">
               {n_oportunidade} oportunidade{n_oportunidade > 1 ? "s" : ""}
             </span>
           )}
