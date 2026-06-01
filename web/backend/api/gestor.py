@@ -459,6 +459,27 @@ def sync_gestores_from_clickup(
     }
 
 
+# ── POST /gestor/clickup/sync-tudo ─────────────────────────────────────────
+# Encadeia: automatch (aplica só vínculos de alta confiança) → sync-gestores.
+# Não auto-aplica nada de baixa confiança; sugestões ficam para revisão manual.
+
+@router.post("/clickup/sync-tudo", status_code=200)
+def sync_tudo(
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    automatch = automatch_clickup(dry_run=False, user=user, session=session)
+    gestores = sync_gestores_from_clickup(user=user, session=session)
+    return {
+        "vinculos_aplicados": automatch["aplicados"],
+        "sugestoes_pendentes": automatch["stats"]["ambiguos"],
+        "sem_candidato": automatch["stats"]["sem_candidato"],
+        "gestores_atualizados": gestores["atualizados"],
+        "automatch": automatch,
+        "gestores": gestores,
+    }
+
+
 # ── GET /gestor/clientes ───────────────────────────────────────────────────
 
 @router.get("/clientes", response_model=ClientesGestorResponse)

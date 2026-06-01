@@ -314,3 +314,29 @@ def test_automatch_nao_aplica_lixo(app_with_db):
     assert all(m["cliente_nome"] != "Nomã" for m in body["matches"])
     with TS() as s:
         assert s.get(Cliente, uuid.UUID(cid)).cup_task_id is None
+
+
+def test_sync_tudo_vincula_e_preenche_gestor(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_sem_cup(TS, "Zacca")
+    _seed_cup_cliente(TS, "cup-zacca", "Zacca Brasil")
+    with TS() as s:
+        s.execute(
+            text("INSERT INTO staging.cup_contratos "
+                 "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                 "VALUES ('z-1', 'cup-zacca', 'Gestão de Performance', 'ativo', "
+                 "'thiago m.', :dt)"),
+            {"dt": date(2026, 1, 1)},
+        )
+        s.commit()
+    client = TestClient(app)
+
+    r = client.post("/gestor/clickup/sync-tudo")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["vinculos_aplicados"] >= 1
+    assert body["gestores_atualizados"] >= 1
+    with TS() as s:
+        c = s.get(Cliente, uuid.UUID(cid))
+        assert c.cup_task_id == "cup-zacca"
+        assert c.gestor == "Thiago M."
