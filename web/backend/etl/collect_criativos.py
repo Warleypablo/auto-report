@@ -16,7 +16,7 @@ _ROOT = Path(__file__).resolve().parents[3]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from sqlalchemy import func, select, true
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -595,9 +595,12 @@ def run_collect_criativos(
     try:
         with advisory_lock(engine, "etl:criativos:run", blocking=False):
             with SessionLocal() as session:
+                # Coleta TODOS os clientes com ad-id (não só ativo=true). Assim
+                # temos visibilidade de spend mesmo de clientes marcados inativos
+                # mas ainda investindo — a definição de "ativo p/ report" passa a
+                # ser data-driven (investiu recentemente) em vez do flag manual.
                 clientes = session.scalars(
                     select(Cliente).where(
-                        Cliente.ativo == true(),
                         (Cliente.id_meta_ads.isnot(None)) | (Cliente.id_google_ads.isnot(None)),
                     )
                 ).all()

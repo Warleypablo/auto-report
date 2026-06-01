@@ -9,13 +9,13 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import distinct, select, text, update
+from sqlalchemy import distinct, or_, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
 from api.auth import require_admin, require_auth
 from db import get_session, SessionLocal
 from app_settings import Settings, get_settings
-from models import Cliente, GestorCadastrado, Insight, ReportJob, Usuario, UsuarioCliente
+from models import AdInsight, Cliente, GestorCadastrado, Insight, ReportJob, Usuario, UsuarioCliente
 from models.snapshot import Snapshot
 from models.snapshot import Frequencia as SnapFrequencia
 from models.cliente import Categoria as CatEnum
@@ -552,13 +552,23 @@ def list_clientes(
 ) -> ClientesGestorResponse:
     from sqlalchemy import text
 
+    # "Ativo p/ report" é data-driven: além do flag, inclui quem investiu algo
+    # nos últimos 30 dias (clientes que estão gastando mas estão marcados inativos
+    # no cadastro). Evita esconder cliente que está rodando mídia.
+    limite_30d = date.today() - timedelta(days=30)
+    com_spend_recente = (
+        select(distinct(AdInsight.cliente_id))
+        .where(AdInsight.dia >= limite_30d, AdInsight.investimento > 0)
+    )
+    ativo_ou_investiu = or_(Cliente.ativo == True, Cliente.id.in_(com_spend_recente))
+
     if user.is_admin:
-        stmt = select(Cliente).where(Cliente.ativo == True).order_by(Cliente.nome.asc())
+        stmt = select(Cliente).where(ativo_ou_investiu).order_by(Cliente.nome.asc())
     else:
         stmt = (
             select(Cliente)
             .join(UsuarioCliente, UsuarioCliente.cliente_id == Cliente.id)
-            .where(UsuarioCliente.usuario_id == user.id, Cliente.ativo == True)
+            .where(UsuarioCliente.usuario_id == user.id, ativo_ou_investiu)
             .order_by(Cliente.nome.asc())
         )
     clientes = session.execute(stmt).scalars().all()
@@ -586,7 +596,6 @@ def list_clientes(
                     ORDER BY data_inicio DESC NULLS LAST
                     LIMIT 1
                 ) ct ON TRUE
-                WHERE c.ativo = true
             """)
         ).mappings().all()
         cup_map = {r["task_id"]: dict(r) for r in rows}
