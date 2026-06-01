@@ -146,8 +146,8 @@ function AgentAvatar({ pulsing = false }: { pulsing?: boolean }) {
         style={{
           background: "var(--forest)",
           boxShadow: pulsing
-            ? "0 0 22px rgba(52,211,153,0.5), 0 0 40px rgba(52,211,153,0.15)"
-            : "0 0 12px rgba(52,211,153,0.22)",
+            ? "0 0 22px rgba(0,200,255,0.5), 0 0 40px rgba(123,47,255,0.15)"
+            : "0 0 12px rgba(0,200,255,0.22)",
         }}
       >
         ⚡
@@ -188,8 +188,8 @@ function AgentThinking() {
           className="rounded-2xl rounded-tl-sm border px-4 py-3.5"
           style={{
             background: "var(--paper-deep)",
-            borderColor: "rgba(52,211,153,0.18)",
-            boxShadow: "0 0 24px rgba(52,211,153,0.06)",
+            borderColor: "rgba(0,200,255,0.18)",
+            boxShadow: "0 0 24px rgba(0,200,255,0.06)",
           }}
         >
           <p className="mb-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--forest)]">
@@ -332,8 +332,8 @@ export default function TurboMaxPage() {
                   style={{
                     background: "var(--forest)",
                     boxShadow: loading
-                      ? "0 0 28px rgba(52,211,153,0.55), 0 0 56px rgba(52,211,153,0.2)"
-                      : "0 0 16px rgba(52,211,153,0.3)",
+                      ? "0 0 28px rgba(0,200,255,0.55), 0 0 56px rgba(123,47,255,0.2)"
+                      : "0 0 16px rgba(0,200,255,0.3)",
                     transition: "box-shadow 0.4s ease",
                   }}
                 >
@@ -350,8 +350,8 @@ export default function TurboMaxPage() {
                     className="rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest"
                     style={{
                       color: "var(--forest)",
-                      borderColor: "rgba(52,211,153,0.3)",
-                      background: "rgba(52,211,153,0.07)",
+                      borderColor: "rgba(0,200,255,0.3)",
+                      background: "rgba(0,200,255,0.07)",
                     }}
                   >
                     AI Agent
@@ -359,7 +359,7 @@ export default function TurboMaxPage() {
                 </div>
                 <div className="mt-0.5 flex items-center gap-1.5">
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${loading ? "animate-pulse bg-amber-400" : "bg-emerald-400"}`}
+                    className={`h-1.5 w-1.5 rounded-full ${loading ? "animate-pulse bg-[var(--amber)]" : "bg-[var(--forest)]"}`}
                   />
                   <p className="font-mono text-[10px] text-[var(--muted)]">
                     {loading ? "Processando…" : "Online · especialista em performance digital"}
@@ -394,7 +394,7 @@ export default function TurboMaxPage() {
         <div
           className="relative flex-1 overflow-hidden"
           style={{
-            background: "radial-gradient(ellipse at 50% 40%, rgba(52,211,153,0.09) 0%, transparent 60%), var(--paper)",
+            background: "radial-gradient(ellipse at 50% 40%, rgba(0,200,255,0.10) 0%, transparent 60%), var(--paper)",
           }}
         >
           {/* Turbo Partners watermark — fica fixo enquanto mensagens rolam */}
@@ -406,7 +406,7 @@ export default function TurboMaxPage() {
                 color: "var(--forest)",
                 opacity: 0.09,
                 letterSpacing: "-0.02em",
-                filter: "drop-shadow(0 0 40px rgba(52,211,153,0.3))",
+                filter: "drop-shadow(0 0 40px rgba(0,200,255,0.3))",
               }}
             >
               ⚡
@@ -435,7 +435,7 @@ export default function TurboMaxPage() {
                     className="max-w-[78%] rounded-2xl rounded-tr-sm px-4 py-3 text-white"
                     style={{
                       background: "var(--forest)",
-                      boxShadow: "0 2px 12px rgba(52,211,153,0.2)",
+                      boxShadow: "0 2px 12px rgba(0,200,255,0.25)",
                     }}
                   >
                     {renderContent(msg.content)}
@@ -478,12 +478,12 @@ export default function TurboMaxPage() {
         >
           <div className="mx-auto max-w-3xl">
             <div
-              className="flex gap-3 rounded-2xl border p-2 transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(52,211,153,0.1)]"
+              className="flex gap-3 rounded-2xl border p-2 transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(0,200,255,0.18)]"
               style={{
                 background: "var(--paper-deep)",
                 borderColor: "var(--rule-soft)",
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(52,211,153,0.35)")}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,200,255,0.45)")}
               onBlur={(e) => (e.currentTarget.style.borderColor = "var(--rule-soft)")}
             >
               <textarea
