@@ -1,0 +1,16 @@
+{% macro big_kpi(label, value, delta=None, vs=None) %}
+<div class="card" style="flex:1">
+  <div class="accent-line-top"></div>
+  <div class="kpi-big-label">{{ label }}</div>
+  <div class="kpi-big-value">{{ value if value else "—" }}</div>
+  {% if delta %}
+  <div class="kpi-big-delta {{ delta | delta_class }}">
+    {{ "↑" if delta | delta_class == "up" else ("↓" if delta | delta_class == "down" else "") }}
+    {{ delta }}
+  </div>
+  {% endif %}
+  {% if vs %}
+  <div class="kpi-big-vs">vs {{ vs }}</div>
+  {% endif %}
+</div>
+{% endmacro %}

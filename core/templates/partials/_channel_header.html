@@ -1,0 +1,15 @@
+{% macro channel_header(nome, icone_html, periodo_ref, periodo_comp, subtitulo="") %}
+<div class="channel-header">
+  <div class="row" style="align-items:center;gap:10px;">
+    <div class="channel-icon">{{ icone_html | safe }}</div>
+    <div>
+      <div class="channel-name">{{ nome }}</div>
+      <div class="channel-sub">{{ subtitulo if subtitulo else "Performance · " + periodo_ref }}</div>
+    </div>
+  </div>
+  <div class="channel-period">
+    <strong>{{ periodo_ref }}</strong>
+    vs {{ periodo_comp }}
+  </div>
+</div>
+{% endmacro %}

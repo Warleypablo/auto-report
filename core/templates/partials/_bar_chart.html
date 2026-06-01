@@ -1,0 +1,42 @@
+{% macro bar_chart(chart_id, dados_list, label="Faturamento diário", labels=None) %}
+{% set _labels = labels if labels else ["Seg","Ter","Qua","Qui","Sex"] %}
+<div class="chart-wrap">
+  <div class="chart-title">{{ label }}</div>
+  {% if dados_list %}
+  <canvas id="{{ chart_id }}" style="max-height:90px;"></canvas>
+  <script>
+    _chartsToRender++;
+    (function(){
+      var ctx = document.getElementById('{{ chart_id }}').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: {{ _labels | tojson }},
+          datasets: [{
+            data: {{ dados_list | tojson }},
+            backgroundColor: 'rgba(0,200,255,0.55)',
+            borderColor: '#00C8FF',
+            borderWidth: 1,
+            borderRadius: 4,
+          }]
+        },
+        options: {
+          responsive: true,
+          animation: { onComplete: _chartDone },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#111130' }, ticks: { color: '#4B5563', font: { size: 7 } } },
+            y: { grid: { color: '#111130' }, ticks: { color: '#4B5563', font: { size: 7 },
+                 callback: function(v){ return v >= 1000 ? 'R$'+(v/1000).toFixed(0)+'k' : v; } } }
+          }
+        }
+      });
+    })();
+  </script>
+  {% else %}
+  <div style="color:var(--t-faint);font-size:10px;text-align:center;padding:24px 0;">
+    Dados diários indisponíveis
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

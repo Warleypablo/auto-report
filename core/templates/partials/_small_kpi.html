@@ -1,0 +1,12 @@
+{% macro small_kpi(label, value, delta=None) %}
+<div class="card-sm">
+  <div class="kpi-sm-label">{{ label }}</div>
+  <div class="kpi-sm-value">{{ value if value else "—" }}</div>
+  {% if delta %}
+  <div class="kpi-sm-delta {{ delta | delta_class }}">
+    {{ "↑" if delta | delta_class == "up" else ("↓" if delta | delta_class == "down" else "") }}
+    {{ delta }}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
