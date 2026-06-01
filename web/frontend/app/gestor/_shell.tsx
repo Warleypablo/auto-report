@@ -55,7 +55,7 @@ export default function GestorShell({ children }: { children: React.ReactNode })
                 className={[
                   "mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition",
                   active
-                    ? "bg-[var(--paper-deep)] font-medium text-[var(--ink)]"
+                    ? "bg-[var(--forest-soft)] font-medium text-[var(--forest)] shadow-[inset_2px_0_0_0_var(--forest)]"
                     : "text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]",
                 ].join(" ")}
               >
@@ -72,7 +72,7 @@ export default function GestorShell({ children }: { children: React.ReactNode })
             className={[
               "mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition",
               currentTab === "configuracoes" && pathname === "/gestor"
-                ? "bg-[var(--paper-deep)] font-medium text-[var(--ink)]"
+                ? "bg-[var(--forest-soft)] font-medium text-[var(--forest)] shadow-[inset_2px_0_0_0_var(--forest)]"
                 : "text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]",
             ].join(" ")}
           >

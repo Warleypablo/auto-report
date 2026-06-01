@@ -124,7 +124,7 @@ function Sidebar({
               className={[
                 "mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition",
                 tab === id
-                  ? "bg-[var(--paper-deep)] font-medium text-[var(--ink)]"
+                  ? "bg-[var(--forest-soft)] font-medium text-[var(--forest)] shadow-[inset_2px_0_0_0_var(--forest)]"
                   : "text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]",
               ].join(" ")}
             >
@@ -135,7 +135,7 @@ function Sidebar({
               <div className="mb-1 ml-5 flex flex-col">
                 {REPORTES_SUB_TABS.map(({ id: subId, label: subLabel }) => (
                   <button key={subId} onClick={() => setReportesTab(subId)}
-                    className={["flex w-full items-center rounded-md px-3 py-1.5 text-left text-xs transition", reportesTab === subId ? "font-medium text-[var(--ink)]" : "text-[var(--muted)] hover:text-[var(--ink)]"].join(" ")}
+                    className={["flex w-full items-center rounded-md px-3 py-1.5 text-left text-xs transition", reportesTab === subId ? "font-medium text-[var(--forest)]" : "text-[var(--muted)] hover:text-[var(--ink)]"].join(" ")}
                   >
                     <span className={["mr-2 text-[8px]", reportesTab === subId ? "opacity-100" : "opacity-0"].join(" ")}>▸</span>
                     {subLabel}
@@ -166,7 +166,7 @@ function Sidebar({
           className={[
             "mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition",
             tab === "configuracoes"
-              ? "bg-[var(--paper-deep)] font-medium text-[var(--ink)]"
+              ? "bg-[var(--forest-soft)] font-medium text-[var(--forest)] shadow-[inset_2px_0_0_0_var(--forest)]"
               : "text-[var(--muted)] hover:bg-[var(--paper-deep)] hover:text-[var(--ink)]",
           ].join(" ")}
         >
@@ -181,7 +181,7 @@ function Sidebar({
                 onClick={() => setConfigTab(subId)}
                 className={[
                   "flex w-full items-center rounded-md px-3 py-1.5 text-left text-xs transition",
-                  configTab === subId ? "font-medium text-[var(--ink)]" : "text-[var(--muted)] hover:text-[var(--ink)]",
+                  configTab === subId ? "font-medium text-[var(--forest)]" : "text-[var(--muted)] hover:text-[var(--ink)]",
                 ].join(" ")}
               >
                 <span className={["mr-2 text-[8px]", configTab === subId ? "opacity-100" : "opacity-0"].join(" ")}>▸</span>
