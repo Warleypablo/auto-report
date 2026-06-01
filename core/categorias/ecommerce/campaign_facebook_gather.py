@@ -38,6 +38,7 @@ META_API_VERSION = "v23.0"        # estável ~fev‑2026
 TIMEOUT          = 30             # seg. para requests
 _TOP_N           = 20             # anúncios a devolver (top 5 no template, restantes em raw_dados)
 _BATCH_SIZE      = 50             # máx. IDs por chamada no endpoint /?ids=
+_THUMB_SIZE      = 640            # px do thumbnail de video (vs ~64 default)
 _DEF_DASH        = "-"
 
 # Contamos apenas o tipo de compra "canônico". Evita duplicidades.
@@ -153,38 +154,66 @@ def _video_3s_views_from_row(row: dict) -> Optional[int]:
 # -----------------------------------------------------------------------------
 
 def _get_creatives_thumbnail_urls(ad_ids: List[str]) -> Dict[str, str]:
-    """Busca a URL da miniatura (thumbnail) de cada ad creative.
+    """URL da melhor imagem de cada ad creative, em boa resolução.
 
-    Utiliza o endpoint de *Ad* com nested field ``creative{thumbnail_url}``.
-    É feita em lote via parâmetro **ids** para reduzir round‑trips.
+    - Imagem estática: usa ``image_url`` (resolução cheia).
+    - Vídeo/sem image_url: busca o ``thumbnail_url`` do creative em ``_THUMB_SIZE``
+      px (vs. ~64px do default) via parâmetros thumbnail_width/height.
+    - Fallback final: thumbnail pequeno (64px) se a busca grande falhar.
+    Em lote via parâmetro **ids** para reduzir round-trips.
     """
     if not ad_ids:
         return {}
 
     thumbs: Dict[str, str] = {}
-    # Quebra em lotes para evitar URLs gigantes (~2 KB)
+    url = f"https://graph.facebook.com/{META_API_VERSION}"
     for i in range(0, len(ad_ids), _BATCH_SIZE):
         chunk = ad_ids[i : i + _BATCH_SIZE]
-        ids_param = ",".join(chunk)
-        url = f"https://graph.facebook.com/{META_API_VERSION}"
-        params = {
-            "ids": ids_param,
-            # image_url = imagem em resolução cheia (preferida); thumbnail_url
-            # (~64px) é fallback p/ criativos de vídeo/carrossel sem image_url.
-            "fields": "creative{image_url,thumbnail_url}",
-            "access_token": ACCESS_TOKEN_META_SYSTEM,
-        }
         try:
-            resp = requests.get(url, params=params, timeout=TIMEOUT)
+            resp = requests.get(url, params={
+                "ids": ",".join(chunk),
+                "fields": "creative{id,image_url,thumbnail_url}",
+                "access_token": ACCESS_TOKEN_META_SYSTEM,
+            }, timeout=TIMEOUT)
             resp.raise_for_status()
             data: Dict[str, dict] = resp.json()
-            for ad_id, ad_obj in data.items():
-                creative = ad_obj.get("creative") or {}
-                thumb_url = creative.get("image_url") or creative.get("thumbnail_url")
-                if thumb_url:
-                    thumbs[ad_id] = thumb_url
         except Exception as exc:  # noqa: BLE001
-            log.exception("Falha ao obter thumbnails Meta Ads: %s", exc)
+            log.exception("Falha ao obter creatives Meta Ads: %s", exc)
+            continue
+
+        # image_url = melhor; senao guarda o creative_id p/ buscar thumb grande.
+        precisa_thumb: Dict[str, List[str]] = {}
+        for ad_id, ad_obj in data.items():
+            creative = ad_obj.get("creative") or {}
+            img = creative.get("image_url")
+            if img:
+                thumbs[ad_id] = img
+                continue
+            fallback = creative.get("thumbnail_url")  # 64px, ultimo recurso
+            if fallback:
+                thumbs[ad_id] = fallback
+            cid = creative.get("id")
+            if cid:
+                precisa_thumb.setdefault(cid, []).append(ad_id)
+
+        # Thumbnail grande (video): batch nos creative_ids com thumbnail_width.
+        if precisa_thumb:
+            try:
+                resp2 = requests.get(url, params={
+                    "ids": ",".join(precisa_thumb.keys()),
+                    "fields": "thumbnail_url",
+                    "thumbnail_width": _THUMB_SIZE,
+                    "thumbnail_height": _THUMB_SIZE,
+                    "access_token": ACCESS_TOKEN_META_SYSTEM,
+                }, timeout=TIMEOUT)
+                resp2.raise_for_status()
+                for cid, obj in resp2.json().items():
+                    big = obj.get("thumbnail_url")
+                    if big:
+                        for ad_id in precisa_thumb.get(cid, []):
+                            thumbs[ad_id] = big  # sobrescreve o 64px
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Falha thumbnail grande Meta (mantem 64px): %s", exc)
     return thumbs
 
 # -----------------------------------------------------------------------------

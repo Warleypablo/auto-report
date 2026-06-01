@@ -24,6 +24,7 @@ META_API_VERSION = "v23.0"
 TIMEOUT          = 30            # seg
 _TOP_N           = 20            # anúncios devolvidos (top 5 no template, restantes em raw_dados)
 _BATCH_SIZE      = 50            # máx. IDs por chamada a /?ids=
+_THUMB_SIZE      = 640            # px do thumbnail de video (vs ~64 default)
 
 _ATTR_WINDOW = ["7d_click"]      # janela de atribuição única
 
@@ -153,28 +154,66 @@ def _video_3s_views_from_row(row: dict) -> Optional[int]:
 # Miniaturas dos criativos
 ###############################################################################
 def _get_creatives_thumbnail_urls(ad_ids: List[str]) -> Dict[str, str]:
+    """URL da melhor imagem de cada ad creative, em boa resolução.
+
+    - Imagem estática: usa ``image_url`` (resolução cheia).
+    - Vídeo/sem image_url: busca o ``thumbnail_url`` do creative em ``_THUMB_SIZE``
+      px (vs. ~64px do default) via parâmetros thumbnail_width/height.
+    - Fallback final: thumbnail pequeno (64px) se a busca grande falhar.
+    Em lote via parâmetro **ids** para reduzir round-trips.
+    """
     if not ad_ids:
         return {}
 
     thumbs: Dict[str, str] = {}
+    url = f"https://graph.facebook.com/{META_API_VERSION}"
     for i in range(0, len(ad_ids), _BATCH_SIZE):
         chunk = ad_ids[i : i + _BATCH_SIZE]
-        url = f"https://graph.facebook.com/{META_API_VERSION}"
-        params = {
-            "ids": ",".join(chunk),
-            "fields": "creative{image_url,thumbnail_url}",
-            "access_token": ACCESS_TOKEN_META_SYSTEM,
-        }
         try:
-            resp = requests.get(url, params=params, timeout=TIMEOUT)
+            resp = requests.get(url, params={
+                "ids": ",".join(chunk),
+                "fields": "creative{id,image_url,thumbnail_url}",
+                "access_token": ACCESS_TOKEN_META_SYSTEM,
+            }, timeout=TIMEOUT)
             resp.raise_for_status()
             data: Dict[str, dict] = resp.json()
-            for ad_id, ad_obj in data.items():
-                thumb_url = (ad_obj.get("creative") or {}).get("thumbnail_url")
-                if thumb_url:
-                    thumbs[ad_id] = thumb_url
-        except Exception:  # noqa: BLE001
-            log.exception("Falha ao obter thumbnails Meta Ads")
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Falha ao obter creatives Meta Ads: %s", exc)
+            continue
+
+        # image_url = melhor; senao guarda o creative_id p/ buscar thumb grande.
+        precisa_thumb: Dict[str, List[str]] = {}
+        for ad_id, ad_obj in data.items():
+            creative = ad_obj.get("creative") or {}
+            img = creative.get("image_url")
+            if img:
+                thumbs[ad_id] = img
+                continue
+            fallback = creative.get("thumbnail_url")  # 64px, ultimo recurso
+            if fallback:
+                thumbs[ad_id] = fallback
+            cid = creative.get("id")
+            if cid:
+                precisa_thumb.setdefault(cid, []).append(ad_id)
+
+        # Thumbnail grande (video): batch nos creative_ids com thumbnail_width.
+        if precisa_thumb:
+            try:
+                resp2 = requests.get(url, params={
+                    "ids": ",".join(precisa_thumb.keys()),
+                    "fields": "thumbnail_url",
+                    "thumbnail_width": _THUMB_SIZE,
+                    "thumbnail_height": _THUMB_SIZE,
+                    "access_token": ACCESS_TOKEN_META_SYSTEM,
+                }, timeout=TIMEOUT)
+                resp2.raise_for_status()
+                for cid, obj in resp2.json().items():
+                    big = obj.get("thumbnail_url")
+                    if big:
+                        for ad_id in precisa_thumb.get(cid, []):
+                            thumbs[ad_id] = big  # sobrescreve o 64px
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Falha thumbnail grande Meta (mantem 64px): %s", exc)
     return thumbs
 
 ###############################################################################
