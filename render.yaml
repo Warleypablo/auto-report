@@ -23,6 +23,10 @@ services:
         value: "8"
       - key: ETL_THREADS
         value: "5"
+      # Liga a geração de report em PDF (Playwright) em vez do Google Slides.
+      # Se o PDF falhar (ex: cota de Drive), o código cai de volta para Slides.
+      - key: PDF_REPORT_ATIVO
+        value: "true"
       # Senha global da área do cliente (/cliente/login). Trocar via dashboard
       # antes do primeiro deploy. Mesma senha para todos os CNPJs.
       - key: CLIENTE_PASSWORD
