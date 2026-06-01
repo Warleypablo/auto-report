@@ -265,3 +265,51 @@ def test_sync_conta_contrato_sem_responsavel(app_with_db):
     assert body["com_responsavel"] == 0
     with TS() as s:
         assert s.get(Cliente, cid).gestor == "Velho"
+
+
+def _seed_cup_cliente(TS, task_id, nome):
+    with TS() as s:
+        s.execute(
+            text("INSERT INTO staging.cup_clientes (task_id, nome) VALUES (:t, :n)"),
+            {"t": task_id, "n": nome},
+        )
+        s.commit()
+
+def _seed_cliente_sem_cup(TS, nome):
+    with TS() as s:
+        c = Cliente(slug=nome.lower().replace(" ", "-"), nome=nome,
+                    categoria=Categoria.ECOMMERCE, ativo=True, cup_task_id=None)
+        s.add(c); s.commit(); s.refresh(c)
+        return str(c.id)
+
+
+def test_automatch_auto_aplica_match_forte(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_sem_cup(TS, "Noway Drinks")
+    _seed_cup_cliente(TS, "cup-noway", "Noway Drink")
+    _seed_cup_cliente(TS, "cup-outro", "Padaria do Zé")
+    client = TestClient(app)
+
+    prev = client.post("/gestor/clickup/automatch?dry_run=true")
+    assert prev.status_code == 200, prev.text
+    body = prev.json()
+    assert any(m["cliente_nome"] == "Noway Drinks" and m["task_id"] == "cup-noway"
+               for m in body["matches"])
+    assert body["matches"][0]["score"] >= 0.90
+
+    apply = client.post("/gestor/clickup/automatch?dry_run=false")
+    assert apply.status_code == 200, apply.text
+    assert apply.json()["aplicados"] >= 1
+    with TS() as s:
+        assert s.get(Cliente, __import__("uuid").UUID(cid)).cup_task_id == "cup-noway"
+
+
+def test_automatch_nao_aplica_lixo(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_sem_cup(TS, "Nomã")
+    _seed_cup_cliente(TS, "cup-bueno", "Bueno Mate")
+    client = TestClient(app)
+    body = client.post("/gestor/clickup/automatch?dry_run=false").json()
+    assert all(m["cliente_nome"] != "Nomã" for m in body["matches"])
+    with TS() as s:
+        assert s.get(Cliente, __import__("uuid").UUID(cid)).cup_task_id is None

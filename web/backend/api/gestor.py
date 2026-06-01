@@ -279,57 +279,49 @@ def automatch_clickup(
     user: Usuario = Depends(require_admin),
     session: Session = Depends(get_session),
 ) -> dict:
-    # 1. Carrega todas as tasks do ClickUp e agrupa por nome normalizado
-    cup_rows = session.execute(
-        text("SELECT task_id, nome FROM staging.cup_clientes WHERE nome IS NOT NULL AND TRIM(nome) <> ''")
-    ).mappings().all()
+    from services.clickup_match import melhores_candidatos, classificar
 
-    cup_by_norm: dict[str, list[dict]] = defaultdict(list)
-    for r in cup_rows:
-        norm = _normalize_nome(r["nome"])
-        if norm:
-            cup_by_norm[norm].append({"task_id": r["task_id"], "nome": r["nome"]})
+    cup_rows = [
+        {"task_id": r["task_id"], "nome": r["nome"]}
+        for r in session.execute(
+            text("SELECT task_id, nome FROM staging.cup_clientes "
+                 "WHERE nome IS NOT NULL AND TRIM(nome) <> ''")
+        ).mappings().all()
+    ]
 
-    # 2. Carrega clientes ativos sem vínculo
     clientes = session.execute(
         select(Cliente)
-        .where(Cliente.cup_task_id.is_(None), Cliente.ativo == True)
+        .where(Cliente.cup_task_id.is_(None), Cliente.ativo == True)  # noqa: E712
         .order_by(Cliente.nome.asc())
     ).scalars().all()
 
-    # 3. Pra cada cliente, tenta match
     matches: list[dict] = []
     ambiguos: list[dict] = []
     sem_candidato: list[dict] = []
 
     for c in clientes:
-        norm = _normalize_nome(c.nome)
-        candidates = cup_by_norm.get(norm, [])
-
-        if len(candidates) == 1:
+        cands = melhores_candidatos(c.nome, cup_rows, k=5)
+        cls = classificar(cands)
+        if cls == "auto":
+            sc, tid, cup_nome = cands[0]
             matches.append({
-                "cliente_id": str(c.id),
-                "cliente_nome": c.nome,
-                "task_id": candidates[0]["task_id"],
-                "cup_nome": candidates[0]["nome"],
+                "cliente_id": str(c.id), "cliente_nome": c.nome,
+                "task_id": tid, "cup_nome": cup_nome, "score": round(sc, 3),
             })
-        elif len(candidates) > 1:
+        elif cls == "sugestao":
             ambiguos.append({
-                "cliente_id": str(c.id),
-                "cliente_nome": c.nome,
-                "candidatos": candidates,
+                "cliente_id": str(c.id), "cliente_nome": c.nome,
+                "candidatos": [
+                    {"task_id": tid, "nome": nome, "score": round(sc, 3)}
+                    for sc, tid, nome in cands if sc >= 0.70
+                ],
             })
         else:
-            sem_candidato.append({
-                "cliente_id": str(c.id),
-                "cliente_nome": c.nome,
-            })
+            sem_candidato.append({"cliente_id": str(c.id), "cliente_nome": c.nome})
 
-    # 4. Aplica se não for dry_run
     aplicados = 0
     if not dry_run and matches:
         for m in matches:
-            # Re-verifica que ninguém pegou esse task_id no meio do caminho
             ja_usado = session.execute(
                 select(Cliente.id).where(Cliente.cup_task_id == m["task_id"])
             ).scalar_one_or_none()
