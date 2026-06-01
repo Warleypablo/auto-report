@@ -242,3 +242,26 @@ def test_sync_prefere_contrato_ativo(app_with_db):
     assert r.status_code == 200, r.text
     with TS() as s:
         assert s.get(Cliente, cid).gestor == "Atual"
+
+
+def test_sync_conta_contrato_sem_responsavel(app_with_db):
+    app, TS = app_with_db
+    with TS() as s:
+        c = Cliente(slug="loja-sr", nome="Loja SR", categoria=Categoria.ECOMMERCE,
+                    gestor="Velho", cup_task_id="tsr", ativo=True)
+        s.add(c)
+        s.execute(
+            text("INSERT INTO staging.cup_contratos "
+                 "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                 "VALUES ('tsr-1', 'tsr', 'Gestão de Performance', 'ativo', '   ', :dt)"),
+            {"dt": date(2026, 1, 1)},
+        )
+        s.commit(); s.refresh(c); cid = c.id
+    client = TestClient(app)
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["com_contrato_performance"] >= 1
+    assert body["com_responsavel"] == 0
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Velho"

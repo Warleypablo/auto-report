@@ -21,7 +21,7 @@ from models.snapshot import Frequencia as SnapFrequencia
 from models.cliente import Categoria as CatEnum
 from models.criativo import Criativo, CriativoThumb, ThumbStatus
 from services.criativos import agregar_criativos
-from services.clickup_match import normalizar as _normalize_nome
+from services.clickup_match import normalizar as _normalize_nome, responsavel_performance
 from models.report_job import JobStatus
 from etl.cliente_publico import slugify
 from schemas import (
@@ -378,8 +378,6 @@ def sync_gestores_from_clickup(
                                ↓ contrato vigente mais recente (services.clickup_match)
                                responsavel → normalize_gestor_name → clientes.gestor
     """
-    from services.clickup_match import responsavel_performance
-
     rows = session.execute(
         text("""
             SELECT c.id::text AS cliente_id, c.gestor, c.gestor_travado,
@@ -416,10 +414,15 @@ def sync_gestores_from_clickup(
     atualizados = 0
 
     for cliente_id, ent in por_cliente.items():
+        tem_perf = any(
+            "performance" in (c.get("servico") or "").lower()
+            for c in ent["contratos"]
+        )
+        if tem_perf:
+            com_contrato_performance += 1
         resp_bruto = responsavel_performance(ent["contratos"])
         if resp_bruto is None:
             continue
-        com_contrato_performance += 1
         com_responsavel += 1
         novo = normalize_gestor_name(resp_bruto)
         if ent["gestor_travado"]:
@@ -427,6 +430,8 @@ def sync_gestores_from_clickup(
         if ent["gestor_atual"] == novo:
             continue
         a_atualizar += 1
+        # Guarda extra no WHERE: protege contra um PATCH concorrente que trave
+        # o gestor entre o SELECT inicial e este UPDATE (janela TOCTOU).
         res = session.execute(
             update(Cliente)
             .where(Cliente.id == uuid.UUID(cliente_id),
