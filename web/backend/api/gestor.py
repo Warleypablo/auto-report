@@ -462,12 +462,19 @@ def sync_gestores_from_clickup(
 # ── POST /gestor/clickup/sync-tudo ─────────────────────────────────────────
 # Encadeia: automatch (aplica só vínculos de alta confiança) → sync-gestores.
 # Não auto-aplica nada de baixa confiança; sugestões ficam para revisão manual.
+#
+# NÃO é atômico: automatch faz commit dos vínculos antes de sync-gestores rodar.
+# Em falha parcial (vínculos aplicados, gestores não), basta re-rodar — ambas as
+# operações são idempotentes.
 
 @router.post("/clickup/sync-tudo", status_code=200)
 def sync_tudo(
     user: Usuario = Depends(require_admin),
     session: Session = Depends(get_session),
 ) -> dict:
+    # Chamadas in-process (não via DI do FastAPI): todos os parâmetros são
+    # passados explicitamente. Ao adicionar um novo parâmetro Depends/Query a
+    # essas funções, propague-o aqui — senão o sentinel Depends(...) vira o valor.
     automatch = automatch_clickup(dry_run=False, user=user, session=session)
     gestores = sync_gestores_from_clickup(user=user, session=session)
     return {
