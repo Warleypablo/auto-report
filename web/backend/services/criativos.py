@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from models import AdInsight, Cliente, Criativo, Usuario, UsuarioCliente
 from models.cliente import Categoria
-from schemas import CriativoAgregado
+from schemas import CriativoAgregado, TotaisCriativos
 
 _REDE_MAP = {"meta": "META", "google": "GOOGLE"}
 
@@ -41,7 +41,7 @@ def agregar_criativos(
     limit: int,
     offset: int,
     user: Usuario,
-) -> tuple[list[CriativoAgregado], int]:
+) -> tuple[list[CriativoAgregado], int, TotaisCriativos]:
     """Agrega ad_insights por (cliente_id, rede, ad_id) no range [de, ate].
 
     Somas no banco (GROUP BY); métricas derivadas em Python; ordenação e
@@ -179,6 +179,22 @@ def agregar_criativos(
 
     total = len(items)
 
+    # Totais do período INTEIRO (todos os criativos do filtro), antes da
+    # paginação/ordenação — é o que os KPIs da tela devem mostrar. Somar só a
+    # página carregada (ordenada por ROAS) subestima MUITO o investimento, pois
+    # criativos de ROAS alto costumam ter baixo investimento.
+    tot_inv = sum(it.investimento for it in items)
+    tot_fat = sum(it.faturamento for it in items)
+    totais = TotaisCriativos(
+        criativos=total,
+        investimento=tot_inv,
+        faturamento=tot_fat,
+        roas=(tot_fat / tot_inv) if tot_inv > 0 else None,
+        conversoes=sum(it.conversoes for it in items),
+        impressoes=sum(it.impressoes for it in items),
+        clicks=sum(it.clicks for it in items),
+    )
+
     _sort_key = {
         "roas": lambda it: (it.roas if it.roas is not None else -1.0),
         "faturamento": lambda it: it.faturamento,
@@ -187,4 +203,4 @@ def agregar_criativos(
     items.sort(key=_sort_key, reverse=True)
 
     items = items[offset:offset + limit]
-    return items, total
+    return items, total, totais

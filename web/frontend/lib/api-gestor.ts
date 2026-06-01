@@ -158,9 +158,20 @@ export type CriativoAgregado = {
   frequency: number | null;
 };
 
+export type TotaisCriativos = {
+  criativos: number;
+  investimento: number;
+  faturamento: number;
+  roas: number | null;
+  conversoes: number;
+  impressoes: number;
+  clicks: number;
+};
+
 export type CriativosResponse = {
   items: CriativoAgregado[];
   total: number;
+  totais: TotaisCriativos;
 };
 
 export type CriativosParams = {

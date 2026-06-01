@@ -1841,7 +1841,7 @@ def list_criativos(
     user: Usuario = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> CriativosResponse:
-    items, total = agregar_criativos(
+    items, total, totais = agregar_criativos(
         session,
         de=de,
         ate=ate,
@@ -1867,7 +1867,7 @@ def list_criativos(
             it.thumb_url = f"/api/gestor/criativos/{it.criativo_id}/thumb"
         else:
             it.thumb_url = None
-    return CriativosResponse(items=items, total=total)
+    return CriativosResponse(items=items, total=total, totais=totais)
 
 
 # ── GET /gestor/criativos/{criativo_id}/thumb ──────────────────────────────

@@ -5,7 +5,7 @@ from .admin import (
     PeriodosResponse,
 )
 from .case import CaseDetail, CaseListItem, PontoEvolucao
-from .criativo import CriativoAgregado, CriativosResponse
+from .criativo import CriativoAgregado, CriativosResponse, TotaisCriativos
 from .cliente import ClienteLoginRequest, ClienteLoginResponse, ClientePublic
 from .gestor import (
     AssignClientesRequest,
@@ -65,6 +65,7 @@ __all__ = [
     "CoberturaResponse",
     "CriativoAgregado",
     "CriativosResponse",
+    "TotaisCriativos",
     "CreateUsuarioRequest",
     "GestorCadastradoCreate",
     "GestorCadastradoItem",

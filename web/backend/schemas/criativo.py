@@ -32,6 +32,19 @@ class CriativoAgregado(BaseModel):
     frequency: float | None = None
 
 
+class TotaisCriativos(BaseModel):
+    """Agregados do período INTEIRO (todos os criativos do filtro), independente
+    de paginação/ordenação. É o que deve aparecer nos KPIs da tela."""
+    criativos: int
+    investimento: float
+    faturamento: float
+    roas: float | None = None
+    conversoes: float
+    impressoes: int
+    clicks: int
+
+
 class CriativosResponse(BaseModel):
     items: list[CriativoAgregado]
     total: int
+    totais: TotaisCriativos

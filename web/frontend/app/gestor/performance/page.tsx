@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import GestorShell from "../_shell";
 import { gestorApi } from "@/lib/api-gestor";
-import type { CriativoAgregado } from "@/lib/api-gestor";
+import type { CriativoAgregado, TotaisCriativos } from "@/lib/api-gestor";
 import {
   FiltrosBar,
   type GestorOpt,
@@ -63,10 +63,27 @@ function nameHash(s: string): number {
   return h;
 }
 
-function AdThumbnail({ src, alt, className }: { src: string | null; alt: string; className?: string }) {
+function AdThumbnail({ src, alt, className, semImagem }: { src: string | null; alt: string; className?: string; semImagem?: boolean }) {
   const safeAlt = alt && alt.trim().length > 0 ? alt : "Criativo";
   const [from, to] = THUMB_GRADIENTS[nameHash(safeAlt) % THUMB_GRADIENTS.length];
   const initial = (safeAlt.trim()[0] ?? "?").toUpperCase();
+  // Anúncio sem criativo visual (ex.: search/texto): placeholder explícito de "texto",
+  // distinto do gradiente com inicial — deixa claro que não há foto por natureza, e
+  // não dá a impressão de uma imagem que falhou ao carregar.
+  if (!src && semImagem) {
+    return (
+      <div
+        className={`relative flex items-center justify-center overflow-hidden select-none bg-[var(--paper-deep)] ${className ?? ""}`}
+        title="Anúncio de texto — sem imagem"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="h-1/2 w-1/2 text-[var(--muted)] opacity-50">
+          <line x1="5" y1="7" x2="19" y2="7" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+          <line x1="5" y1="17" x2="13" y2="17" />
+        </svg>
+      </div>
+    );
+  }
   return (
     <div
       className={`relative overflow-hidden select-none ${className ?? ""}`}
@@ -174,6 +191,7 @@ function Podium({ ads, maxRoas, onSelect }: {
               <AdThumbnail
                 src={ad.thumb_url}
                 alt={ad.nome ?? ad.cliente_nome}
+                semImagem={ad.thumb_status === "sem_imagem"}
                 className="h-full w-full object-cover transition group-hover:scale-[1.02]"
               />
               <span className="absolute left-2.5 top-2.5 text-xl drop-shadow">{MEDAL[ad.rank] ?? `#${ad.rank + 1}`}</span>
@@ -260,7 +278,7 @@ function Tabela({ ads, maxRoas, onSelect }: {
                 <td className="max-w-[200px] px-3 py-3">
                   <div className="flex items-center gap-2.5">
                     <div className="h-9 w-14 flex-shrink-0 overflow-hidden rounded-md">
-                      <AdThumbnail src={ad.thumb_url} alt={ad.nome ?? ad.cliente_nome} className="h-full w-full object-cover" />
+                      <AdThumbnail src={ad.thumb_url} alt={ad.nome ?? ad.cliente_nome} semImagem={ad.thumb_status === "sem_imagem"} className="h-full w-full object-cover" />
                     </div>
                     <span className="block truncate text-xs font-medium text-[var(--ink)]" title={ad.nome ?? ""}>{ad.nome ?? "Sem nome"}</span>
                   </div>
@@ -450,6 +468,7 @@ export default function RankingsPage() {
   const [view, setView] = useState<"ranking" | "scatter">("ranking");
   const [ads, setAds] = useState<RankedCriativo[]>([]);
   const [total, setTotal] = useState(0);
+  const [totais, setTotais] = useState<TotaisCriativos | null>(null);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -496,6 +515,7 @@ export default function RankingsPage() {
       .then((res) => {
         if (cancelled) return;
         setTotal(res.total);
+        setTotais(res.totais);
         const ranked: RankedCriativo[] = res.items.map((it, i) => ({
           ...it,
           rank: offset + i,
@@ -507,6 +527,7 @@ export default function RankingsPage() {
         if (!cancelled && primeiraPagina) {
           setAds([]);
           setTotal(0);
+          setTotais(null);
         }
       })
       .finally(() => {
@@ -517,9 +538,11 @@ export default function RankingsPage() {
     return () => { cancelled = true; };
   }, [filtrosDeb, offset]);
 
-  const totalFat = ads.reduce((s, a) => s + (a.faturamento ?? 0), 0);
-  const totalInv = ads.reduce((s, a) => s + (a.investimento ?? 0), 0);
-  const roasMedio = totalInv > 0 ? totalFat / totalInv : null;
+  // KPIs do PERÍODO inteiro (vêm do backend), não a soma da página carregada —
+  // somar só a página (top-N por ROAS) subestima muito o investimento da carteira.
+  const totalFat = totais?.faturamento ?? null;
+  const totalInv = totais?.investimento ?? null;
+  const roasMedio = totais?.roas ?? null;
   const maxRoas = ads.length > 0 ? Math.max(...ads.filter((a) => a.roas != null).map((a) => a.roas ?? 0)) : 0;
   const rest = ads.slice(3);
   const temMais = ads.length < total;
@@ -585,10 +608,10 @@ export default function RankingsPage() {
       ) : (
         <>
           <KpiStrip items={[
-            { label: "Criativos", value: `${ads.length}${temMais ? `/${total}` : ""}`, sub: "no período" },
-            { label: "Faturamento total", value: fmtK(totalFat), sub: "página carregada", highlight: true },
-            { label: "Investimento total", value: fmtK(totalInv), sub: "página carregada" },
-            { label: "ROAS médio", value: roasMedio != null ? fmtRoas(roasMedio) : "—", sub: "ponderado por investimento" },
+            { label: "Criativos", value: `${totais?.criativos ?? total}`, sub: "no período" },
+            { label: "Faturamento total", value: totalFat != null ? fmtK(totalFat) : "—", sub: "no período", highlight: true },
+            { label: "Investimento total", value: totalInv != null ? fmtK(totalInv) : "—", sub: "no período" },
+            { label: "ROAS médio", value: roasMedio != null ? fmtRoas(roasMedio) : "—", sub: "ponderado · no período" },
           ]} />
 
           {view === "scatter" ? (

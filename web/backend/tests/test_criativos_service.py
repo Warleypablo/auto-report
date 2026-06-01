@@ -78,7 +78,7 @@ def test_agrega_dois_dias_em_uma_linha(db):
 
     with TS() as s:
         admin = s.get(Usuario, admin_id)
-        items, total = agregar_criativos(
+        items, total, _totais = agregar_criativos(
             s, de=date(2026, 5, 1), ate=date(2026, 5, 31),
             rede="todos", categorias=None, gestor=None, cliente_slug=None,
             fat_min=None, fat_max=None, inv_min=None, inv_max=None,
@@ -127,7 +127,7 @@ def test_derivadas_none_quando_denominador_zero(db):
 
     with TS() as s:
         admin = s.get(Usuario, admin_id)
-        items, total = agregar_criativos(
+        items, total, _totais = agregar_criativos(
             s, de=date(2026, 5, 1), ate=date(2026, 5, 31),
             rede="todos", categorias=None, gestor=None, cliente_slug=None,
             fat_min=None, fat_max=None, inv_min=None, inv_max=None,
@@ -176,7 +176,8 @@ def _run(s, admin, **over):
         cli_inv_max=None, order_by="roas", limit=50, offset=0, user=admin,
     )
     kwargs.update(over)
-    return agregar_criativos(s, **kwargs)
+    items, total, _totais = agregar_criativos(s, **kwargs)
+    return items, total
 
 
 def test_filtro_rede_meta(db):
@@ -333,3 +334,42 @@ def test_escopo_gestor_so_ve_seus_clientes(db):
         items, total = _run(s, gestor)
     assert total == 1
     assert items[0].ad_id == "MEU"
+
+
+def test_totais_somam_periodo_inteiro_nao_so_a_pagina(db):
+    """Regressão: KPIs devem refletir o período INTEIRO, não a página (top-N por
+    ROAS). Criativo de ROAS alto costuma ter baixo investimento — somar só a
+    página subestima muito o investimento da carteira."""
+    TS = db
+    with TS() as s:
+        admin = _admin(s)
+        c = _cliente(s, slug="loja")
+        # 1 criativo de ROAS altíssimo e investimento ínfimo (lidera o ranking)
+        _criativo(s, cliente=c, rede=RedeAnuncio.META, ad_id="HI", nome="ROAS alto")
+        _insight(s, cliente=c, rede=RedeAnuncio.META, ad_id="HI", dia=date(2026, 5, 1),
+                 investimento=10, faturamento=5000, conversoes=1)
+        # 3 criativos de ROAS baixo mas investimento alto (o grosso da verba)
+        for i in range(3):
+            _criativo(s, cliente=c, rede=RedeAnuncio.META, ad_id=f"LO{i}", nome=f"Volume {i}")
+            _insight(s, cliente=c, rede=RedeAnuncio.META, ad_id=f"LO{i}", dia=date(2026, 5, 1),
+                     investimento=1000, faturamento=1500, conversoes=20)
+        s.commit()
+        admin_id = admin.id
+
+    with TS() as s:
+        admin = s.get(Usuario, admin_id)
+        # limit=1 → página traz só o ROAS alto (inv=10)
+        items, total, totais = agregar_criativos(
+            s, de=date(2026, 5, 1), ate=date(2026, 5, 31),
+            rede="todos", categorias=None, gestor=None, cliente_slug=None,
+            fat_min=None, fat_max=None, inv_min=None, inv_max=None,
+            cli_fat_min=None, cli_fat_max=None, cli_inv_min=None, cli_inv_max=None,
+            order_by="roas", limit=1, offset=0, user=admin,
+        )
+    soma_pagina = sum(it.investimento for it in items)
+    assert total == 4
+    assert soma_pagina == 10.0                       # a página (top-1 ROAS) é ínfima
+    assert totais.criativos == 4
+    assert totais.investimento == 3010.0             # 10 + 3*1000 = período INTEIRO
+    assert totais.faturamento == 9500.0              # 5000 + 3*1500
+    assert abs(totais.roas - (9500.0 / 3010.0)) < 1e-9
