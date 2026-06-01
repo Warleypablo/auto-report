@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% from "partials/_big_kpi.html"        import big_kpi %}
+{% from "partials/_small_kpi.html"      import small_kpi %}
+{% from "partials/_channel_header.html" import channel_header %}
+{% from "partials/_bar_chart.html"      import bar_chart %}
+{% from "partials/_page_footer.html"    import page_footer %}
+
+{% set total_pags = 6 %}
+{% set dd = dados_diarios if dados_diarios is defined else {} %}
+
+{% block content %}
+
+{# PÁG 1 — CAPA #}
+<div class="page">
+  <div class="accent-line"></div>
+  <div class="glow-tr"></div>
+  <div class="glow-bl"></div>
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+    <span class="badge">Lead Com Site</span>
+    <span style="font-size:9px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--t-dim);">Turbo Partners</span>
+  </div>
+
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px 0;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--cyan);margin-bottom:10px;">
+      Relatório de Performance
+    </div>
+    <div style="font-size:38px;font-weight:900;letter-spacing:-1.5px;line-height:1.05;color:var(--t-primary);margin-bottom:10px;">
+      {{ cliente if cliente is defined else "Cliente" }}
+    </div>
+    <div style="font-size:13px;color:var(--t-ghost);">
+      <strong style="color:var(--t-muted);">
+        {{ freq if freq is defined else "Semana" }} {{ semana if semana is defined else "" }} · {{ periodo_inicio if periodo_inicio is defined else "" }} a {{ periodo_fim if periodo_fim is defined else "" }}
+      </strong>
+    </div>
+
+    <div class="accent-line-h" style="margin:20px 0;"></div>
+
+    <div class="g2 g3c">
+      <div class="card-sm">
+        <div class="kpi-sm-label">Leads</div>
+        <div class="kpi-sm-value">{{ leads if leads is defined else "—" }}</div>
+        {% if var_leads is defined and var_leads %}
+        <div class="kpi-sm-delta {{ var_leads | delta_class }}">{{ var_leads }}</div>
+        {% endif %}
+      </div>
+      <div class="card-sm">
+        <div class="kpi-sm-label">CPL</div>
+        <div class="kpi-sm-value">{{ cpl if cpl is defined else "—" }}</div>
+        {% if var_cpl is defined and var_cpl %}
+        <div class="kpi-sm-delta {{ var_cpl | delta_class }}">{{ var_cpl }}</div>
+        {% endif %}
+      </div>
+      <div class="card-sm">
+        <div class="kpi-sm-label">Investimento</div>
+        <div class="kpi-sm-value">{{ inv_sem if inv_sem is defined else "—" }}</div>
+        {% if var_inv_sem is defined and var_inv_sem %}
+        <div class="kpi-sm-delta {{ var_inv_sem | delta_class }}">{{ var_inv_sem }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+    <span style="font-size:8px;color:var(--t-dim);letter-spacing:2px;text-transform:uppercase;">Relatório Semanal</span>
+    <span style="font-size:9px;color:var(--t-dim);">{{ periodo_fim if periodo_fim is defined else "" }}</span>
+  </div>
+</div>
+
+{# PÁG 2 — RESUMO EXECUTIVO #}
+<div class="page">
+  <div class="glow-tr"></div>
+
+  <div style="font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--cyan);margin-bottom:16px;">
+    Resumo Executivo
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <div class="accent-line-top"></div>
+    <div class="kpi-big-label">Leads Gerados</div>
+    <div class="kpi-big-value">{{ leads if leads is defined else "—" }}</div>
+    {% if var_leads is defined and var_leads %}
+    <div class="kpi-big-delta {{ var_leads | delta_class }}" style="margin-top:6px;">
+      {{ "↑" if var_leads | delta_class == "up" else "↓" }} {{ var_leads }} vs semana anterior
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="g2 g2c" style="margin-bottom:12px;">
+    {{ big_kpi("CPL Médio", cpl if cpl is defined else "—", var_cpl if var_cpl is defined else None, cpl_comp if cpl_comp is defined else None) }}
+    {{ big_kpi("Investimento Total", inv_sem if inv_sem is defined else "—", var_inv_sem if var_inv_sem is defined else None) }}
+  </div>
+
+  <div class="g2 g2c" style="margin-bottom:12px;">
+    {{ big_kpi("Conversões", conv if conv is defined else "—", var_conv if var_conv is defined else None) }}
+    {{ big_kpi("Taxa de Atendimento", taxa_atend if taxa_atend is defined else "—", var_taxa_atend if var_taxa_atend is defined else None) }}
+  </div>
+
+  <div class="card-sm" style="margin-bottom:auto;">
+    <div style="font-size:10px;color:var(--t-muted);line-height:1.7;font-style:italic;">
+      {% if var_leads is defined and var_leads and var_leads | delta_class == "up" %}
+        Semana {{ semana if semana is defined else "" }} registrou crescimento de {{ var_leads }} nos leads
+        gerados, totalizando {{ leads if leads is defined else "" }}. As campanhas seguem em aceleração.
+      {% else %}
+        Semana {{ semana if semana is defined else "" }} registrou {{ leads if leads is defined else "" }} leads gerados.
+        {% if var_leads is defined and var_leads %}
+        Variação de {{ var_leads }} vs. semana anterior — campanhas em fase de otimização.
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  {{ page_footer(2, total_pags) }}
+</div>
+
+{# PÁG 3 — META ADS #}
+<div class="page">
+  <div class="glow-tr"></div>
+
+  {{ channel_header(
+      "Meta Ads",
+      '<span style="background:linear-gradient(135deg,#1877F2,#0D5FBF);width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;">f</span>',
+      (periodo_inicio if periodo_inicio is defined else "") + " – " + (periodo_fim if periodo_fim is defined else ""),
+      (periodo_inicio_comp if periodo_inicio_comp is defined else "") + " – " + (periodo_fim_comp if periodo_fim_comp is defined else "")
+  ) }}
+
+  <div class="row" style="margin-bottom:10px;">
+    {{ big_kpi("Leads (Meta)", leads_meta if leads_meta is defined else (leads if leads is defined else "—"), var_leads_meta if var_leads_meta is defined else (var_leads if var_leads is defined else None), leads_meta_comp if leads_meta_comp is defined else None) }}
+    {{ big_kpi("CPL (Meta)", cpl_meta if cpl_meta is defined else (cpl if cpl is defined else "—"), var_cpl_meta if var_cpl_meta is defined else (var_cpl if var_cpl is defined else None), cpl_meta_comp if cpl_meta_comp is defined else None) }}
+  </div>
+
+  <div class="g2 g3c" style="margin-bottom:10px;">
+    {{ small_kpi("Investimento", inv_meta if inv_meta is defined else (inv_sem if inv_sem is defined else "—"), var_inv_meta if var_inv_meta is defined else None) }}
+    {{ small_kpi("Cliques", cliques_meta if cliques_meta is defined else "—", var_cliques_meta if var_cliques_meta is defined else None) }}
+    {{ small_kpi("CTR", ctr_meta if ctr_meta is defined else "—", var_ctr_meta if var_ctr_meta is defined else None) }}
+    {{ small_kpi("CPM", cpm_meta if cpm_meta is defined else "—", var_cpm_meta if var_cpm_meta is defined else None) }}
+    {{ small_kpi("CPC", cpc_meta if cpc_meta is defined else "—", var_cpc_meta if var_cpc_meta is defined else None) }}
+    {{ small_kpi("Conversões", conv_meta if conv_meta is defined else "—", var_conv_meta if var_conv_meta is defined else None) }}
+  </div>
+
+  {{ bar_chart("chart_meta", dd.get("meta_ads") if dd else None, "Leads diários · Meta Ads") }}
+
+  {{ page_footer(3, total_pags) }}
+</div>
+
+{# PÁG 4 — GOOGLE ADS #}
+<div class="page">
+  <div class="glow-tr"></div>
+
+  {{ channel_header(
+      "Google Ads",
+      '<span style="background:linear-gradient(135deg,#EA4335,#FBBC05);width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:#fff;">G</span>',
+      (periodo_inicio if periodo_inicio is defined else "") + " – " + (periodo_fim if periodo_fim is defined else ""),
+      (periodo_inicio_comp if periodo_inicio_comp is defined else "") + " – " + (periodo_fim_comp if periodo_fim_comp is defined else "")
+  ) }}
+
+  <div class="row" style="margin-bottom:10px;">
+    {{ big_kpi("Leads (Google)", leads_google if leads_google is defined else "—", var_leads_google if var_leads_google is defined else None, leads_google_comp if leads_google_comp is defined else None) }}
+    {{ big_kpi("CPL (Google)", cpl_google if cpl_google is defined else "—", var_cpl_google if var_cpl_google is defined else None, cpl_google_comp if cpl_google_comp is defined else None) }}
+  </div>
+
+  <div class="g2 g3c" style="margin-bottom:10px;">
+    {{ small_kpi("Investimento", inv_google if inv_google is defined else "—", var_inv_google if var_inv_google is defined else None) }}
+    {{ small_kpi("Impressões", impr_google if impr_google is defined else "—", var_impr_google if var_impr_google is defined else None) }}
+    {{ small_kpi("CTR", ctr_google if ctr_google is defined else "—", var_ctr_google if var_ctr_google is defined else None) }}
+    {{ small_kpi("Cliques", cliques_google if cliques_google is defined else "—", var_cliques_google if var_cliques_google is defined else None) }}
+    {{ small_kpi("CPC", cpc_google if cpc_google is defined else "—", var_cpc_google if var_cpc_google is defined else None) }}
+    {{ small_kpi("CPA", cpa_google if cpa_google is defined else "—", var_cpa_google if var_cpa_google is defined else None) }}
+  </div>
+
+  {{ bar_chart("chart_google", dd.get("google_ads") if dd else None, "Leads diários · Google Ads") }}
+
+  {{ page_footer(4, total_pags) }}
+</div>
+
+{# PÁG 5 — PAINEL DE NEGÓCIO (LEAD) #}
+<div class="page">
+  <div class="glow-tr"></div>
+
+  {{ channel_header(
+      "Painel de Negócio",
+      '<span style="background:linear-gradient(135deg,#00C8FF,#7B2FFF);width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;">📊</span>',
+      (periodo_inicio if periodo_inicio is defined else "") + " – " + (periodo_fim if periodo_fim is defined else ""),
+      (periodo_inicio_comp if periodo_inicio_comp is defined else "") + " – " + (periodo_fim_comp if periodo_fim_comp is defined else ""),
+      "Negócio · " + (freq if freq is defined else "Semana") + " " + (semana if semana is defined else "")
+  ) }}
+
+  <div class="row" style="margin-bottom:10px;">
+    {{ big_kpi("Leads Recebidos", leads if leads is defined else "—", var_leads if var_leads is defined else None, leads_comp if leads_comp is defined else None) }}
+    {{ big_kpi("CPL do Painel", cpl_painel if cpl_painel is defined else (cpl if cpl is defined else "—"), var_cpl_painel if var_cpl_painel is defined else (var_cpl if var_cpl is defined else None)) }}
+  </div>
+
+  <div class="g2 g3c" style="margin-bottom:10px;">
+    {{ small_kpi("Tx. Conv. Lead→Cliente", taxa_conv_lead if taxa_conv_lead is defined else "—") }}
+    {{ small_kpi("CPA", cpa if cpa is defined else "—", var_cpa if var_cpa is defined else None) }}
+    {{ small_kpi("Fat. Gerado", fat_gerado if fat_gerado is defined else "—", var_fat_gerado if var_fat_gerado is defined else None) }}
+    {{ small_kpi("Meta de Leads", meta_leads if meta_leads is defined else "—") }}
+    {{ small_kpi("% Meta Atingida", per_meta_leads if per_meta_leads is defined else "—") }}
+    {{ small_kpi("Invest. Total", inv_sem if inv_sem is defined else "—", var_inv_sem if var_inv_sem is defined else None) }}
+  </div>
+
+  {{ bar_chart("chart_painel_lead", dd.get("painel") if dd else None, "Leads diários") }}
+
+  {{ page_footer(5, total_pags) }}
+</div>
+
+{# PÁG 6 — CONTRA-CAPA #}
+<div class="page" style="justify-content:center;align-items:center;gap:20px;">
+  <div class="glow-tr"></div>
+  <div class="glow-bl"></div>
+
+  <div style="width:50px;height:2px;background:linear-gradient(to right,var(--cyan),var(--purple));border-radius:1px;"></div>
+
+  <div style="text-align:center;">
+    <div style="font-size:22px;font-weight:900;letter-spacing:4px;text-transform:uppercase;color:var(--t-primary);">
+      Turbo<br>Partners
+    </div>
+    <div style="font-size:9px;color:var(--t-faint);letter-spacing:3px;text-transform:uppercase;margin-top:6px;">
+      Performance · Tech · Growth
+    </div>
+  </div>
+
+  <div style="width:50px;height:2px;background:linear-gradient(to right,var(--cyan),var(--purple));border-radius:1px;"></div>
+
+  <div style="text-align:center;font-size:11px;color:var(--t-ghost);line-height:2;">
+    contato@turbopartners.com.br<br>
+    turbopartners.com.br<br>
+    @turbo.partners
+  </div>
+
+  {% if proximo_report is defined %}
+  <div style="background:rgba(0,200,255,0.06);border:1px solid rgba(0,200,255,0.2);border-radius:10px;padding:14px 24px;text-align:center;">
+    <div style="font-size:9px;color:var(--cyan);font-weight:700;letter-spacing:2px;text-transform:uppercase;">Próximo Report</div>
+    <div style="font-size:13px;color:var(--t-primary);font-weight:800;margin-top:4px;">{{ proximo_report }}</div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
