@@ -122,6 +122,24 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
     handler = get_handler(cliente.categoria)
     dados.update(handler.coletar_dados(cliente, periodo_ref, periodo_comp))
 
+    # Análise narrativa por IA (não bloqueia o report — None se falhar/sem key).
+    try:
+        from core import ai_insights
+        from app_settings import get_settings as _get_settings
+        _contexto_ia = {
+            "cliente": cliente.nome,
+            "categoria": cliente.categoria,
+            "freq": "Semanal" if FREQ == "SEMANAL" else "Mensal",
+            "periodo": f"{periodo_ref.inicio:%d/%m} a {periodo_ref.fim:%d/%m/%Y}",
+        }
+        _texto_ia = ai_insights.gerar_analise(
+            dados, _contexto_ia, api_key=_get_settings().anthropic_api_key
+        )
+        if _texto_ia:
+            dados["{{ai_analise}}"] = _texto_ia
+    except Exception:
+        _log.exception("Falha ao injetar análise de IA para %s", cliente.nome)
+
     # ── Modo PDF: pula o Google Slides (muito mais rápido) ──────────────────
     # Gerar o Slides custa ~13s (copiar template + preencher + pós-processar) e
     # produz um artefato que não é mais usado. No modo PDF subimos o PDF direto
