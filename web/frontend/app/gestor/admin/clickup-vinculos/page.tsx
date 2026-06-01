@@ -323,7 +323,7 @@ export default function ClickupVinculosPage() {
 
       {/* Modal de preview do automatch */}
       {automatchPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#04040E]/80 p-6">
           <div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-md border border-[var(--rule-soft)] bg-[var(--paper)] shadow-xl">
             <div className="border-b border-[var(--rule-soft)] px-5 py-3">
               <h2 className="font-display text-lg font-medium text-[var(--ink)]">

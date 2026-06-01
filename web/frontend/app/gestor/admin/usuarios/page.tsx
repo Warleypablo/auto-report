@@ -109,13 +109,13 @@ export default function AdminUsuariosPage() {
           <li key={u.id}>
             <Link
               href={`/gestor/admin/usuarios/${u.id}`}
-              className="flex items-center justify-between rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-4 py-3 transition hover:border-[var(--forest)]"
+              className="flex items-center justify-between rounded-md border border-[var(--rule-soft)] bg-[var(--paper-soft)] px-4 py-3 transition hover:border-[var(--forest)] hover:shadow-[0_0_18px_-6px_var(--forest)]"
             >
               <div>
                 <p className="text-sm font-medium text-[var(--ink)]">
                   {u.nome}
                   {u.is_admin && (
-                    <span className="ml-2 text-xs text-[var(--amber)]">admin</span>
+                    <span className="ml-2 rounded-full border border-[var(--forest)]/40 bg-[var(--forest)]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--forest)]">admin</span>
                   )}
                   {!u.ativo && (
                     <span className="ml-2 text-xs text-[var(--muted)]">(inativo)</span>

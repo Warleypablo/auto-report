@@ -274,7 +274,7 @@ export default function ClienteReportPage({ params }: { params: { slug: string }
               { label: "Leads", value: snapMes.leads != null ? snapMes.leads.toLocaleString("pt-BR") : "—", var: null },
               { label: "Vendas", value: snapMes.vendas != null ? snapMes.vendas.toLocaleString("pt-BR") : "—", var: null },
             ].map((kpi) => (
-              <div key={kpi.label} className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-3">
+              <div key={kpi.label} className="kpi-turbo relative overflow-hidden rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-3">
                 <p className="eyebrow mb-1 text-[10px] text-[var(--muted)]">{kpi.label}</p>
                 <p className="font-mono-num text-lg font-medium text-[var(--ink)]">{kpi.value}</p>
                 {kpi.var != null && (

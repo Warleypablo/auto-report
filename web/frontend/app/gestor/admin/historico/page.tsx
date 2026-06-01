@@ -185,7 +185,7 @@ export default function HistoricoAdminPage() {
                             {c.nome}
                           </span>
                           {!c.ativo && (
-                            <span className="rounded bg-[var(--paper-deep)] px-1.5 py-0.5 text-[9px] text-[var(--muted)]">
+                            <span className="rounded border border-[var(--rule-soft)] bg-[var(--paper-deep)] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-[var(--muted)]">
                               inativo
                             </span>
                           )}
