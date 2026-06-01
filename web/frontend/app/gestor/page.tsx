@@ -916,7 +916,7 @@ function AbaDashboard({
           { label: "Investimento total",value: metricas ? fmtBRL(totalInvestimento) : "—",   sub: "última coleta" },
           { label: "ROAS médio",        value: mediaRoas != null ? `${fmtNum(mediaRoas)}×` : "—", sub: "carteira" },
         ].map(({ label, value, sub }) => (
-          <div key={label} className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
+          <div key={label} className="kpi-turbo relative overflow-hidden rounded-lg border border-[var(--rule-soft)] bg-[var(--paper-soft)] p-4">
             <p className="eyebrow mb-2 text-xs text-[var(--muted)]">{label}</p>
             <p className="font-mono-num text-2xl font-medium text-[var(--ink)]">{value}</p>
             <p className="mt-1 text-xs text-[var(--muted)]">{sub}</p>
@@ -980,7 +980,7 @@ function AbaDashboard({
                   {topRoas.map((_, i) => (
                     <Cell
                       key={i}
-                      fill={`color-mix(in srgb, var(--forest) ${100 - i * 8}%, var(--paper-deep))`}
+                      fill={`color-mix(in srgb, var(--forest) ${Math.max(100 - i * 10, 25)}%, var(--forest-deep))`}
                     />
                   ))}
                 </Bar>
