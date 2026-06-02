@@ -137,7 +137,11 @@ def html_para_pdf(html: str) -> bytes:
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        # channel="chromium": usa o Chromium "cheio" (new-headless), que é
+        # instalado por `playwright install chromium`. Sem isso, o launch headless
+        # padrão procura o chrome-headless-shell (download à parte) e quebra em
+        # produção com "Executable doesn't exist at .../chrome-headless-shell".
+        browser = p.chromium.launch(channel="chromium")
         page = browser.new_page()
         # wait_until="load": sem recursos de rede (fonte embutida, sem Chart.js CDN)
         page.set_content(html, wait_until="load")
