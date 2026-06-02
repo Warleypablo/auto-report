@@ -1,11 +1,11 @@
 """Wraps core report generation and returns the report URL.
 
-Called in a background thread by the gestor API. Replicates the steps of
-report_generator.processar_cliente() but captures and returns presentation_id
-instead of discarding it.
+Called in a background thread by the gestor API. Replicates the data steps of
+report_generator.processar_cliente(), gera o report em PDF (Playwright), sobe
+para o Drive do cliente e devolve a URL do PDF.
 
-When PDF_REPORT_ATIVO=true, also generates a PDF, uploads it to the same
-Drive folder as the Slides, and returns the Drive PDF URL instead.
+O report é SEMPRE PDF — não há geração de Google Slides nem fallback. Se o PDF
+falhar, o erro propaga e o job é marcado como ERRO (com o motivo).
 """
 from __future__ import annotations
 
@@ -73,7 +73,10 @@ def _resolver_periodo_ref(
 
 
 def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENSAL", semana_inicio: str | None = None) -> str:
-    """Generate Google Slides report for one client and return the Drive URL.
+    """Gera o report em PDF para um cliente e devolve a URL do Drive.
+
+    (Nome mantido como ``gerar_slides`` por compatibilidade com o chamador; o
+    comportamento é PDF-only.)
 
     Args:
         slug: DB slug (used only for error messages here)
@@ -82,16 +85,16 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
         frequencia: "MENSAL" or "SEMANAL"
 
     Returns:
-        Full URL to the created Google Slides presentation
+        URL do Drive do PDF gerado.
 
     Raises:
         ValueError: if client is not found in the Central Sheet
+        RuntimeError: se a geração/upload do PDF não devolver URL
         Exception: propagated from core (API errors, Drive errors, etc.)
     """
     from config import settings as core_settings  # type: ignore
     from core import (  # type: ignore
         basic_placeholders,
-        slide_filler,
         template_manager,
     )
     from core.categorias import get_handler  # type: ignore
@@ -140,38 +143,24 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
     except Exception:
         _log.exception("Falha ao injetar análise de IA para %s", cliente.nome)
 
-    # ── Modo PDF: pula o Google Slides (muito mais rápido) ──────────────────
-    # Gerar o Slides custa ~13s (copiar template + preencher + pós-processar) e
-    # produz um artefato que não é mais usado. No modo PDF subimos o PDF direto
-    # na pasta de destino do cliente, sem tocar no Slides.
-    # PDF é o PADRÃO (default "true"). Para voltar ao Slides, setar
-    # PDF_REPORT_ATIVO=false explicitamente no ambiente.
-    if os.getenv("PDF_REPORT_ATIVO", "true").lower() == "true":
-        _log.info("[PDF] modo PDF ativo p/ %s — gerando PDF (cai p/ Slides só se falhar)", cliente.nome)
-        try:
-            folder_id = template_manager._dest_folder(
-                cliente,
-                template_manager._parse_id(cliente.pasta_url, "folder"),
-                freq=FREQ,
-            )
-            pdf_url = _gerar_e_subir_pdf(cliente, dados, periodo_ref, folder_id)
-            if pdf_url:
-                _log.info("[PDF] sucesso p/ %s → %s", cliente.nome, pdf_url)
-                set_status(cliente, "GERADO ✅")
-                return pdf_url
-            _log.warning("PDF retornou vazio p/ %s — caindo para Slides", cliente.nome)
-        except Exception:
-            _log.exception("Falha no PDF-only para %s — caindo para Slides", cliente.nome)
-
-    # ── Modo Slides (legado ou fallback se o PDF falhar) ────────────────────
-    presentation_id = template_manager.criar_copia(
-        cliente, periodo_ref, template_id=handler.template_id, FREQ=FREQ
+    # ── Report SEMPRE em PDF. Sem Google Slides, sem fallback. ──────────────
+    # Se a geração do PDF falhar, o erro PROPAGA (o job vira ERRO visível com o
+    # motivo, via handler do chamador) em vez de cair calado no Slides.
+    _log.info("[PDF] gerando report PDF p/ %s", cliente.nome)
+    folder_id = template_manager._dest_folder(
+        cliente,
+        template_manager._parse_id(cliente.pasta_url, "folder"),
+        freq=FREQ,
     )
-    slide_filler.preencher(presentation_id, dados, handler._SLIDES.meta_ads)
-    handler.pos_processar(presentation_id, dados)
+    pdf_url = _gerar_e_subir_pdf(cliente, dados, periodo_ref, folder_id)
+    if not pdf_url:
+        raise RuntimeError(
+            f"Geração de PDF retornou vazio para {cliente.nome} "
+            "(upload ao Drive não devolveu URL)"
+        )
     set_status(cliente, "GERADO ✅")
-
-    return f"https://docs.google.com/presentation/d/{presentation_id}/edit"
+    _log.info("[PDF] sucesso p/ %s → %s", cliente.nome, pdf_url)
+    return pdf_url
 
 
 def _gerar_e_subir_pdf(cliente, dados: dict, periodo_ref, folder_id: str) -> str | None:
