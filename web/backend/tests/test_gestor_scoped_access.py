@@ -78,7 +78,9 @@ def app_with_db():
     app.dependency_overrides[get_session] = s_dep
     app.dependency_overrides[Settings] = cfg_dep
 
-    return app, TS
+    yield app, TS
+
+    app.dependency_overrides.clear()
 
 
 def _create_user(TS, *, is_admin: bool = False) -> uuid.UUID:
