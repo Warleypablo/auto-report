@@ -824,7 +824,7 @@ Run:
 cd web/backend && .venv/bin/python - <<'PY'
 import psycopg
 from services.clickup_match import melhores_candidatos, classificar
-URL = "postgresql://postgres:Turbosenha*@34.95.249.110:5432/autoreport"
+URL = "postgresql://postgres:***@<host>:5432/autoreport"
 with psycopg.connect(URL) as conn:
     semv = conn.execute("SELECT nome FROM clientes WHERE ativo AND cup_task_id IS NULL").fetchall()
     cup = [{"task_id": t, "nome": n} for t, n in
