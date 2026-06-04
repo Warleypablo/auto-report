@@ -52,7 +52,7 @@ def main(dry_run: bool = False) -> None:
 
         for g in gestores:
             clientes_ativos = session.execute(
-                select(Cliente).where(Cliente.gestor == g.nome, Cliente.ativo == True)
+                select(Cliente).where(Cliente.gestor == g.nome, Cliente.ativo.is_(True))
             ).scalars().all()
 
             if not clientes_ativos:
@@ -91,7 +91,7 @@ def main(dry_run: bool = False) -> None:
                     cliente_id=c.id,
                 ).on_conflict_do_nothing()
                 result = session.execute(stmt)
-                vinculos += result.rowcount
+                vinculos += result.rowcount or 0
 
         if not dry_run:
             session.commit()
