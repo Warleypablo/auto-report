@@ -179,7 +179,9 @@ function Sidebar({
         </button>
         {tab === "configuracoes" && (
           <div className="mb-1 ml-5 flex flex-col">
-            {CONFIG_SUB_TABS.map(({ id: subId, label: subLabel }) => (
+            {CONFIG_SUB_TABS
+              .filter(({ id }) => id !== "config-gestores" || user?.is_admin)
+              .map(({ id: subId, label: subLabel }) => (
               <button
                 key={subId}
                 onClick={() => setConfigTab(subId)}
@@ -1366,6 +1368,7 @@ function AbaConfiguracoes({
   clientes,
   todosClientes,
   configTab,
+  user,
   onClienteUpdated,
   onClienteDeleted,
   onClienteCriado,
@@ -1375,6 +1378,7 @@ function AbaConfiguracoes({
   clientes: ClienteGestor[];
   todosClientes: ClienteGestor[];
   configTab: ConfigTab;
+  user: UsuarioInfo | null;
   onClienteUpdated: (c: ClienteGestor) => void;
   onClienteDeleted: (id: string) => void;
   onClienteCriado: (c: ClienteGestor) => void;
@@ -1611,12 +1615,14 @@ function AbaConfiguracoes({
         <h1 className="font-display text-2xl font-medium text-[var(--ink)]">Clientes</h1>
         <div className="flex items-center gap-3">
           <span className="eyebrow text-xs text-[var(--muted)]">{clientes.length} cliente{clientes.length !== 1 ? "s" : ""}</span>
-          <button
-            onClick={() => { setCriando(true); setCriarForm(emptyCreateForm()); setCreateErr(null); }}
-            className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] transition hover:shadow-[0_0_16px_-4px_var(--forest)] hover:brightness-110"
-          >
-            + Adicionar cliente
-          </button>
+          {user?.is_admin && (
+            <button
+              onClick={() => { setCriando(true); setCriarForm(emptyCreateForm()); setCreateErr(null); }}
+              className="rounded-md bg-[var(--forest)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] transition hover:shadow-[0_0_16px_-4px_var(--forest)] hover:brightness-110"
+            >
+              + Adicionar cliente
+            </button>
+          )}
         </div>
       </div>
       <div className="mb-4">
@@ -1982,7 +1988,7 @@ export default function GestorDashboard() {
               </span>
             )}
           </p>
-          {gestores.length > 0 && (
+          {user?.is_admin && gestores.length > 0 && (
             <GestorFiltro
               gestores={gestores}
               value={gestorFiltro}
@@ -2012,6 +2018,7 @@ export default function GestorDashboard() {
               clientes={clientesFiltrados}
               todosClientes={clientes}
               configTab={configTab}
+              user={user}
               onClienteUpdated={(updated) =>
                 setClientes((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
               }
