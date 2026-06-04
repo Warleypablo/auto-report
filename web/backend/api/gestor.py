@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import uuid
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
@@ -21,6 +22,7 @@ from models.snapshot import Frequencia as SnapFrequencia
 from models.cliente import Categoria as CatEnum
 from models.criativo import Criativo, CriativoThumb, ThumbStatus
 from services.criativos import agregar_criativos
+from services.clickup_match import responsavel_performance
 from models.report_job import JobStatus
 from etl.cliente_publico import slugify
 from schemas import (
@@ -264,35 +266,10 @@ def patch_cup_task(
 
 
 # ── POST /gestor/clickup/automatch ─────────────────────────────────────────
-# Tenta vincular clientes sem cup_task_id usando matching tolerante:
-# - normaliza nome (lower, sem acentos, sem sufixos jurídicos, sem pontuação)
-# - só aplica match se houver candidato ÚNICO (sem ambiguidade)
+# Vincula clientes sem cup_task_id por PROXIMIDADE de nome (services.clickup_match):
+# - auto-aplica só matches de alta confiança e sem ambiguidade (classificar == "auto")
+# - os de confiança média viram sugestões (ambiguos) para revisão manual
 # - dry_run=true (default) retorna proposta sem aplicar
-
-import re
-import unicodedata
-from collections import defaultdict
-
-
-_SUFIXOS_JURIDICOS_RE = re.compile(
-    r"\s+(ltda|me|mei|epp|eireli|s\.?a\.?|sa|inc\.?|corp\.?)\s*\.?\s*$",
-    re.IGNORECASE,
-)
-
-
-def _normalize_nome(s: str | None) -> str:
-    if not s:
-        return ""
-    # Remove acentos
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
-    s = s.lower().strip()
-    # Remove sufixos jurídicos no fim
-    s = _SUFIXOS_JURIDICOS_RE.sub("", s)
-    # Remove pontuação (mantém alfanumérico + espaço)
-    s = re.sub(r"[^a-z0-9 ]", " ", s)
-    # Colapsa espaços
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
 
 
 @router.post("/clickup/automatch", status_code=200)
@@ -301,57 +278,74 @@ def automatch_clickup(
     user: Usuario = Depends(require_admin),
     session: Session = Depends(get_session),
 ) -> dict:
-    # 1. Carrega todas as tasks do ClickUp e agrupa por nome normalizado
-    cup_rows = session.execute(
-        text("SELECT task_id, nome FROM staging.cup_clientes WHERE nome IS NOT NULL AND TRIM(nome) <> ''")
-    ).mappings().all()
+    from services.clickup_match import melhores_candidatos, classificar
 
-    cup_by_norm: dict[str, list[dict]] = defaultdict(list)
-    for r in cup_rows:
-        norm = _normalize_nome(r["nome"])
-        if norm:
-            cup_by_norm[norm].append({"task_id": r["task_id"], "nome": r["nome"]})
+    cup_rows = [
+        {"task_id": r["task_id"], "nome": r["nome"]}
+        for r in session.execute(
+            text("SELECT task_id, nome FROM staging.cup_clientes "
+                 "WHERE nome IS NOT NULL AND TRIM(nome) <> ''")
+        ).mappings().all()
+    ]
 
-    # 2. Carrega clientes ativos sem vínculo
     clientes = session.execute(
         select(Cliente)
-        .where(Cliente.cup_task_id.is_(None), Cliente.ativo == True)
+        .where(Cliente.cup_task_id.is_(None), Cliente.ativo == True)  # noqa: E712
         .order_by(Cliente.nome.asc())
     ).scalars().all()
 
-    # 3. Pra cada cliente, tenta match
     matches: list[dict] = []
     ambiguos: list[dict] = []
     sem_candidato: list[dict] = []
 
     for c in clientes:
-        norm = _normalize_nome(c.nome)
-        candidates = cup_by_norm.get(norm, [])
-
-        if len(candidates) == 1:
+        cands = melhores_candidatos(c.nome, cup_rows, k=5)
+        cls = classificar(cands)
+        if cls == "auto":
+            sc, tid, cup_nome = cands[0]
             matches.append({
-                "cliente_id": str(c.id),
-                "cliente_nome": c.nome,
-                "task_id": candidates[0]["task_id"],
-                "cup_nome": candidates[0]["nome"],
+                "cliente_id": str(c.id), "cliente_nome": c.nome,
+                "task_id": tid, "cup_nome": cup_nome, "score": round(sc, 3),
             })
-        elif len(candidates) > 1:
+        elif cls == "sugestao":
             ambiguos.append({
-                "cliente_id": str(c.id),
-                "cliente_nome": c.nome,
-                "candidatos": candidates,
+                "cliente_id": str(c.id), "cliente_nome": c.nome,
+                "candidatos": [
+                    {"task_id": tid, "nome": nome, "score": round(sc, 3)}
+                    for sc, tid, nome in cands if sc >= 0.70
+                ],
             })
         else:
-            sem_candidato.append({
-                "cliente_id": str(c.id),
-                "cliente_nome": c.nome,
-            })
+            sem_candidato.append({"cliente_id": str(c.id), "cliente_nome": c.nome})
 
-    # 4. Aplica se não for dry_run
+    # Resolve colisões: se >1 cliente deu "auto" no MESMO task_id, mantém só o
+    # de maior score em matches (desempate por nome) e manda os demais para
+    # ambiguos — assim matches reflete exatamente o que será aplicado.
+    vencedor_por_task: dict[str, dict] = {}
+    for m in sorted(matches, key=lambda m: (-m["score"], m["cliente_nome"])):
+        atual = vencedor_por_task.get(m["task_id"])
+        if atual is None:
+            vencedor_por_task[m["task_id"]] = m
+        else:
+            ambiguos.append({
+                "cliente_id": m["cliente_id"],
+                "cliente_nome": m["cliente_nome"],
+                "candidatos": [{
+                    "task_id": m["task_id"], "nome": m["cup_nome"], "score": m["score"],
+                }],
+                "motivo": "task_id disputado por outro cliente de maior score",
+            })
+    matches = [m for m in matches if vencedor_por_task.get(m["task_id"]) is m]
+
     aplicados = 0
     if not dry_run and matches:
+        usados_nesta_run: set[str] = set()
         for m in matches:
-            # Re-verifica que ninguém pegou esse task_id no meio do caminho
+            # Evita que dois clientes da mesma execução reivindiquem o mesmo
+            # task_id (autoflush=False não materializa o UPDATE anterior antes
+            # do próximo SELECT, então o ja_usado abaixo não o veria).
+            if m["task_id"] in usados_nesta_run:
+                continue
             ja_usado = session.execute(
                 select(Cliente.id).where(Cliente.cup_task_id == m["task_id"])
             ).scalar_one_or_none()
@@ -362,6 +356,7 @@ def automatch_clickup(
                 .where(Cliente.id == uuid.UUID(m["cliente_id"]))
                 .values(cup_task_id=m["task_id"])
             )
+            usados_nesta_run.add(m["task_id"])
             aplicados += 1
         session.commit()
         _log.info("automatch: aplicados=%d (de %d propostos)", aplicados, len(matches))
@@ -391,155 +386,122 @@ def sync_gestores_from_clickup(
     user: Usuario = Depends(require_admin),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Atribui clientes.gestor = responsável do contrato 'Performance' no ClickUp.
+    """Atribui clientes.gestor = responsável do contrato 'Performance' vigente
+    no ClickUp, seguindo o vínculo cup_task_id.
 
-    Caminho do dado (relaciona por NOME, não por cup_task_id):
-      clientes.nome  ←normaliza→  staging.cup_clientes.nome
-                                   ↓
-                                   subtask_ids  (string com ";" como separador)
-                                   ↓ split
-                                   ↓ JOIN com cup_contratos.id_subtask
-                                   ↓ filtra servico ILIKE '%performance%'
-                                   ↓ contrato mais recente por data_inicio
-                                   responsavel  →  clientes.gestor
+    Caminho do dado (relaciona por cup_task_id, NÃO por nome):
+      clientes.cup_task_id  →  staging.cup_contratos.id_task
+                               ↓ filtra servico ILIKE '%performance%'
+                               ↓ contrato vigente mais recente (services.clickup_match)
+                               responsavel → normalize_gestor_name → clientes.gestor
     """
-    # Subquery de normalização compartilhada entre clientes e cup_clientes.
-    # Usa TRANSLATE para remover acentos comuns + LOWER + colapso de espaços.
-    sql_norm = """
-        LOWER(REGEXP_REPLACE(TRANSLATE(TRIM($1),
-            'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
-            'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
-            '\\s+', ' ', 'g'))
-    """  # noqa — placeholder, será inlineado abaixo
-
-    # Pré-contagem com a mesma lógica do UPDATE pra mostrar pro admin onde estão as lacunas
-    counts = session.execute(
+    rows = session.execute(
         text("""
-            WITH cliente_norm AS (
-                SELECT
-                    c.id,
-                    c.nome,
-                    c.gestor,
-                    c.gestor_travado,
-                    LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(c.nome),
-                        'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
-                        'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
-                        '\\s+', ' ', 'g')) AS nome_norm
-                FROM clientes c
-                WHERE c.ativo = true
-            ),
-            cup_norm AS (
-                SELECT
-                    cc.nome,
-                    cc.subtask_ids,
-                    LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(cc.nome),
-                        'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
-                        'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
-                        '\\s+', ' ', 'g')) AS nome_norm
-                FROM staging.cup_clientes cc
-            ),
-            cliente_matched AS (
-                SELECT cn.id, cn.gestor, cn.gestor_travado, cup.subtask_ids
-                FROM cliente_norm cn
-                JOIN cup_norm cup ON cn.nome_norm = cup.nome_norm
-            ),
-            subtasks_explodidas AS (
-                SELECT cm.id AS cliente_id, cm.gestor, cm.gestor_travado, TRIM(s.subtask_id) AS subtask_id
-                FROM cliente_matched cm
-                CROSS JOIN LATERAL UNNEST(STRING_TO_ARRAY(cm.subtask_ids, ';')) AS s(subtask_id)
-                WHERE COALESCE(cm.subtask_ids, '') <> ''
-            ),
-            performance_resp AS (
-                SELECT DISTINCT ON (se.cliente_id)
-                    se.cliente_id,
-                    se.gestor AS gestor_atual,
-                    se.gestor_travado AS gestor_travado,
-                    ct.responsavel AS novo_gestor
-                FROM subtasks_explodidas se
-                JOIN staging.cup_contratos ct ON TRIM(ct.id_subtask) = se.subtask_id
-                WHERE LOWER(ct.servico) LIKE '%performance%'
-                ORDER BY se.cliente_id, ct.data_inicio DESC NULLS LAST
-            )
-            SELECT
-                (SELECT COUNT(*) FROM clientes WHERE ativo = true) AS total_ativos,
-                (SELECT COUNT(*) FROM cliente_matched) AS com_match_nome,
-                (SELECT COUNT(*) FROM performance_resp) AS com_contrato_performance,
-                (SELECT COUNT(*) FROM performance_resp WHERE novo_gestor IS NOT NULL AND TRIM(novo_gestor) <> '') AS com_responsavel,
-                (SELECT COUNT(*) FROM performance_resp pr
-                  WHERE pr.novo_gestor IS NOT NULL AND TRIM(pr.novo_gestor) <> ''
-                    AND pr.gestor_atual IS DISTINCT FROM pr.novo_gestor
-                    AND pr.gestor_travado = false) AS a_atualizar
+            SELECT c.id::text AS cliente_id, c.gestor, c.gestor_travado,
+                   ct.servico, ct.status, ct.responsavel, ct.data_inicio
+            FROM clientes c
+            JOIN staging.cup_contratos ct ON ct.id_task = c.cup_task_id
+            WHERE c.ativo = true AND c.cup_task_id IS NOT NULL
         """)
-    ).mappings().one()
+    ).mappings().all()
 
-    # UPDATE: aplica o gestor onde tudo bate
-    result = session.execute(
-        text("""
-            WITH cliente_norm AS (
-                SELECT
-                    c.id, c.gestor,
-                    LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(c.nome),
-                        'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
-                        'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
-                        '\\s+', ' ', 'g')) AS nome_norm
-                FROM clientes c
-                WHERE c.ativo = true
-            ),
-            cup_norm AS (
-                SELECT
-                    cc.subtask_ids,
-                    LOWER(REGEXP_REPLACE(TRANSLATE(TRIM(cc.nome),
-                        'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÇÑáàâãäåèéêëìíîïòóôõöùúûüçñ',
-                        'AAAAAAEEEEIIIIOOOOOUUUUCNaaaaaaeeeeiiiiooooouuuucn'),
-                        '\\s+', ' ', 'g')) AS nome_norm
-                FROM staging.cup_clientes cc
-                WHERE COALESCE(cc.subtask_ids, '') <> ''
-            ),
-            cliente_matched AS (
-                SELECT cn.id, cn.gestor, cup.subtask_ids
-                FROM cliente_norm cn
-                JOIN cup_norm cup ON cn.nome_norm = cup.nome_norm
-            ),
-            subtasks_explodidas AS (
-                SELECT cm.id AS cliente_id, TRIM(s.subtask_id) AS subtask_id
-                FROM cliente_matched cm
-                CROSS JOIN LATERAL UNNEST(STRING_TO_ARRAY(cm.subtask_ids, ';')) AS s(subtask_id)
-            ),
-            performance_resp AS (
-                SELECT DISTINCT ON (se.cliente_id)
-                    se.cliente_id,
-                    ct.responsavel AS novo_gestor
-                FROM subtasks_explodidas se
-                JOIN staging.cup_contratos ct ON TRIM(ct.id_subtask) = se.subtask_id
-                WHERE LOWER(ct.servico) LIKE '%performance%'
-                  AND ct.responsavel IS NOT NULL
-                  AND TRIM(ct.responsavel) <> ''
-                ORDER BY se.cliente_id, ct.data_inicio DESC NULLS LAST
-            )
-            UPDATE clientes c
-            SET gestor = pr.novo_gestor,
-                atualizado_em = NOW()
-            FROM performance_resp pr
-            WHERE c.id = pr.cliente_id
-              AND c.gestor_travado = false
-              AND (c.gestor IS DISTINCT FROM pr.novo_gestor)
-        """)
-    )
+    # Agrupa contratos por cliente
+    por_cliente: dict[str, dict] = {}
+    for r in rows:
+        ent = por_cliente.setdefault(r["cliente_id"], {
+            "gestor_atual": r["gestor"],
+            "gestor_travado": r["gestor_travado"],
+            "contratos": [],
+        })
+        ent["contratos"].append({
+            "servico": r["servico"], "status": r["status"],
+            "responsavel": r["responsavel"], "data_inicio": r["data_inicio"],
+        })
+
+    com_vinculo = session.execute(
+        text("SELECT COUNT(*) FROM clientes WHERE ativo = true AND cup_task_id IS NOT NULL")
+    ).scalar() or 0
+    total_ativos = session.execute(
+        text("SELECT COUNT(*) FROM clientes WHERE ativo = true")
+    ).scalar() or 0
+
+    com_contrato_performance = 0
+    com_responsavel = 0
+    a_atualizar = 0
+    atualizados = 0
+
+    for cliente_id, ent in por_cliente.items():
+        tem_perf = any(
+            "performance" in (c.get("servico") or "").lower()
+            for c in ent["contratos"]
+        )
+        if tem_perf:
+            com_contrato_performance += 1
+        resp_bruto = responsavel_performance(ent["contratos"])
+        if resp_bruto is None:
+            continue
+        com_responsavel += 1
+        novo = normalize_gestor_name(resp_bruto)
+        if ent["gestor_travado"]:
+            continue
+        if ent["gestor_atual"] == novo:
+            continue
+        a_atualizar += 1
+        # Guarda extra no WHERE: protege contra um PATCH concorrente que trave
+        # o gestor entre o SELECT inicial e este UPDATE (janela TOCTOU).
+        res = session.execute(
+            update(Cliente)
+            .where(Cliente.id == uuid.UUID(cliente_id),
+                   Cliente.gestor_travado == False)  # noqa: E712
+            .values(gestor=novo, atualizado_em=datetime.now(timezone.utc).replace(tzinfo=None))
+        )
+        atualizados += res.rowcount
+
     session.commit()
 
     _log.info(
-        "sync-gestores: atualizados=%d | total_ativos=%d com_match_nome=%d com_contrato_performance=%d com_responsavel=%d",
-        result.rowcount, counts["total_ativos"], counts["com_match_nome"],
-        counts["com_contrato_performance"], counts["com_responsavel"],
+        "sync-gestores: atualizados=%d a_atualizar=%d total_ativos=%d com_vinculo=%d "
+        "com_contrato_performance=%d com_responsavel=%d",
+        atualizados, a_atualizar, total_ativos, com_vinculo,
+        com_contrato_performance, com_responsavel,
     )
 
     return {
-        "atualizados": result.rowcount,
-        "a_atualizar": counts["a_atualizar"],
-        "total_ativos": counts["total_ativos"],
-        "com_match_nome": counts["com_match_nome"],
-        "com_contrato_performance": counts["com_contrato_performance"],
-        "com_responsavel": counts["com_responsavel"],
+        "atualizados": atualizados,
+        "a_atualizar": a_atualizar,
+        "total_ativos": total_ativos,
+        "com_vinculo": com_vinculo,
+        "com_match_nome": com_vinculo,  # alias retrocompatível (deprecado)
+        "com_contrato_performance": com_contrato_performance,
+        "com_responsavel": com_responsavel,
+    }
+
+
+# ── POST /gestor/clickup/sync-tudo ─────────────────────────────────────────
+# Encadeia: automatch (aplica só vínculos de alta confiança) → sync-gestores.
+# Não auto-aplica nada de baixa confiança; sugestões ficam para revisão manual.
+#
+# NÃO é atômico: automatch faz commit dos vínculos antes de sync-gestores rodar.
+# Em falha parcial (vínculos aplicados, gestores não), basta re-rodar — ambas as
+# operações são idempotentes.
+
+@router.post("/clickup/sync-tudo", status_code=200)
+def sync_tudo(
+    user: Usuario = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    # Chamadas in-process (não via DI do FastAPI): todos os parâmetros são
+    # passados explicitamente. Ao adicionar um novo parâmetro Depends/Query a
+    # essas funções, propague-o aqui — senão o sentinel Depends(...) vira o valor.
+    automatch = automatch_clickup(dry_run=False, user=user, session=session)
+    gestores = sync_gestores_from_clickup(user=user, session=session)
+    return {
+        "vinculos_aplicados": automatch["aplicados"],
+        "sugestoes_pendentes": automatch["stats"]["ambiguos"],
+        "sem_candidato": automatch["stats"]["sem_candidato"],
+        "gestores_atualizados": gestores["atualizados"],
+        "automatch": automatch,
+        "gestores": gestores,
     }
 
 

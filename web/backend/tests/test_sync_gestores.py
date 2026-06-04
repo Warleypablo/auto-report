@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 
 import pytest
@@ -35,7 +36,9 @@ def app_with_db():
         conn.execute(text("""
             CREATE TABLE staging.cup_contratos (
                 id_subtask text,
+                id_task text,
                 servico text,
+                status text,
                 responsavel text,
                 data_inicio date
             )
@@ -97,9 +100,10 @@ def _seed_cliente(TS, *, nome, gestor, task_id, subtask_id, gestor_travado=False
         )
         s.execute(
             text("INSERT INTO staging.cup_contratos "
-                 "(id_subtask, servico, responsavel, data_inicio) "
-                 "VALUES (:sub, 'Gestão de Performance', :resp, :dt)"),
-            {"sub": subtask_id, "resp": "Novo Gestor", "dt": date(2026, 1, 1)},
+                 "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                 "VALUES (:sub, :task, 'Gestão de Performance', 'ativo', :resp, :dt)"),
+            {"sub": subtask_id, "task": task_id, "resp": "Novo Gestor",
+             "dt": date(2026, 1, 1)},
         )
         s.commit()
         s.refresh(c)
@@ -168,3 +172,195 @@ def test_sync_idempotente(app_with_db):
 
     with TS() as s:
         assert s.get(Cliente, cid).gestor == "Novo Gestor"
+
+
+def _seed_cliente_resp(TS, *, nome, gestor, task_id, resp, status="ativo",
+                       data_inicio=date(2026, 1, 1), cup_task_id=None):
+    """Cliente + contrato com responsável/serviço/status custom. cup_task_id
+    default = task_id; passe '' para simular cliente sem vínculo."""
+    link = task_id if cup_task_id is None else (cup_task_id or None)
+    with TS() as s:
+        c = Cliente(
+            slug=nome.lower().replace(" ", "-"), nome=nome,
+            categoria=Categoria.ECOMMERCE, gestor=gestor,
+            cup_task_id=link, ativo=True,
+        )
+        s.add(c)
+        s.execute(
+            text("INSERT INTO staging.cup_contratos "
+                 "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                 "VALUES (:sub, :task, 'Gestão de Performance', :st, :resp, :dt)"),
+            {"sub": task_id + "-s", "task": task_id, "st": status,
+             "resp": resp, "dt": data_inicio},
+        )
+        s.commit()
+        s.refresh(c)
+        return c.id
+
+
+def test_sync_normaliza_capitalizacao_do_responsavel(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_resp(TS, nome="Loja N", gestor="Rayan Coutinho",
+                             task_id="tn", resp="rayan coutinho")
+    client = TestClient(app)
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Rayan Coutinho"
+
+
+def test_sync_ignora_cliente_sem_vinculo(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_resp(TS, nome="Loja SV", gestor="Velho",
+                             task_id="tsv", resp="Novo Gestor", cup_task_id="")
+    client = TestClient(app)
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    assert r.json()["atualizados"] == 0
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Velho"
+
+
+def test_sync_prefere_contrato_ativo(app_with_db):
+    app, TS = app_with_db
+    with TS() as s:
+        c = Cliente(slug="loja-ac", nome="Loja AC", categoria=Categoria.ECOMMERCE,
+                    gestor="Velho", cup_task_id="tac", ativo=True)
+        s.add(c)
+        for sub, st, resp, dt in [
+            ("tac-1", "cancelado/inativo", "Antigo", date(2026, 5, 1)),
+            ("tac-2", "ativo", "Atual", date(2026, 1, 1)),
+        ]:
+            s.execute(
+                text("INSERT INTO staging.cup_contratos "
+                     "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                     "VALUES (:sub, 'tac', 'Gestão de Performance', :st, :resp, :dt)"),
+                {"sub": sub, "st": st, "resp": resp, "dt": dt},
+            )
+        s.commit(); s.refresh(c); cid = c.id
+    client = TestClient(app)
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Atual"
+
+
+def test_sync_conta_contrato_sem_responsavel(app_with_db):
+    app, TS = app_with_db
+    with TS() as s:
+        c = Cliente(slug="loja-sr", nome="Loja SR", categoria=Categoria.ECOMMERCE,
+                    gestor="Velho", cup_task_id="tsr", ativo=True)
+        s.add(c)
+        s.execute(
+            text("INSERT INTO staging.cup_contratos "
+                 "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                 "VALUES ('tsr-1', 'tsr', 'Gestão de Performance', 'ativo', '   ', :dt)"),
+            {"dt": date(2026, 1, 1)},
+        )
+        s.commit(); s.refresh(c); cid = c.id
+    client = TestClient(app)
+    r = client.post("/gestor/clientes/sync-gestores")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["com_contrato_performance"] >= 1
+    assert body["com_responsavel"] == 0
+    with TS() as s:
+        assert s.get(Cliente, cid).gestor == "Velho"
+
+
+def _seed_cup_cliente(TS, task_id, nome):
+    with TS() as s:
+        s.execute(
+            text("INSERT INTO staging.cup_clientes (task_id, nome) VALUES (:t, :n)"),
+            {"t": task_id, "n": nome},
+        )
+        s.commit()
+
+def _seed_cliente_sem_cup(TS, nome):
+    with TS() as s:
+        c = Cliente(slug=nome.lower().replace(" ", "-"), nome=nome,
+                    categoria=Categoria.ECOMMERCE, ativo=True, cup_task_id=None)
+        s.add(c); s.commit(); s.refresh(c)
+        return str(c.id)
+
+
+def test_automatch_auto_aplica_match_forte(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_sem_cup(TS, "Noway Drinks")
+    _seed_cup_cliente(TS, "cup-noway", "Noway Drink")
+    _seed_cup_cliente(TS, "cup-outro", "Padaria do Zé")
+    client = TestClient(app)
+
+    prev = client.post("/gestor/clickup/automatch?dry_run=true")
+    assert prev.status_code == 200, prev.text
+    body = prev.json()
+    noway = next(m for m in body["matches"] if m["cliente_nome"] == "Noway Drinks")
+    assert noway["task_id"] == "cup-noway"
+    assert noway["score"] >= 0.90
+
+    apply = client.post("/gestor/clickup/automatch?dry_run=false")
+    assert apply.status_code == 200, apply.text
+    assert apply.json()["aplicados"] >= 1
+    with TS() as s:
+        assert s.get(Cliente, uuid.UUID(cid)).cup_task_id == "cup-noway"
+
+
+def test_automatch_nao_aplica_lixo(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_sem_cup(TS, "Nomã")
+    _seed_cup_cliente(TS, "cup-bueno", "Bueno Mate")
+    client = TestClient(app)
+    body = client.post("/gestor/clickup/automatch?dry_run=false").json()
+    assert all(m["cliente_nome"] != "Nomã" for m in body["matches"])
+    with TS() as s:
+        assert s.get(Cliente, uuid.UUID(cid)).cup_task_id is None
+
+
+def test_sync_tudo_vincula_e_preenche_gestor(app_with_db):
+    app, TS = app_with_db
+    cid = _seed_cliente_sem_cup(TS, "Zacca")
+    _seed_cup_cliente(TS, "cup-zacca", "Zacca Brasil")
+    with TS() as s:
+        s.execute(
+            text("INSERT INTO staging.cup_contratos "
+                 "(id_subtask, id_task, servico, status, responsavel, data_inicio) "
+                 "VALUES ('z-1', 'cup-zacca', 'Gestão de Performance', 'ativo', "
+                 "'thiago m.', :dt)"),
+            {"dt": date(2026, 1, 1)},
+        )
+        s.commit()
+    client = TestClient(app)
+
+    r = client.post("/gestor/clickup/sync-tudo")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["vinculos_aplicados"] >= 1
+    assert body["gestores_atualizados"] >= 1
+    with TS() as s:
+        c = s.get(Cliente, uuid.UUID(cid))
+        assert c.cup_task_id == "cup-zacca"
+        assert c.gestor == "Thiago M."
+
+
+def test_automatch_colisao_mesmo_task_resolve_para_um(app_with_db):
+    app, TS = app_with_db
+    _seed_cliente_sem_cup(TS, "Noway Drinks")
+    _seed_cliente_sem_cup(TS, "Noway Drink Co")
+    _seed_cup_cliente(TS, "cup-noway", "Noway Drink")
+    client = TestClient(app)
+
+    body = client.post("/gestor/clickup/automatch?dry_run=false").json()
+
+    # exatamente 1 match propõe cup-noway; o outro cliente vira ambiguo
+    matches_noway = [m for m in body["matches"] if m["task_id"] == "cup-noway"]
+    amb_noway = [a for a in body["ambiguos"]
+                 if any(c["task_id"] == "cup-noway" for c in a["candidatos"])]
+    assert len(matches_noway) == 1
+    assert len(matches_noway) + len(amb_noway) == 2
+    assert body["aplicados"] == 1
+    # no DB, exatamente 1 cliente vinculado ao cup-noway
+    with TS() as s:
+        n = s.execute(
+            text("SELECT COUNT(*) FROM clientes WHERE cup_task_id = 'cup-noway'")
+        ).scalar()
+        assert n == 1
