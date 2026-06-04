@@ -6,11 +6,13 @@ services:
     plan: starter  # free tier dorme após inatividade — starter mantém sempre ativo
     region: oregon
     rootDir: .
-    buildCommand: pip install -r web/backend/requirements.txt -r requirements.txt && python -m playwright install chromium
+    buildCommand: pip install -r web/backend/requirements.txt -r requirements.txt && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.playwright-browsers python -m playwright install --with-deps chromium
     startCommand: bash scripts/start-backend.sh
     envVars:
       - key: PYTHONPATH
         value: /opt/render/project/src:/opt/render/project/src/web/backend
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/.playwright-browsers
       - key: DATABASE_URL
         sync: false  # preencher no dashboard: postgresql+psycopg://user:pass@<cloud-sql-ip>:5432/vitrine
       - key: CORS_ORIGINS
