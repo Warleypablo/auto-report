@@ -419,8 +419,17 @@ export const gestorApi = {
       };
     }>(`clickup/automatch?dry_run=${dryRun}`, "POST"),
 
-  triggerReport: (slug: string, mes: string, frequencia: Frequencia = "MENSAL", semana_inicio?: string) =>
-    apiCall<{ job_id: string }>("reports/trigger", "POST", { slug, mes, frequencia, semana_inicio }),
+  triggerReport: (
+    slug: string,
+    mes: string,
+    frequencia: Frequencia = "MENSAL",
+    semana_inicio?: string,
+    data_inicio?: string,
+    data_fim?: string,
+  ) =>
+    apiCall<{ job_id: string }>("reports/trigger", "POST", {
+      slug, mes, frequencia, semana_inicio, data_inicio, data_fim,
+    }),
 
   getJob: (job_id: string) =>
     apiCall<JobInfo>(`reports/${job_id}`),

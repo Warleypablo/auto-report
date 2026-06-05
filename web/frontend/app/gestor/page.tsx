@@ -28,26 +28,24 @@ import {
   Cell,
 } from "recharts";
 
-// ── ISO Week helpers ──────────────────────────────────────────────────────────
-function isoWeekAtual(d = new Date()): string {
-  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = (dt.getUTCDay() + 6) % 7;           // 0 = segunda
-  dt.setUTCDate(dt.getUTCDate() - day + 3);        // quinta da semana ISO
-  const week1 = new Date(Date.UTC(dt.getUTCFullYear(), 0, 4));
-  const week = 1 + Math.round(((dt.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getUTCDay() + 6) % 7)) / 7);
-  return `${dt.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+// ── Date helpers (YYYY-MM-DD) ─────────────────────────────────────────────────
+function toISODate(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
-function isoWeekParaSegunda(iso: string): string {
-  // "YYYY-Www" -> data da segunda-feira "YYYY-MM-DD"
-  const [y, w] = iso.split("-W").map(Number);
-  const jan4 = new Date(Date.UTC(y, 0, 4));
-  const jan4Day = (jan4.getUTCDay() + 6) % 7;      // 0 = segunda
-  const week1Monday = new Date(jan4);
-  week1Monday.setUTCDate(jan4.getUTCDate() - jan4Day);
-  const monday = new Date(week1Monday);
-  monday.setUTCDate(week1Monday.getUTCDate() + (w - 1) * 7);
-  return monday.toISOString().slice(0, 10);
+function hojeISO(): string {
+  return toISODate(new Date());
+}
+
+function ultimaSemanaCompleta(d = new Date()): { inicio: string; fim: string } {
+  // Segunda→sexta da semana anterior à corrente (última semana útil completa).
+  const dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = (dt.getUTCDay() + 6) % 7;            // 0 = segunda
+  const segPassada = new Date(dt);
+  segPassada.setUTCDate(dt.getUTCDate() - day - 7);
+  const sexPassada = new Date(segPassada);
+  sexPassada.setUTCDate(segPassada.getUTCDate() + 4);
+  return { inicio: toISODate(segPassada), fim: toISODate(sexPassada) };
 }
 
 type Tab = "reportes" | "dashboard" | "configuracoes";
@@ -268,7 +266,8 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
   const [frequencia, setFrequencia] = useState<"MENSAL" | "SEMANAL">("MENSAL");
-  const [semana, setSemana] = useState(() => isoWeekAtual());
+  const [dataInicio, setDataInicio] = useState(() => ultimaSemanaCompleta().inicio);
+  const [dataFim, setDataFim] = useState(() => ultimaSemanaCompleta().fim);
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState<{ atual: number; total: number; ok: number; erro: number } | null>(null);
   const [dispatched, setDispatched] = useState<DispatchedJob[]>([]);
@@ -334,8 +333,15 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
       const nome = clientes.find((c) => c.slug === slug)?.nome ?? slug;
       const dispatched_at = Date.now();
       try {
-        const semana_inicio = frequencia === "SEMANAL" ? isoWeekParaSegunda(semana) : undefined;
-        const { job_id } = await gestorApi.triggerReport(slug, mes, frequencia, semana_inicio);
+        const mesParam = frequencia === "SEMANAL" ? dataInicio.slice(0, 7) : mes;
+        const { job_id } = await gestorApi.triggerReport(
+          slug,
+          mesParam,
+          frequencia,
+          undefined,
+          frequencia === "SEMANAL" ? dataInicio : undefined,
+          frequencia === "SEMANAL" ? dataFim : undefined,
+        );
         ok++;
         results.push({ job_id, slug, nome, status: "pending", slides_url: null, erro: null, dispatched_at });
       } catch (e: any) {
@@ -656,13 +662,23 @@ function AbaClientes({ clientes }: { clientes: ClienteGestor[] }) {
           ) : null}
           {frequencia === "SEMANAL" ? (
             <div className="flex items-center gap-2">
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Semana</label>
+              <label className="eyebrow text-[10px] text-[var(--muted)]">Início</label>
               <input
-                type="week"
-                value={semana}
-                onChange={(e) => setSemana(e.target.value)}
-                max={isoWeekAtual()}
-                aria-label="Semana de referência"
+                type="date"
+                value={dataInicio}
+                onChange={(e) => setDataInicio(e.target.value)}
+                max={dataFim || hojeISO()}
+                aria-label="Data inicial do período"
+                className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-2.5 py-1.5 text-sm text-[var(--ink)] shadow-[var(--elev-sm)] transition focus:border-[var(--forest)] focus:outline-none focus:ring-2 focus:ring-[var(--forest)]/20"
+              />
+              <label className="eyebrow text-[10px] text-[var(--muted)]">Fim</label>
+              <input
+                type="date"
+                value={dataFim}
+                onChange={(e) => setDataFim(e.target.value)}
+                min={dataInicio}
+                max={hojeISO()}
+                aria-label="Data final do período"
                 className="rounded-lg border border-[var(--rule-soft)] bg-[var(--paper)] px-2.5 py-1.5 text-sm text-[var(--ink)] shadow-[var(--elev-sm)] transition focus:border-[var(--forest)] focus:outline-none focus:ring-2 focus:ring-[var(--forest)]/20"
               />
             </div>

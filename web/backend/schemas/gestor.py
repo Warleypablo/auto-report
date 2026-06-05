@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class LoginRequest(BaseModel):
@@ -112,7 +112,24 @@ class TriggerRequest(BaseModel):
     slug: str
     mes: str  # YYYY-MM
     frequencia: Literal["MENSAL", "SEMANAL"] = "MENSAL"
-    semana_inicio: str | None = None  # YYYY-MM-DD (qualquer dia da semana); só usado quando frequencia=SEMANAL
+    semana_inicio: str | None = None  # YYYY-MM-DD (qualquer dia da semana); fallback do SEMANAL
+    # Período livre do report semanal (YYYY-MM-DD): quando ambos vêm, têm
+    # precedência sobre semana_inicio. fim >= início e fim não-futuro.
+    data_inicio: str | None = None
+    data_fim: str | None = None
+
+    @model_validator(mode="after")
+    def _valida_periodo_livre(self):
+        if self.frequencia == "SEMANAL" and (self.data_inicio or self.data_fim):
+            if not (self.data_inicio and self.data_fim):
+                raise ValueError("data_inicio e data_fim devem vir juntos")
+            ini = date.fromisoformat(self.data_inicio)
+            fim = date.fromisoformat(self.data_fim)
+            if fim < ini:
+                raise ValueError("data_fim não pode ser anterior a data_inicio")
+            if fim > date.today():
+                raise ValueError("data_fim não pode estar no futuro")
+        return self
 
 
 class TriggerResponse(BaseModel):

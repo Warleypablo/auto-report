@@ -41,12 +41,16 @@ def _resolver_periodo_ref(
     frequencia: str,
     semana_inicio: str | None,
     *,
+    data_inicio: str | None = None,
+    data_fim: str | None = None,
     today: "date | None" = None,
 ):
     """Resolve (periodo_ref, periodo_comp) a partir dos dados do trigger.
 
-    - SEMANAL: semana útil seg–sex escolhida (``semana_inicio``, qualquer dia da
-      semana serve) ou a semana vigente; comparativo = semana anterior.
+    - SEMANAL: se ``data_inicio`` e ``data_fim`` vierem, usa esse período livre
+      (precedência); o comparativo é o período de MESMA DURAÇÃO imediatamente
+      anterior. Senão, a semana útil seg–sex de ``semana_inicio`` (qualquer dia
+      serve) ou a semana vigente, com comparativo = semana anterior.
     - MENSAL: mês selecionado (via âncora no dia 15 do mês seguinte); comparativo
       = mês anterior. (Comportamento original preservado.)
     """
@@ -54,6 +58,18 @@ def _resolver_periodo_ref(
 
     freq = frequencia.upper()
     if freq == "SEMANAL":
+        if data_inicio and data_fim:
+            ini = date.fromisoformat(data_inicio)
+            fim = date.fromisoformat(data_fim)
+            ref = P.Periodo(inicio=ini, fim=fim, fim_plus_1=fim + timedelta(days=1))
+            # Comparativo: mesma duração, imediatamente antes do início.
+            diff = (fim - ini).days
+            comp_fim = ini - timedelta(days=1)
+            comp_ini = comp_fim - timedelta(days=diff)
+            comp = P.Periodo(
+                inicio=comp_ini, fim=comp_fim, fim_plus_1=comp_fim + timedelta(days=1)
+            )
+            return ref, comp
         if semana_inicio:
             ref = P.semana_de(date.fromisoformat(semana_inicio))
         else:
@@ -137,7 +153,7 @@ def _resolver_cliente(slug: str, nome_cliente: str, core_settings, session_facto
     return _core_cliente_from_db(db_cli)
 
 
-def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENSAL", semana_inicio: str | None = None) -> str:
+def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENSAL", semana_inicio: str | None = None, data_inicio: str | None = None, data_fim: str | None = None) -> str:
     """Gera o report em PDF para um cliente e devolve a URL do Drive.
 
     (Nome mantido como ``gerar_slides`` por compatibilidade com o chamador; o
@@ -170,7 +186,9 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
     cliente = _resolver_cliente(slug, nome_cliente, core_settings)
     FREQ = frequencia.upper()
 
-    periodo_ref, periodo_comp = _resolver_periodo_ref(mes, FREQ, semana_inicio)
+    periodo_ref, periodo_comp = _resolver_periodo_ref(
+        mes, FREQ, semana_inicio, data_inicio=data_inicio, data_fim=data_fim
+    )
 
     dados = basic_placeholders.montar_placeholders_basicos(cliente, periodo_ref, FREQ=FREQ)
     dados.update(

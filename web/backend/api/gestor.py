@@ -984,6 +984,8 @@ def trigger_report(
     mes = body.mes
     frequencia = body.frequencia
     semana_inicio = body.semana_inicio
+    data_inicio = body.data_inicio
+    data_fim = body.data_fim
 
     def _run():
         # Imports DENTRO do try para que qualquer ImportError também caia no handler.
@@ -1014,7 +1016,7 @@ def trigger_report(
                     bg_session.commit()
 
                 _log.info("[job %s/%s] chamando gerar_slides", job_id, cliente_nome)
-                url = gerar_slides(slug=cliente_slug, nome_cliente=cliente_nome, mes=mes, frequencia=frequencia, semana_inicio=semana_inicio)
+                url = gerar_slides(slug=cliente_slug, nome_cliente=cliente_nome, mes=mes, frequencia=frequencia, semana_inicio=semana_inicio, data_inicio=data_inicio, data_fim=data_fim)
                 _log.info("[job %s/%s] gerar_slides retornou url=%s", job_id, cliente_nome, url)
 
                 with SessionLocal() as bg_session:
