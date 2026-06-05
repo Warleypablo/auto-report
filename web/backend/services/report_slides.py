@@ -72,6 +72,71 @@ def _resolver_periodo_ref(
     return ref, comp
 
 
+def _core_cliente_from_db(db_cliente):
+    """Monta um ``core.leitura_central.Cliente`` a partir de um registro de
+    ``public.clientes`` (o modelo do banco).
+
+    Fallback para clientes que existem só no banco — cadastrados via sistema
+    (POST /clientes) ou importados do ClickUp — e portanto não têm linha na
+    Planilha Central. ``extras={}`` faz ``set_status`` virar no-op (não há célula
+    de STATUS na planilha para esse cliente). Campos ausentes viram "" porque o
+    ``__post_init__`` do core.Cliente chama ``.strip()`` (None quebraria).
+    """
+    from core.leitura_central import Cliente as CoreCliente  # type: ignore
+
+    cat = getattr(db_cliente.categoria, "value", db_cliente.categoria)
+    return CoreCliente(
+        nome=db_cliente.nome,
+        categoria=str(cat or ""),
+        painel_url=db_cliente.painel_url or "",
+        pasta_url=db_cliente.pasta_url or "",
+        id_google_ads=db_cliente.id_google_ads or "",
+        id_meta_ads=db_cliente.id_meta_ads or "",
+        id_ga4=db_cliente.id_ga4 or "",
+        extras={},
+    )
+
+
+def _resolver_cliente(slug: str, nome_cliente: str, core_settings, session_factory=None):
+    """Resolve o ``core.Cliente`` usado na geração do report.
+
+    Tenta primeiro a Planilha Central (por nome); se o cliente não estiver lá,
+    cai para o registro do banco (``public.clientes``) — caso de cliente
+    cadastrado via sistema. Os IDs de mídia/categoria/pasta vêm do banco, que já
+    contém esses campos.
+
+    Raises:
+        ValueError: se o cliente não existe nem na planilha nem no banco.
+    """
+    from core.leitura_central import fetch_clientes  # type: ignore
+
+    clientes = fetch_clientes(
+        atualizar=False,
+        only=nome_cliente,
+        sheet_url=core_settings.CENTRAL_SHEET_URL,
+        tab_name=core_settings.CENTRAL_TAB_NAME,
+    )
+    if clientes:
+        return clientes[0]
+
+    if session_factory is None:
+        from db import SessionLocal  # type: ignore
+
+        session_factory = SessionLocal
+    from sqlalchemy import select
+
+    from models.cliente import Cliente as ClienteDB  # type: ignore
+
+    with session_factory() as session:
+        db_cli = session.scalar(select(ClienteDB).where(ClienteDB.slug == slug))
+    if db_cli is None:
+        raise ValueError(
+            f"Cliente '{nome_cliente}' (slug={slug!r}) não encontrado "
+            "na Planilha Central nem no banco"
+        )
+    return _core_cliente_from_db(db_cli)
+
+
 def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENSAL", semana_inicio: str | None = None) -> str:
     """Gera o report em PDF para um cliente e devolve a URL do Drive.
 
@@ -98,21 +163,11 @@ def gerar_slides(slug: str, nome_cliente: str, mes: str, frequencia: str = "MENS
         template_manager,
     )
     from core.categorias import get_handler  # type: ignore
-    from core.leitura_central import fetch_clientes  # type: ignore
     from core.status import set_status  # type: ignore
 
-    clientes = fetch_clientes(
-        atualizar=False,
-        only=nome_cliente,
-        sheet_url=core_settings.CENTRAL_SHEET_URL,
-        tab_name=core_settings.CENTRAL_TAB_NAME,
-    )
-    if not clientes:
-        raise ValueError(
-            f"Cliente '{nome_cliente}' (slug={slug!r}) não encontrado na Planilha Central"
-        )
-
-    cliente = clientes[0]
+    # Planilha Central como fonte primária; fallback para o banco quando o cliente
+    # só existe lá (cadastrado via sistema / importado do ClickUp).
+    cliente = _resolver_cliente(slug, nome_cliente, core_settings)
     FREQ = frequencia.upper()
 
     periodo_ref, periodo_comp = _resolver_periodo_ref(mes, FREQ, semana_inicio)
