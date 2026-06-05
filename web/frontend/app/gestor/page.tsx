@@ -1015,7 +1015,6 @@ function AbaDashboard({
               </thead>
               <tbody>
                 {[...itens]
-                  .filter((i) => i.faturamento != null || i.roas != null)
                   .sort((a, b) => (b.faturamento ?? 0) - (a.faturamento ?? 0))
                   .map((item, idx) => {
                     const isOpen = expandido === item.slug;
@@ -1922,16 +1921,26 @@ export default function GestorDashboard() {
       .then(({ items }) => setGestoresAPI(items))
       .catch(console.error);
 
-    // Carrega meses com snapshots e usa o mais recente como default
+    // Carrega meses com snapshots; preenche meses ausentes entre o último snapshot e hoje
     gestorApi.metricasMesesDisponiveis()
       .then(({ meses }) => {
-        setMesesDisponiveis(meses);
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const filled: string[] = [currentMonth];
+        // Preenche meses entre hoje e o snapshot mais recente
         if (meses.length > 0) {
-          setMesFiltro(meses[0]); // mais recente vem primeiro (ORDER BY DESC no backend)
-        } else {
-          // fallback: mês atual se não houver nenhum snapshot
-          setMesFiltro(new Date().toISOString().slice(0, 7));
+          const [y, m] = meses[0].split("-").map(Number);
+          let year = Number(currentMonth.slice(0, 4));
+          let month = Number(currentMonth.slice(5, 7));
+          while (year > y || (year === y && month > m)) {
+            month--;
+            if (month === 0) { month = 12; year--; }
+            const label = `${year}-${String(month).padStart(2, "0")}`;
+            filled.push(label);
+          }
         }
+        const allMeses = [...new Set([...filled, ...meses])].sort((a, b) => b.localeCompare(a));
+        setMesesDisponiveis(allMeses);
+        setMesFiltro(meses.length > 0 ? meses[0] : currentMonth);
       })
       .catch(console.error);
   }, []);

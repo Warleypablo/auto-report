@@ -994,12 +994,13 @@ def trigger_report(
 
             _log.info("[job %s/%s] thread iniciada", job_id, cliente_nome)
 
-            # Acquire com timeout: se a fila estiver congestionada (threads antigos
-            # presos em gerar_slides), falha rápido em vez de bloquear para sempre.
-            acquired = _JOB_SEMAPHORE.acquire(timeout=90)
+            # Acquire com timeout: jobs ficam em fila esperando o slot liberar.
+            # 1800s (30min) acomoda até ~14 jobs sequenciais de ~2min cada.
+            # Em caso de trava real (processo morto), o mark_stale_jobs limpa após 10min.
+            acquired = _JOB_SEMAPHORE.acquire(timeout=1800)
             if not acquired:
                 raise TimeoutError(
-                    f"Sem vaga na fila após 90s (max concorrente: {_MAX_CONCURRENT_JOBS}). "
+                    f"Sem vaga na fila após 30min (max concorrente: {_MAX_CONCURRENT_JOBS}). "
                     "Provável trava em jobs anteriores — reinicie o serviço no Render."
                 )
             try:

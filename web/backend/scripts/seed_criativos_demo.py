@@ -114,7 +114,11 @@ def main() -> None:
                 n_cri += 1
 
                 base_inv = Decimal(50 + 30 * di + 20 * ci)
-                roas_alvo = Decimal("0.8") + Decimal(di) * Decimal("0.7")  # 0.8x .. 5.0x
+                # ROAS variado e determinístico, SEM correlação com o tipo do anúncio.
+                # (Antes era monotônico em `di`: o search ad — que não tem imagem — caía
+                # no maior `di` e ganhava o ROAS mais alto, liderando o ranking de Criativos
+                # e empurrando todos os criativos COM foto para baixo da dobra.)
+                roas_alvo = Decimal("1.0") + Decimal((ci * 5 + di * 3) % 9) * Decimal("0.5")  # 1.0x .. 5.0x
                 for d in range(30):
                     dia = win_ini + timedelta(days=d)
                     inv = (base_inv * (Decimal(1) + Decimal(d % 5) / Decimal(10))).quantize(Decimal("0.01"))
