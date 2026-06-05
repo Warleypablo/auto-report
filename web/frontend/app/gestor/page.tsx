@@ -1938,7 +1938,7 @@ export default function GestorDashboard() {
             filled.push(label);
           }
         }
-        const allMeses = [...new Set([...filled, ...meses])].sort((a, b) => b.localeCompare(a));
+        const allMeses = Array.from(new Set([...filled, ...meses])).sort((a, b) => b.localeCompare(a));
         setMesesDisponiveis(allMeses);
         setMesFiltro(meses.length > 0 ? meses[0] : currentMonth);
       })
